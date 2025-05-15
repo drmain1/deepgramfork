@@ -20,10 +20,28 @@ const AudioRecorder = ({ isOpen, onClose }) => {
   const [finalTranscript, setFinalTranscript] = useState('');
   const [currentInterimTranscript, setCurrentInterimTranscript] = useState('');
   const [combinedTranscript, setCombinedTranscript] = useState('');
+  const [sessionId, setSessionId] = useState(null);
+  const [isSessionSaved, setIsSessionSaved] = useState(false);
+  const [saveStatusMessage, setSaveStatusMessage] = useState('');
 
   const mediaRecorderRef = useRef(null);
   const webSocketRef = useRef(null);
   const audioStreamRef = useRef(null);
+
+  useEffect(() => {
+    // Reset state when the panel is opened for a new session
+    if (isOpen) {
+      setPatientDetails('');
+      setError(null);
+      setFinalTranscript('');
+      setCurrentInterimTranscript('');
+      setCombinedTranscript('');
+      setSessionId(null); // Reset session ID
+      setIsSessionSaved(false); // Reset save status
+      setSaveStatusMessage(''); // Clear save status message
+      // setIsRecording(false); // Typically already false, ensure if necessary
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     setCombinedTranscript(finalTranscript + currentInterimTranscript);
@@ -67,18 +85,35 @@ const AudioRecorder = ({ isOpen, onClose }) => {
       webSocketRef.current.onmessage = (event) => {
         const message = event.data;
         if (typeof message === 'string') {
-            if (message.startsWith('Final: ')) {
-                const text = message.substring('Final: '.length);
-                setFinalTranscript(prev => prev + text + ' '); 
-                setCurrentInterimTranscript(''); 
-            } else if (message.startsWith('Interim: ')) {
-                const text = message.substring('Interim: '.length);
-                setCurrentInterimTranscript(text);
-            } else if (message.startsWith('Error:')) {
-                console.error('Received error from server:', message);
-                setError(message);
-            } else {
-                console.log('Received unhandled message from server:', message);
+            try {
+                const parsedMessage = JSON.parse(message);
+                if (parsedMessage.type === 'session_init') {
+                    console.log('Received session_init:', parsedMessage);
+                    setSessionId(parsedMessage.session_id);
+                    setIsSessionSaved(false); // Ensure save status is reset for new session
+                    setSaveStatusMessage(''); // Clear previous save messages
+                } else if (parsedMessage.type === 'error') {
+                    console.error('Received error from server via JSON:', parsedMessage.message);
+                    setError(parsedMessage.message);
+                } else if (parsedMessage.type === 'status') {
+                    // Could be used for other status messages if needed
+                    console.log('Received status from server:', parsedMessage.message);
+                }
+            } catch (e) {
+                // Handle non-JSON messages (like old direct transcript messages)
+                if (message.startsWith('Final: ')) {
+                    const text = message.substring('Final: '.length);
+                    setFinalTranscript(prev => prev + text + ' '); 
+                    setCurrentInterimTranscript(''); 
+                } else if (message.startsWith('Interim: ')) {
+                    const text = message.substring('Interim: '.length);
+                    setCurrentInterimTranscript(text);
+                } else if (message.startsWith('Error:')) { // Legacy error handling
+                    console.error('Received error from server (string):', message);
+                    setError(message);
+                } else {
+                    console.log('Received unhandled string message from server:', message);
+                }
             }
         }
       };
@@ -97,6 +132,7 @@ const AudioRecorder = ({ isOpen, onClose }) => {
         if (isRecording) {
             setIsRecording(false); 
         }
+        // Don't automatically clear sessionId here, allow saving after disconnect
       };
 
       mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
@@ -133,6 +169,47 @@ const AudioRecorder = ({ isOpen, onClose }) => {
     setIsRecording(false);
   };
 
+  const handleSaveSession = async () => {
+    if (!sessionId || !combinedTranscript.trim()) {
+      setSaveStatusMessage('Error: Session ID or transcript is missing. Cannot save.');
+      return;
+    }
+    if (isSessionSaved) {
+        setSaveStatusMessage('This session has already been saved.');
+        return;
+    }
+
+    setSaveStatusMessage('Saving session data...');
+    setIsSessionSaved(false); // Indicate save is in progress/attempted
+
+    try {
+      const response = await fetch('/api/v1/save_session_data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          session_id: sessionId,
+          final_transcript_text: combinedTranscript,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setSaveStatusMessage(`Session saved! Notes: ${result.notes_s3_path || 'N/A'}, Audio: ${result.audio_s3_path || 'N/A'}`);
+        setIsSessionSaved(true);
+      } else {
+        setSaveStatusMessage(`Error saving session: ${result.detail || response.statusText}`);
+        setIsSessionSaved(false); // Allow retry if save failed
+      }
+    } catch (err) {
+      console.error('Failed to save session:', err);
+      setSaveStatusMessage(`Failed to save session: ${err.message}`);
+      setIsSessionSaved(false); // Allow retry
+    }
+  };
+
   if (!isOpen) { 
     return null;
   }
@@ -143,7 +220,6 @@ const AudioRecorder = ({ isOpen, onClose }) => {
         <Typography variant="h6" component="h2">Start New Session</Typography>
 
         <FormControl fullWidth required error={!!(error && error.includes('patient details'))}>
-          <InputLabel htmlFor="patient-details">Patient Details / Session Name</InputLabel>
           <TextField 
             id="patient-details" 
             label="Patient Details / Session Name" 
@@ -187,6 +263,26 @@ const AudioRecorder = ({ isOpen, onClose }) => {
           <Button variant="contained" color="error" onClick={stopRecording} fullWidth>
             Stop Recording
           </Button>
+        )}
+
+        {/* Save Session Button - Appears after recording stops and if not already saved */} 
+        {!isRecording && sessionId && combinedTranscript.trim() && (
+          <Button 
+            variant="contained" 
+            color="secondary" 
+            onClick={handleSaveSession} 
+            disabled={isSessionSaved || saveStatusMessage === 'Saving session data...'}
+            fullWidth
+            sx={{ mt: 1 }}
+          >
+            {isSessionSaved ? 'Session Saved' : (saveStatusMessage === 'Saving session data...' ? 'Saving...' : 'Save Session to S3')}
+          </Button>
+        )}
+
+        {saveStatusMessage && (
+          <Typography sx={{ mt: 1, fontStyle: 'italic', color: error && saveStatusMessage.toLowerCase().includes('error') ? 'error.main' : 'text.secondary' }}>
+            {saveStatusMessage}
+          </Typography>
         )}
 
         {isRecording && (
