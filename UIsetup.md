@@ -23,13 +23,20 @@ This document outlines the structure and key components of the `my-vite-react-ap
 
 *   **`AdvancedSetupModal.jsx`**: Likely a modal component for advanced application setup or configuration options.
 *   **`AudioRecorder.jsx`**: The core component for handling audio recording. It includes UI for starting/stopping recording, inputting session details (like patient name), selecting recording mode, and displaying live transcription. Uses Material-UI.
+    *   **Manual S3 Saving**: This component now implements manual saving of session data (audio and transcript) to S3.
+        *   It receives a unique `session_id` from the backend via WebSocket upon establishing a connection.
+        *   After a recording is stopped, a "Save Session to S3" button becomes available.
+        *   Clicking this button triggers an asynchronous function (`handleSaveSession`) that sends the `session_id` and the complete final transcript to the backend API endpoint (`POST /api/v1/save_session_data`).
+        *   The backend then processes the audio (which was temporarily saved as a WAV file on the server post-recording), polishes the transcript with Bedrock, and uploads both to S3.
+        *   The component displays status messages to the user (e.g., "Saving...", "Session saved successfully!", or error details) based on the backend's response.
+        *   This manual save mechanism replaces the previous automatic S3 upload that occurred when the WebSocket connection closed.
 *   **`CustomVocabularyTab.jsx`**: Probably a tab within a settings or configuration interface for managing custom vocabulary lists for transcription.
 *   **`EasySetupModal.jsx`**: Likely a modal component for a simplified or guided setup process.
 *   **`MacroPhrasesTab.jsx`**: Suggests a tab for managing macro phrases or text snippets, possibly for quick insertion into notes.
 *   **`NoteStructureTab.jsx`**: Likely a tab for configuring the structure or template of generated notes.
 *   **`RecentRecordingItem.jsx`**: A component to display a single item in a list of recent recordings.
 *   **`SettingsTabs.jsx`**: A component that likely manages the tabbed interface within the settings page.
-*   **`Sidebar.jsx`**: The main navigation sidebar for the application. **This is where the \"New Session\" or \"Start Transcribing\" button that triggers the `AudioRecorder` panel should reside.**
+*   **`Sidebar.jsx`**: The main navigation sidebar for the application. **This is where the "New Session" or "Start Transcribing" button that triggers the `AudioRecorder` panel should reside.**
 
 ### `contexts/` Directory
 
