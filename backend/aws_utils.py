@@ -2,20 +2,27 @@ import asyncio
 import json
 import os # Though os.getenv for AWS_S3_BUCKET_NAME is removed from functions
 
-async def polish_transcript_with_bedrock(transcript: str, bedrock_client) -> str:
+async def polish_transcript_with_bedrock(transcript: str, bedrock_client, custom_instructions: str = None) -> str:
     if not bedrock_client:
         print("Bedrock runtime client not provided to utility function. Skipping polishing.")
         return transcript
 
     model_id = 'anthropic.claude-3-haiku-20240307-v1:0'
-    prompt = f"""Human: Please review and polish the following medical transcript. Focus on:
+    
+    # Define the default prompt if no custom instructions are provided
+    if custom_instructions:
+        user_prompt_content = custom_instructions
+    else:
+        user_prompt_content = """Please review and polish the following medical transcript. Focus on:
 - Clarity and conciseness.
 - Correcting grammatical errors, spelling mistakes, and punctuation.
 - Ensuring a professional and formal tone suitable for clinical notes.
 - Do NOT add any information that isn't present in the original transcript.
-- Do NOT add any preamble like 'Here is the polished transcript:'. Just output the polished text directly.
+- Do NOT add any preamble like 'Here is the polished transcript:'. Just output the polished text directly."""
 
-Transcript to polish:
+    prompt = f"""Human: {user_prompt_content}
+
+Transcript to process:
 ```text
 {transcript}
 ```
@@ -53,14 +60,14 @@ Assistant:"""
         if response_body.get("content") and isinstance(response_body["content"], list) and len(response_body["content"]) > 0:
             polished_text = response_body["content"][0].get("text", "")
             if polished_text:
-                print("Transcript polished successfully by Bedrock Claude Haiku (via aws_utils).")
+                print(f"Transcript processed by Bedrock Claude Haiku. Custom instructions used: {'Yes' if custom_instructions else 'No (default medical)'}.")
                 return polished_text.strip()
             else:
                 print("Bedrock response was empty or malformed (no text content) (via aws_utils).")
         else:
             print(f"Bedrock Claude Haiku response structure not as expected (via aws_utils): {response_body}")
         
-        print("Failed to get polished transcript from Bedrock (via aws_utils), returning original.")
+        print("Failed to get processed transcript from Bedrock (via aws_utils), returning original.")
         return transcript
         
     except Exception as e:

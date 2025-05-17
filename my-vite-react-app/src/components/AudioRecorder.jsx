@@ -10,7 +10,9 @@ import {
   FormControl,
   InputLabel,
   CircularProgress,
-  Grid
+  Grid,
+  Tabs,
+  Tab
 } from '@mui/material';
 
 const AudioRecorder = ({ isOpen, onClose }) => {
@@ -28,6 +30,7 @@ const AudioRecorder = ({ isOpen, onClose }) => {
   const [sessionId, setSessionId] = useState(null);
   const [isSessionSaved, setIsSessionSaved] = useState(false);
   const [saveStatusMessage, setSaveStatusMessage] = useState('');
+  const [activeTab, setActiveTab] = useState(0);
 
   const mediaRecorderRef = useRef(null);
   const webSocketRef = useRef(null);
@@ -50,14 +53,17 @@ const AudioRecorder = ({ isOpen, onClose }) => {
       setIsRecording(false);
       setHasStreamedOnce(false);
       if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
+        console.log("[WebSocket] Previous WebSocket connection exists. State:", webSocketRef.current.readyState, ". Closing it before resume.");
         webSocketRef.current.close();
         webSocketRef.current = null;
       }
       if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        console.log("[MediaRecorder] Previous MediaRecorder exists and is recording. Stopping it before resume.");
         mediaRecorderRef.current.stop();
         mediaRecorderRef.current = null;
       }
       if (audioStreamRef.current) {
+        console.log("[Stream] Previous audio stream exists. Stopping its tracks before resume.");
         audioStreamRef.current.getTracks().forEach(track => track.stop());
         audioStreamRef.current = null;
       }
@@ -71,15 +77,17 @@ const AudioRecorder = ({ isOpen, onClose }) => {
   useEffect(() => {
     return () => {
       if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
-        console.log('WebSocket closing due to component unmount or panel close');
+        console.log("[WebSocket] Closing due to component unmount or panel close.");
         webSocketRef.current.close();
         webSocketRef.current = null;
       }
       if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        console.log("[MediaRecorder] Stopping due to component unmount or panel close.");
         mediaRecorderRef.current.stop();
         mediaRecorderRef.current = null;
       }
       if (audioStreamRef.current) {
+        console.log("[Stream] Stopping audio stream tracks due to component unmount or panel close.");
         audioStreamRef.current.getTracks().forEach(track => track.stop());
         audioStreamRef.current = null;
       }
@@ -101,14 +109,16 @@ const AudioRecorder = ({ isOpen, onClose }) => {
       audioStreamRef.current = stream;
 
       if (webSocketRef.current && webSocketRef.current.readyState !== WebSocket.CLOSED) {
+        console.log("[WebSocket] Previous WebSocket connection exists. State:", webSocketRef.current.readyState, ". Closing it before resume.");
         webSocketRef.current.close();
         webSocketRef.current = null;
-        console.log("Previous WebSocket connection closed before resuming.");
       }
 
+      console.log("[WebSocket] Attempting to connect to ws://localhost:8000/stream for resume/start...");
       webSocketRef.current = new WebSocket('ws://localhost:8000/stream');
+
       webSocketRef.current.onopen = () => {
-        console.log('WebSocket connected to ws://localhost:8000/stream');
+        console.log('[WebSocket] Connection OPENED successfully.');
         setError(null);
         const sessionSetupData = {
           type: 'session_config',
@@ -119,7 +129,50 @@ const AudioRecorder = ({ isOpen, onClose }) => {
           session_id: sessionId
         };
         console.log('Would send session_config data (if backend supported):', sessionSetupData);
+
+        if (audioStreamRef.current) {
+          mediaRecorderRef.current = new MediaRecorder(audioStreamRef.current, { mimeType: 'audio/webm' });
+
+          mediaRecorderRef.current.ondataavailable = (event) => {
+            if (event.data.size > 0 && webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
+              webSocketRef.current.send(event.data);
+            }
+          };
+
+          mediaRecorderRef.current.onstop = () => {
+            console.log("[MediaRecorder] MediaRecorder stopped.");
+            // Ensure EOS is sent if socket is still open
+            if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
+              console.log("[WebSocket] Sending EOS due to MediaRecorder stop.");
+              webSocketRef.current.send(JSON.stringify({ type: 'eos' }));
+            }
+            // Actual WebSocket closing is handled by stopRecording function or component unmount/close
+          };
+
+          mediaRecorderRef.current.onerror = (event) => {
+            console.error('[MediaRecorder] MediaRecorder error:', event.error);
+            setError(`MediaRecorder error: ${event.error.name}. Please ensure microphone access and try again.`);
+            console.log("[StateChange] Setting isRecording to FALSE due to MediaRecorder error.");
+            setIsRecording(false);
+            if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
+              console.log("[WebSocket] Closing WebSocket due to MediaRecorder error.");
+              webSocketRef.current.close();
+            }
+          };
+
+          mediaRecorderRef.current.start(1000);
+          console.log("[MediaRecorder] MediaRecorder started.");
+          console.log("[StateChange] Setting isRecording to TRUE (in WebSocket onopen).");
+          setIsRecording(true);
+          setHasStreamedOnce(true);
+        } else {
+          console.error("[WebSocket] Audio stream is not available in onopen. Cannot start MediaRecorder.");
+          setError("Audio stream lost. Please try again.");
+          console.log("[StateChange] Setting isRecording to FALSE (audio stream lost in onopen).");
+          setIsRecording(false);
+        }
       };
+
       webSocketRef.current.onmessage = (event) => {
         let message = event.data;
         if (typeof message === 'string') {
@@ -191,58 +244,67 @@ const AudioRecorder = ({ isOpen, onClose }) => {
           console.warn('Received non-string message from WebSocket:', message);
         }
       };
+
       webSocketRef.current.onerror = (event) => {
-        console.error('WebSocket error:', event);
-        setError('WebSocket connection error. Ensure the backend server is running.');
+        console.error('[WebSocket] WebSocket ERROR:', event);
+        setError('WebSocket connection error. Please check your connection or the server and try again.');
+        console.log("[StateChange] Setting isRecording to FALSE (in WebSocket onerror).");
         setIsRecording(false);
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+          console.log("[MediaRecorder] Stopping MediaRecorder due to WebSocket error.");
+          mediaRecorderRef.current.stop();
+        }
       };
+
       webSocketRef.current.onclose = (event) => {
-        console.log('WebSocket disconnected:', event.reason, `Code: ${event.code}`);
-        if (isRecording && event.code !== 1000) {
-          setError(prevError => prevError || 'WebSocket connection closed unexpectedly.');
+        console.log(`[WebSocket] WebSocket connection CLOSED. Code: ${event.code}, Reason: '${event.reason}', Clean: ${event.wasClean}`);
+        // This handler is for unexpected closures or closures not initiated by explicit stopRecording/panel close.
+        if (isRecording) { // If we thought we were recording when it closed.
+          console.warn("[WebSocket] Connection closed unexpectedly while 'isRecording' was true.");
+          // setError("Live connection lost. You might need to resume or restart."); // Optional: inform user
+          console.log("[StateChange] Setting isRecording to FALSE (in WebSocket onclose, was recording).");
+          setIsRecording(false);
         }
-        setIsRecording(false);
+        // If MediaRecorder is somehow still recording, ensure it's stopped.
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+          console.log("[MediaRecorder] WebSocket closed, ensuring MediaRecorder is stopped.");
+          mediaRecorderRef.current.stop();
+        }
       };
 
-      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0 && webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
-          webSocketRef.current.send(event.data);
-        }
-      };
-      mediaRecorderRef.current.onstop = () => {
-        setIsRecording(false);
-        console.log('MediaRecorder stopped.');
-      };
-
-      mediaRecorderRef.current.start(500);
-      setIsRecording(true);
-      if (!hasStreamedOnce) setHasStreamedOnce(true);
     } catch (err) {
-      console.error('Error starting recording:', err);
-      setError(`Error starting recording: ${err.message}. Please check microphone permissions.`);
+      console.error('[Stream] Error starting recording process (getUserMedia or other setup):', err);
+      setError(`Error starting stream: ${err.message}. Please ensure microphone access.`);
+      console.log("[StateChange] Setting isRecording to FALSE (error in _startRecordingProcess catch block).");
       setIsRecording(false);
-      if (webSocketRef.current) {
-        webSocketRef.current.close();
-        webSocketRef.current = null;
-      }
-      if (audioStreamRef.current) {
-        audioStreamRef.current.getTracks().forEach(track => track.stop());
-        audioStreamRef.current = null;
-      }
     }
   };
 
   const stopRecording = () => {
-    console.log('stopRecording (Pause Streaming) called');
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.stop();
+    console.log("[Action] stopRecording (Pause) called.");
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      console.log("[MediaRecorder] Calling MediaRecorder.stop().");
+      mediaRecorderRef.current.stop(); // This will trigger ondataavailable with last chunk, then onstop.
+    } else {
+      console.log("[MediaRecorder] MediaRecorder not recording or not initialized.");
     }
+
+    if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
+      console.log("[WebSocket] Closing WebSocket connection explicitly from stopRecording.");
+      // EOS is typically sent by MediaRecorder.onstop, but can be sent here if needed before closing.
+      // webSocketRef.current.send(JSON.stringify({ type: 'eos' }));
+      webSocketRef.current.close(1000, "User paused recording"); // Normal closure
+      webSocketRef.current = null; // Nullify after closing for clean resume
+    } else {
+      console.log("[WebSocket] WebSocket not open or not initialized when stopRecording called.");
+    }
+
     if (audioStreamRef.current) {
+      console.log("[Stream] Stopping audio stream tracks.");
       audioStreamRef.current.getTracks().forEach(track => track.stop());
       audioStreamRef.current = null;
-      console.log('Microphone stream closed on pause.');
     }
+    console.log("[StateChange] Setting isRecording to FALSE (at end of stopRecording).");
     setIsRecording(false);
   };
 
@@ -312,10 +374,42 @@ const AudioRecorder = ({ isOpen, onClose }) => {
       stopRecording();
     }
     if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
-      webSocketRef.current.close();
-      webSocketRef.current = null;
+      console.log("[WebSocket] Closing WebSocket connection explicitly from handleCancelAndClose.");
+      webSocketRef.current.close(1000, "User cancelled session"); // Normal closure
+      webSocketRef.current = null; // Nullify after closing for clean resume
     }
     onClose();
+  };
+
+  function a11yProps(index) {
+    return {
+      id: `simple-tab-${index}`,
+      'aria-controls': `simple-tabpanel-${index}`,
+    };
+  }
+
+  function TabPanel(props) {
+    const { children, value, index, ...other } = props;
+    return (
+      <div
+        role="tabpanel"
+        hidden={value !== index}
+        id={`simple-tabpanel-${index}`}
+        aria-labelledby={`simple-tab-${index}`}
+        {...other}
+        style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }} // Ensure TabPanel itself can grow and manage overflow
+      >
+        {value === index && (
+          <Box sx={{ p: 0, flexGrow: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}> {/* Apply p:0 to override default TabPanel padding if needed, manage overflow here */} 
+            {children}
+          </Box>
+        )}
+      </div>
+    );
+  }
+
+  const handleTabChange = (event, newValue) => {
+    setActiveTab(newValue);
   };
 
   if (!isOpen) {
@@ -407,57 +501,35 @@ const AudioRecorder = ({ isOpen, onClose }) => {
     );
   } else if (currentView === 'recording') {
     return (
-      <Box sx={{ 
-        display: 'flex', 
-        flexDirection: 'column', 
-        height: 'calc(100vh - 120px)', // Example height, adjust as needed based on header/other elements
-        p: 3, 
-        border: '1px solid #ccc', 
-        borderRadius: 2, 
-        boxShadow: 3, 
-        maxWidth: '900px', 
-        width: '100%', 
-        mx: 'auto', 
-        my: 2, 
-        backgroundColor: 'white' 
-      }}>
-        <Typography variant="h5" component="h2" gutterBottom sx={{ textAlign: 'center', mb: 1, flexShrink: 0 }}>
-          Encounter: {patientDetails || "Live Session"}
-        </Typography>
-        
-        {isRecording && (
-          <Stack direction="row" alignItems="center" justifyContent="center" spacing={1} sx={{ mb: 1, flexShrink: 0 }}>
-            <CircularProgress size={20} color="error" />
-            <Typography color="error.main" variant="subtitle1">Streaming Live...</Typography>
-          </Stack>
-        )}
-        {!isRecording && hasStreamedOnce && (
-          <Typography color="text.secondary" variant="subtitle1" sx={{ textAlign: 'center', mb:1, flexShrink: 0}}>
-            Streaming Paused
-          </Typography>
-        )}
-
-        <Box 
-          sx={{ 
-            flexGrow: 1, 
-            overflowY: 'auto', 
-            p: 2, 
-            mb: 2, 
-            backgroundColor: '#f9f9f9', 
-            borderRadius: 1,
-            border: '1px solid #eee',
-            minHeight: '200px', // Ensure a minimum height
-            whiteSpace: 'pre-wrap', // To respect newlines from the transcript string
-            wordBreak: 'break-word'
-          }}
-        >
-          {combinedTranscript || (isRecording ? "Listening..." : (hasStreamedOnce ? "Paused. Resume streaming or generate notes." : "Start streaming to see live transcription."))}
+      <Box 
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          height: 'calc(100vh - 64px - 20px)', // Adjust height considering potential header/footer and some margin
+          bgcolor: 'background.paper',
+          borderRadius: 2,
+          boxShadow: 3,
+          // p: 2, // Removed padding
+          overflow: 'hidden' // Ensure content doesn't overflow the rounded corners
+        }}
+      >
+        <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}>
+          <Grid container justifyContent="space-between" alignItems="center">
+            <Grid item>
+              <Typography variant="h6">Encounter: {patientDetails || 'N/A'}</Typography>
+            </Grid>
+          </Grid>
         </Box>
 
-        {error && !error.toLowerCase().includes('saving') && <Typography color="error" sx={{ mb: 2, textAlign: 'center', flexShrink: 0 }}>{error}</Typography>}
-        
-        <Stack spacing={2} sx={{ mt: 'auto', flexShrink: 0 }}> {/* Controls at the bottom */}
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center">
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}>
+          <Tabs value={activeTab} onChange={handleTabChange} aria-label="encounter content tabs" centered>
+            <Tab label="Transcript" {...a11yProps(0)} />
+            <Tab label="Note" {...a11yProps(1)} />
+          </Tabs>
+        </Box>
+
+        <Stack spacing={1} sx={{ p: 2, borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="center">
             {!isRecording && !hasStreamedOnce && (
               <Button variant="contained" color="primary" onClick={_startRecordingProcess} sx={{ flexGrow: 1 }}>
                 Start Streaming
@@ -475,7 +547,7 @@ const AudioRecorder = ({ isOpen, onClose }) => {
             )}
           </Stack>
 
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center">
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="center">
             <Button 
               variant="contained" 
               color="secondary" 
@@ -492,8 +564,49 @@ const AudioRecorder = ({ isOpen, onClose }) => {
           </Stack>
         </Stack>
 
+        {error && !error.toLowerCase().includes('saving') && 
+          <Typography color="error" sx={{ mt:1, mb: 1, textAlign: 'center', flexShrink: 0 }}>
+            {error}
+          </Typography>
+        }
+
+        <TabPanel value={activeTab} index={0}>
+          <Box 
+            sx={{
+              flexGrow: 1, 
+              // p: 2, // Removed padding
+              // backgroundColor: '#f9f9f9', // Removed background color
+              // borderRadius: 1, // Removed border radius
+              // border: '1px solid #eee', // Removed border
+              minHeight: '150px', // Adjusted min height for better balance with buttons at top
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              overflowY: 'auto'
+            }}
+          >
+            {combinedTranscript || (isRecording ? "Listening..." : (hasStreamedOnce ? "Paused. Resume streaming or generate notes." : "Start streaming to see live transcription."))}
+          </Box>
+        </TabPanel>
+
+        <TabPanel value={activeTab} index={1}>
+          <Box 
+            sx={{
+              flexGrow: 1, // Re-added
+              backgroundColor: '#f9f9f9', 
+              borderRadius: 1,
+              border: '1px solid #eee',
+              minHeight: '150px',
+              // Removed alignSelf and width
+            }}
+          >
+            <Typography variant="body1" color="text.secondary">
+              Polished note will appear here once generated after saving the session.
+            </Typography>
+          </Box>
+        </TabPanel>
+
         {saveStatusMessage && (
-          <Typography sx={{ mt: 2, fontStyle: 'italic', color: (error && (saveStatusMessage.toLowerCase().includes('error') || saveStatusMessage.toLowerCase().includes('failed'))) ? 'error.main' : 'text.secondary', whiteSpace: 'pre-line', textAlign: 'center', flexShrink: 0 }}>
+          <Typography sx={{ p:1, fontStyle: 'italic', color: (error && (saveStatusMessage.toLowerCase().includes('error') || saveStatusMessage.toLowerCase().includes('failed'))) ? 'error.main' : 'text.secondary', whiteSpace: 'pre-line', textAlign: 'center', flexShrink: 0 }}>
             {saveStatusMessage}
           </Typography>
         )}

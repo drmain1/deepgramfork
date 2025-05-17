@@ -99,23 +99,41 @@
         *   For now, log the LLM's response or send it back to the client.
     *   **Files to modify:** `backend/main.py`, `backend/requirements.txt`.
 
-6.  **Backend (FastAPI): Basic S3 Integration for Storing Audio & Notes**
-    *   **Tasks:**
-        *   Install Boto3: `pip install boto3`. Add to `requirements.txt`.
-        *   *User to configure AWS credentials locally (e.g., via AWS CLI `aws configure` or environment variables for the backend server process).*
-        *   Implement functions to:
-            *   Upload the complete raw audio (accumulated chunks) to an S3 bucket (e.g., `tenant-id/audio/[timestamp].wav`).
-            *   Upload the LLM-generated note (as a text file) to S3 (e.g., `tenant-id/notes/[note-id].txt`).
-        *   Decide on a temporary/simplified `tenant-id` and `note-id` generation scheme.
-    *   **Files to modify:** `backend/main.py`, `backend/requirements.txt`.
+6.  **Backend (FastAPI): S3 Integration via HTTP Endpoint for Storing Audio & Transcripts**
+    *   **Status:** Implemented.
+    *   **Workflow:**
+        *   The `/stream` WebSocket endpoint in `backend/main.py` accumulates raw PCM audio during a session and saves it to a temporary local file (e.g., `/tmp/trans10_audio_temp/{session_id}.pcm`). Upon WebSocket closure, this PCM file is converted to a WAV file and saved as `TEMP_AUDIO_DIR/{session_id}.wav` (e.g., `/tmp/trans10_audio_temp/{session_id}.wav`).
+        *   The frontend, after a session is stopped and the final transcript is available, makes a `POST` request to `/api/v1/save_session_data` in `backend/main.py`, sending the `session_id`, the `final_transcript_text`, and optionally `claude_custom_instructions`.
+        *   The `/api/v1/save_session_data` endpoint (updated and bug-fixed):
+            *   Retrieves the `session_id`, `final_transcript_text`, and optional `claude_custom_instructions` from the request. (Note: A previous conflict in request field naming, `final_transcript` vs `final_transcript_text`, has been resolved to consistently use `final_transcript_text`).
+            *   Locates the corresponding `{session_id}.wav` file from `TEMP_AUDIO_DIR`.
+            *   Utilizes helper functions from `backend/aws_utils.py` (`save_audio_file_to_s3`, `save_text_to_s3`, `polish_transcript_with_bedrock`) and the configured S3 client.
+            *   Uploads the original transcript (from `final_transcript_text`) to S3 (e.g., `s3://[AWS_S3_BUCKET_NAME]/[DEFAULT_TENANT_ID]/transcripts/original/{session_id}.txt`).
+            *   Uploads the WAV audio file to S3 (e.g., `s3://[AWS_S3_BUCKET_NAME]/[DEFAULT_TENANT_ID]/audio/{session_id}.wav`).
+            *   If Bedrock is configured (which uses `anthropic.claude-3-haiku`): 
+                *   It calls `polish_transcript_with_bedrock`, passing the `final_transcript_text` and any provided `claude_custom_instructions`.
+                *   The `polish_transcript_with_bedrock` function in `aws_utils.py` now dynamically incorporates these instructions into the prompt sent to Claude. If no custom instructions are provided, it defaults to a general medical transcript polishing prompt.
+                *   Uploads the polished version to S3 (e.g., `s3://[AWS_S3_BUCKET_NAME]/[DEFAULT_TENANT_ID]/transcripts/polished/{session_id}.txt`).
+            *   Removes the temporary local WAV file after successful upload.
+            *   Returns a JSON response with S3 paths and any errors.
+    *   **Configuration:**
+        *   `boto3` is installed and in `requirements.txt`.
+        *   AWS credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`) and S3/Bedrock settings (`AWS_S3_BUCKET_NAME`, `AWS_REGION`, `DEFAULT_TENANT_ID`) are loaded from `.env`.
+        *   S3 client and Bedrock Runtime client are initialized in `main.py`'s startup event.
+    *   **Key Files:** `backend/main.py`, `backend/aws_utils.py`, `backend/requirements.txt`, `.env`.
 
-7.  **Frontend (React) & Backend (FastAPI): Basic "End of Encounter" Workflow**
-    *   **Frontend:**
-        *   Modify the "Stop Recording" button or add a new "Generate Note" button.
-        *   When triggered, send a specific message to the backend WebSocket (e.g., `{"action": "stop_session"}`) or simply close the WebSocket to signal the end.
-    *   **Backend:**
-        *   Detect this end-of-session signal.
-        *   Ensure Deepgram processing is finalized.
-        *   Trigger LLM processing and S3 storage steps.
-        *   Optionally, send a confirmation or the generated note ID/S3 path back to the frontend.
-    *   **Files to modify:** Frontend components in `my-vite-react-app/src/`, `backend/main.py`.
+7.  **Frontend (React) & Backend (FastAPI): "End of Encounter" and Save Workflow**
+    *   **Frontend (`AudioRecorder.jsx` or similar component):**
+        *   The "Stop Recording" button finalizes local recording and WebSocket interaction.
+        *   A "Save Session to S3" button (or similar) becomes active.
+        *   When clicked, the frontend:
+            *   Retrieves the `session_id` (received from the backend via WebSocket on connection).
+            *   Gathers the complete final transcript.
+            *   Sends a `POST` request to the backend's `/api/v1/save_session_data` endpoint with `session_id` and `final_transcript_text` in the request body.
+            *   Displays status messages based on the backend's response (success, failure, S3 paths).
+    *   **Backend (`backend/main.py`):**
+        *   The `/stream` WebSocket endpoint finalizes Deepgram processing and prepares the local WAV audio file in `TEMP_AUDIO_DIR/{session_id}.wav` when the WebSocket connection closes.
+        *   The `/api/v1/save_session_data` HTTP endpoint handles the S3 upload and Bedrock polishing logic as detailed in Step 6.
+    *   **Files involved:**
+        *   Frontend: `my-vite-react-app/src/components/AudioRecorder.jsx` (or the component responsible for session management and saving).
+        *   Backend: `backend/main.py`.

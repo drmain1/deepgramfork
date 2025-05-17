@@ -12,8 +12,9 @@ import boto3
 from datetime import datetime
 import json
 import tempfile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from fastapi import HTTPException
+from typing import Optional
 
 # Ensure the .env file is in the root of the trans10 directory or adjust path
 # Example: load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
@@ -406,218 +407,239 @@ async def websocket_stream_endpoint(websocket: WebSocket):
             return_exceptions=True # Allows us to see exceptions from tasks if any
         )
 
-    except WebSocketDisconnect:
-        print(f"WebSocket disconnected by client: {websocket.client.host}:{websocket.client.port}")
+    except WebSocketDisconnect as e:
+        print(f"Client {websocket.client.host}:{websocket.client.port} disconnected. Code: {e.code}, Reason: {e.reason if e.reason else 'N/A'}")
     except Exception as e:
-        print(f"An error occurred in websocket_endpoint: {e}")
-        try:
-            await websocket.send_text(json.dumps({"type": "error", "message": f"Server error: {str(e)}"}))
-        except Exception as e_ws_send:
-            print(f"Could not send server error to client: {e_ws_send}")
+        print(f"Error in WebSocket stream for {websocket.client.host}:{websocket.client.port}: {e}")
+        # Consider logging traceback for more detailed debugging
+        import traceback
+        traceback.print_exc()
+        # Attempt to close the WebSocket gracefully if it's not already closed
+        if not websocket.client_state == WebSocketState.DISCONNECTED:
+            await websocket.close(code=1011, reason=f"Server error: {str(e)[:120]}") # Max reason length is 123 bytes
     finally:
-        print("Initiating cleanup in websocket_endpoint...")
+        print(f"Cleaning up resources for session_id: {session_id}")
 
-        # 1. Close Deepgram connection
+        # 1. Ensure Deepgram connection is closed
         if dg_connection and dg_connection.is_connected:
             print("Closing Deepgram connection...")
             await dg_connection.finish()
             print("Deepgram connection closed.")
+        elif dg_connection:
+            print("Deepgram connection was not active or already closed.")
 
-        # 2. Cancel and await tasks if they are still running
-        tasks_to_cancel = [forward_audio_task, read_ffmpeg_stdout_and_forward_to_deepgram_task, log_ffmpeg_stderr_task]
-        for task in tasks_to_cancel:
-            if not task.done():
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    print(f"Task {task.get_name()} was cancelled successfully.")
-                except Exception as e_task_cleanup:
-                    print(f"Exception during cleanup of task {task.get_name()}: {e_task_cleanup}")
-            elif task and task.done():
-                print(f"Task {task.get_name()} already done.")
-                # Optionally check task.exception() if it's done due to an error
-                if task.exception():
-                    print(f"Task {task.get_name()} finished with exception: {task.exception()}")
-
-        # 3. Terminate FFMPEG process
-        if ffmpeg_proc and ffmpeg_proc.returncode is None: # Check if process is still running
+        # 2. Ensure FFMPEG process is terminated
+        if ffmpeg_proc:
             print("Terminating FFMPEG process...")
-            ffmpeg_proc.terminate() # Send SIGTERM
-            try:
-                await asyncio.wait_for(ffmpeg_proc.wait(), timeout=5.0) # Wait for termination
-                print("FFMPEG process terminated.")
-            except asyncio.TimeoutError:
-                print("FFMPEG process did not terminate in time, killing...")
-                ffmpeg_proc.kill() # Send SIGKILL
-                await ffmpeg_proc.wait()
-                print("FFMPEG process killed.")
-            except Exception as e_ffmpeg_term:
-                print(f"Error during FFMPEG termination: {e_ffmpeg_term}")
-        elif ffmpeg_proc:
-            print(f"FFMPEG process already exited with code: {ffmpeg_proc.returncode}")
-
-        # 4. Convert PCM to WAV and save to TEMP_AUDIO_DIR
-        temp_wav_file_path = None
-        if raw_pcm_file_path and os.path.exists(raw_pcm_file_path):
-            if os.path.getsize(raw_pcm_file_path) > 0:
-                # Construct path for the temporary WAV file using session_id
-                temp_wav_file_path = os.path.join(TEMP_AUDIO_DIR, f"{session_id}.wav")
-                print(f"Temporary WAV file will be at: {temp_wav_file_path}")
-
-                print(f"Attempting to convert {raw_pcm_file_path} to {temp_wav_file_path}")
-                conversion_ok = await convert_raw_pcm_to_wav(raw_pcm_file_path, temp_wav_file_path)
-                
-                if conversion_ok and os.path.exists(temp_wav_file_path) and os.path.getsize(temp_wav_file_path) > 0:
-                    print(f"Conversion successful. {temp_wav_file_path} is ready for manual upload.")
-                elif not conversion_ok:
-                    print(f"Failed to convert PCM audio at {raw_pcm_file_path} to WAV.")
-                    temp_wav_file_path = None # Ensure it's None if conversion failed
-                else:
-                    print(f"Converted WAV file {temp_wav_file_path} is empty or does not exist. Cannot be uploaded.")
-                    if os.path.exists(temp_wav_file_path): # clean up empty/failed wav
-                        try: os.remove(temp_wav_file_path) 
-                        except: pass
-                    temp_wav_file_path = None # Ensure it's None
-            else:
-                print(f"Temporary PCM file {raw_pcm_file_path} is empty. Skipping WAV conversion.")
+            if ffmpeg_proc.stdin and not ffmpeg_proc.stdin.is_closing():
+                try:
+                    ffmpeg_proc.stdin.close()
+                    await ffmpeg_proc.stdin.wait_closed() # Ensure it's fully closed
+                    print("FFMPEG stdin closed.")
+                except Exception as e_ffmpeg_stdin:
+                    print(f"Error closing FFMPEG stdin: {e_ffmpeg_stdin}")
             
-            print(f"Deleting temporary PCM file: {raw_pcm_file_path}")
+            if ffmpeg_proc.returncode is None: # Check if process is still running
+                try:
+                    ffmpeg_proc.terminate() # Send SIGTERM
+                    await asyncio.wait_for(ffmpeg_proc.wait(), timeout=5.0) # Wait for termination
+                    print(f"FFMPEG process terminated with code: {ffmpeg_proc.returncode}")
+                except asyncio.TimeoutError:
+                    print("FFMPEG process did not terminate in time, killing...")
+                    ffmpeg_proc.kill() # Send SIGKILL
+                    await ffmpeg_proc.wait()
+                    print(f"FFMPEG process killed, code: {ffmpeg_proc.returncode}")
+                except Exception as e_ffmpeg_term:
+                    print(f"Error terminating FFMPEG process: {e_ffmpeg_term}")
+            else:
+                print(f"FFMPEG process already exited with code: {ffmpeg_proc.returncode}")
+
+        # 3. Convert raw PCM to WAV and save it
+        target_wav_filename = f"{session_id}.wav"
+        target_wav_path = os.path.join(TEMP_AUDIO_DIR, target_wav_filename)
+        print(f"Preparing to convert PCM ({raw_pcm_file_path}) to WAV ({target_wav_path})")
+
+        if os.path.exists(raw_pcm_file_path) and os.path.getsize(raw_pcm_file_path) > 0:
+            conversion_success = await convert_raw_pcm_to_wav(raw_pcm_file_path, target_wav_path)
+            if conversion_success:
+                print(f"Audio for session {session_id} successfully converted and saved to {target_wav_path}")
+            else:
+                print(f"Failed to convert/save audio for session {session_id} to WAV.")
+        elif os.path.exists(raw_pcm_file_path):
+            print(f"Temporary PCM file {raw_pcm_file_path} is empty. Skipping WAV conversion.")
+        else:
+            print(f"Temporary PCM file {raw_pcm_file_path} not found. Cannot convert to WAV.")
+
+        # 4. Clean up temporary raw PCM file
+        if os.path.exists(raw_pcm_file_path):
             try:
                 os.remove(raw_pcm_file_path)
-            except Exception as e_del_pcm:
-                print(f"Error deleting temp PCM file {raw_pcm_file_path}: {e_del_pcm}")
-        elif raw_pcm_file_path:
-            print(f"Temporary PCM file {raw_pcm_file_path} not found (or already deleted). Skipping audio processing.")
-        else:
-            print("Raw PCM file path was not set. Skipping audio processing.")
+                print(f"Removed temporary PCM file: {raw_pcm_file_path}")
+            except OSError as e_remove_pcm:
+                print(f"Error removing temporary PCM file {raw_pcm_file_path}: {e_remove_pcm}")
+        
+        # Final cleanup of tasks (if they were defined and might still be pending)
+        # This is more of a safeguard; ideally, tasks should exit cleanly when their inputs/outputs close.
+        tasks_to_cancel = []
+        if 'forward_audio_task' in locals() and not forward_audio_task.done():
+             tasks_to_cancel.append(forward_audio_task)
+        if 'read_ffmpeg_stdout_and_forward_to_deepgram_task' in locals() and not read_ffmpeg_stdout_and_forward_to_deepgram_task.done():
+             tasks_to_cancel.append(read_ffmpeg_stdout_and_forward_to_deepgram_task)
+        if 'log_ffmpeg_stderr_task' in locals() and not log_ffmpeg_stderr_task.done():
+            tasks_to_cancel.append(log_ffmpeg_stderr_task)
+        
+        for task in tasks_to_cancel:
+            if not task.done():
+                try:
+                    task.cancel()
+                    # Using asyncio.wait_for with a short timeout to prevent indefinite blocking
+                    await asyncio.wait_for(task, timeout=1.0) 
+                except asyncio.CancelledError:
+                    print(f"Task {task.get_name()} was cancelled as expected.")
+                except asyncio.TimeoutError:
+                    print(f"Timeout waiting for task {task.get_name()} to cancel. It might be stuck.")
+                except Exception as e_task_cancel:
+                    print(f"Error cancelling task {task.get_name()}: {e_task_cancel}")
 
-        print(f"Cleanup complete for websocket session {session_id}. Temporary WAV (if created): {temp_wav_file_path}")
-        await websocket.close()
-        print(f"WebSocket connection closed for session {session_id}")
+        print(f"Finished cleanup for WebSocket session_id: {session_id}")
 
-# --- New HTTP Endpoint for Manual Saving ---
+
 class SaveSessionRequest(BaseModel):
     session_id: str
-    final_transcript_text: str
+    final_transcript_text: str 
+    claude_custom_instructions: Optional[str] = None 
 
 @app.post("/api/v1/save_session_data")
 async def save_session_data_endpoint(request_data: SaveSessionRequest):
-    global s3_client, bedrock_runtime_client # Ensure access to global clients
-
+    """
+    Receives session_id, final transcript text, and optional Claude custom instructions.
+    Saves the original transcript to S3.
+    Saves the corresponding local WAV audio file (identified by session_id) to S3.
+    Optionally polishes the transcript using Bedrock (Claude Haiku) and saves it to S3.
+    Removes the local temporary WAV file after successful S3 upload.
+    """
     session_id = request_data.session_id
-    final_transcript = request_data.final_transcript_text
-    tenant_id_to_use = DEFAULT_TENANT_ID
+    original_transcript = request_data.final_transcript_text
+    custom_instructions = request_data.claude_custom_instructions 
 
-    print(f"Received request to save session: {session_id}")
-
-    temp_wav_file_path = os.path.join(TEMP_AUDIO_DIR, f"{session_id}.wav")
-
-    if not os.path.exists(temp_wav_file_path):
-        print(f"Error: Temporary WAV file not found for session {session_id} at {temp_wav_file_path}")
-        raise HTTPException(status_code=404, detail=f"Audio data for session {session_id} not found or already processed.")
-
-    # Initialize results
-    notes_s3_path = None
-    audio_s3_path = None
-    messages = [] # To collect status/error messages
-
-    # 1. Polish transcript
-    polished_transcript = final_transcript
-    if bedrock_runtime_client:
-        print(f"Polishing transcript for session {session_id}...")
-        try:
-            polished_transcript = await polish_transcript_with_bedrock(final_transcript, bedrock_runtime_client)
-            print(f"Transcript polished for session {session_id}.")
-            messages.append("Transcript polished successfully.")
-        except Exception as e:
-            error_msg = f"Error polishing transcript for session {session_id}: {e}"
-            print(error_msg)
-            messages.append(f"Transcript polishing failed: {e}. Using original transcript.")
-            # Proceed with original transcript if polishing fails
-            polished_transcript = final_transcript
-    else:
-        no_bedrock_msg = f"Bedrock client not available. Using original transcript for session {session_id}."
-        print(no_bedrock_msg)
-        messages.append(no_bedrock_msg)
-
-    # 2. Save polished notes to S3
-    if s3_client:
-        if polished_transcript and polished_transcript.strip():
-            print(f"Saving polished notes to S3 for session {session_id}...")
-            try:
-                notes_s3_path = await save_text_to_s3(s3_client, AWS_S3_BUCKET_NAME, tenant_id_to_use, session_id, polished_transcript, folder="notes")
-                if notes_s3_path:
-                    print(f"Notes saved to S3: {notes_s3_path}")
-                    messages.append(f"Notes saved to S3: {notes_s3_path}")
-                else:
-                    notes_s3_fail_msg = f"Failed to save notes to S3 for session {session_id} (save_text_to_s3 returned None or empty string)."
-                    print(notes_s3_fail_msg)
-                    messages.append(notes_s3_fail_msg)
-            except Exception as e:
-                notes_s3_err_msg = f"Error saving notes to S3 for session {session_id}: {e}"
-                print(notes_s3_err_msg)
-                messages.append(notes_s3_err_msg)
-        else:
-            no_notes_msg = f"No transcript content to save for session {session_id}."
-            print(no_notes_msg)
-            messages.append(no_notes_msg)
-    else:
-        s3_notes_skip_msg = "S3 client not available. Skipping notes save."
-        print(s3_notes_skip_msg)
-        messages.append(s3_notes_skip_msg)
-
-    # 3. Save audio to S3
-    if s3_client:
-        if os.path.exists(temp_wav_file_path) and os.path.getsize(temp_wav_file_path) > 0:
-            print(f"Saving audio to S3 for session {session_id} from {temp_wav_file_path}...")
-            try:
-                audio_s3_path = await save_audio_file_to_s3(s3_client, AWS_S3_BUCKET_NAME, tenant_id_to_use, session_id, temp_wav_file_path, folder="audio")
-                if audio_s3_path:
-                    print(f"Audio saved to S3: {audio_s3_path}")
-                    messages.append(f"Audio saved to S3: {audio_s3_path}")
-                else:
-                    audio_s3_fail_msg = f"Failed to save audio to S3 for session {session_id} (save_audio_file_to_s3 returned None or empty string)."
-                    print(audio_s3_fail_msg)
-                    messages.append(audio_s3_fail_msg)
-            except Exception as e:
-                audio_s3_err_msg = f"Error saving audio to S3 for session {session_id}: {e}"
-                print(audio_s3_err_msg)
-                messages.append(audio_s3_err_msg)
-        else:
-            no_audio_msg = f"Temporary WAV file {temp_wav_file_path} is empty or does not exist. Skipping audio S3 upload."
-            print(no_audio_msg)
-            messages.append(no_audio_msg)
-    else:
-        s3_audio_skip_msg = "S3 client not available. Skipping audio save."
-        print(s3_audio_skip_msg)
-        messages.append(s3_audio_skip_msg)
-
-    # 4. Cleanup temporary WAV file (only if it was successfully uploaded or attempted)
-    # We check for existence again, as it might have been an empty file that was attempted for upload but should be cleaned.
-    if os.path.exists(temp_wav_file_path):
-        try:
-            os.remove(temp_wav_file_path)
-            print(f"Deleted temporary WAV file: {temp_wav_file_path}")
-            # messages.append(f"Temporary audio file {session_id}.wav cleaned up.") # Optional: too verbose for client?
-        except Exception as e:
-            del_wav_err_msg = f"Error deleting temp WAV file {temp_wav_file_path}: {e}"
-            print(del_wav_err_msg)
-            messages.append(del_wav_err_msg) # Important to log if cleanup fails
+    print(f"Received request to save session data for session_id: {session_id}")
+    if custom_instructions:
+        print(f"Custom Claude instructions provided for session_id: {session_id}")
     
-    # Determine overall status for HTTP response
-    if not notes_s3_path and not audio_s3_path:
-        # If neither was saved, and there were actual attempts (not just S3 client unavailable)
-        # This might be too complex; simplify to: if paths are None, it's an issue.
-        # For now, if both are None, let's assume it's an error unless S3 wasn't available.
-        if s3_client: # only raise 500 if s3 was available and uploads failed
-            raise HTTPException(status_code=500, detail=f"Failed to save session data. Reported issues: {'; '.join(messages)}")
+    s3_paths = {}
+    errors = []
+
+    # Ensure s3_client is initialized
+    if not s3_client or not AWS_S3_BUCKET_NAME:
+        error_msg = "S3 client or bucket name not configured. Cannot save session data."
+        print(f"Error for session_id {session_id}: {error_msg}")
+        raise HTTPException(status_code=500, detail=error_msg)
+
+    # 1. Save original transcript to S3
+    try:
+        print(f"Attempting to save original transcript for session_id: {session_id}")
+        s3_original_transcript_path = await save_text_to_s3(
+            s3_client=s3_client,
+            aws_s3_bucket_name=AWS_S3_BUCKET_NAME,
+            tenant_id=DEFAULT_TENANT_ID,
+            session_id=session_id,
+            content=original_transcript,
+            folder="transcripts/original" # Specific subfolder for original transcripts
+        )
+        if s3_original_transcript_path:
+            s3_paths["original_transcript"] = s3_original_transcript_path
+            print(f"Original transcript saved to: {s3_original_transcript_path}")
+        else:
+            errors.append("Failed to save original transcript to S3.")
+    except Exception as e:
+        print(f"Error saving original transcript for {session_id}: {e}")
+        errors.append(f"Error saving original transcript: {str(e)}")
+
+    # 2. Save audio file to S3
+    local_wav_file_path = os.path.join(TEMP_AUDIO_DIR, f"{session_id}.wav")
+    if not os.path.exists(local_wav_file_path):
+        warning_msg = f"Local WAV file {local_wav_file_path} not found for session_id {session_id}. Cannot save audio to S3."
+        print(warning_msg)
+        errors.append(warning_msg) # Log as a processing error/warning
+    else:
+        try:
+            print(f"Attempting to save audio file {local_wav_file_path} for session_id: {session_id}")
+            s3_audio_path = await save_audio_file_to_s3(
+                s3_client=s3_client,
+                aws_s3_bucket_name=AWS_S3_BUCKET_NAME,
+                tenant_id=DEFAULT_TENANT_ID,
+                session_id=session_id,
+                local_file_path=local_wav_file_path,
+                folder="audio" # Specific subfolder for audio files
+            )
+            if s3_audio_path:
+                s3_paths["audio"] = s3_audio_path
+                print(f"Audio file saved to: {s3_audio_path}")
+                try:
+                    os.remove(local_wav_file_path)
+                    print(f"Removed temporary local WAV file: {local_wav_file_path}")
+                except OSError as e_remove:
+                    print(f"Error removing temporary local WAV file {local_wav_file_path}: {e_remove}")
+                    # Not adding to main 'errors' as S3 upload succeeded, but good to log
+            else:
+                errors.append("Failed to save audio file to S3.")
+        except Exception as e:
+            print(f"Error saving audio file for {session_id}: {e}")
+            errors.append(f"Error saving audio file: {str(e)}")
+
+    # 3. Polish transcript with Bedrock (if configured and s3_client is available)
+    polished_transcript_content = original_transcript # Default to original if polishing fails or is skipped
+    if bedrock_runtime_client and s3_client: # Ensure s3_client is also available for saving polished transcript
+        print(f"Attempting to polish transcript for session_id: {session_id}")
+        try:
+            polished_result = await polish_transcript_with_bedrock(
+                transcript=original_transcript,
+                bedrock_client=bedrock_runtime_client,
+                custom_instructions=custom_instructions 
+            )
+            if polished_result and polished_result.strip() != original_transcript.strip():
+                polished_transcript_content = polished_result.strip()
+                print(f"Transcript polished successfully for session_id: {session_id}")
+                # 4. Save polished transcript to S3
+                s3_polished_transcript_path = await save_text_to_s3(
+                    s3_client=s3_client,
+                    aws_s3_bucket_name=AWS_S3_BUCKET_NAME,
+                    tenant_id=DEFAULT_TENANT_ID,
+                    session_id=session_id,
+                    content=polished_transcript_content,
+                    folder="transcripts/polished" # Specific subfolder for polished transcripts
+                )
+                if s3_polished_transcript_path:
+                    s3_paths["polished_transcript"] = s3_polished_transcript_path
+                    print(f"Polished transcript saved to: {s3_polished_transcript_path}")
+                else:
+                    errors.append("Failed to save polished transcript to S3 (after successful polishing).")
+            elif polished_result:
+                 print(f"Transcript polishing did not significantly alter transcript or returned original for session_id: {session_id}. Original will be used if no separate polished version is saved.")
+            else:
+                print(f"Transcript polishing returned None or empty for session_id: {session_id}. Original will be used.")
+
+        except Exception as e:
+            print(f"Error polishing transcript for {session_id}: {e}")
+            errors.append(f"Error polishing transcript: {str(e)}")
+    elif not bedrock_runtime_client:
+        print(f"Bedrock client not configured for session_id {session_id}. Skipping transcript polishing.")
+    elif not s3_client:
+        print(f"S3 client not configured for session_id {session_id}. Skipping transcript polishing as polished note cannot be saved.")
+
+    response_message = "Session data processing completed."
+    if not s3_paths and errors:
+         # If nothing was saved and there are errors, it's a more critical failure.
+         raise HTTPException(status_code=500, detail=f"Failed to save any session data to S3 for session_id {session_id}. Errors: {'; '.join(errors)}")
     
+    if errors:
+        response_message += f" Some issues occurred: {'; '.join(errors)}"
+
     return {
-        "message": "Session data processing attempted.",
-        "notes_s3_path": notes_s3_path,
-        "audio_s3_path": audio_s3_path,
-        "details": messages
+        "message": response_message,
+        "session_id": session_id,
+        "saved_paths": s3_paths,
+        "processing_errors": errors if errors else None
     }
 
 if __name__ == "__main__":

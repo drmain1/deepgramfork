@@ -36,7 +36,7 @@ function App() {
                 advancedModalOpen={advancedModalOpen}
                 setAdvancedModalOpen={setAdvancedModalOpen}
               />
-              <Box component="main" sx={{ flexGrow: 1, p: 3, ml: '250px' }}>
+              <Box component="main" sx={{ flexGrow: 1, p: 1, ml: '250px' }}>
                 {showAudioRecorderPanel ? (
                   <AudioRecorder
                     isOpen={showAudioRecorderPanel}
