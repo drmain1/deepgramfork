@@ -15,7 +15,7 @@ import {
   Tab
 } from '@mui/material';
 
-const AudioRecorder = ({ isOpen, onClose }) => {
+const AudioRecorder = () => {
   const [currentView, setCurrentView] = useState('setup');
   const [isRecording, setIsRecording] = useState(false);
   const [hasStreamedOnce, setHasStreamedOnce] = useState(false);
@@ -37,38 +37,36 @@ const AudioRecorder = ({ isOpen, onClose }) => {
   const audioStreamRef = useRef(null);
 
   useEffect(() => {
-    if (isOpen) {
-      setCurrentView('setup');
-      setPatientDetails('');
-      setPatientContext('');
-      setEncounterType('in-person');
-      setLlmTemplate('general-summary');
-      setError(null);
-      setFinalTranscript('');
-      setCurrentInterimTranscript('');
-      setCombinedTranscript('');
-      setSessionId(null);
-      setIsSessionSaved(false);
-      setSaveStatusMessage('');
-      setIsRecording(false);
-      setHasStreamedOnce(false);
-      if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
-        console.log("[WebSocket] Previous WebSocket connection exists. State:", webSocketRef.current.readyState, ". Closing it before resume.");
-        webSocketRef.current.close();
-        webSocketRef.current = null;
-      }
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-        console.log("[MediaRecorder] Previous MediaRecorder exists and is recording. Stopping it before resume.");
-        mediaRecorderRef.current.stop();
-        mediaRecorderRef.current = null;
-      }
-      if (audioStreamRef.current) {
-        console.log("[Stream] Previous audio stream exists. Stopping its tracks before resume.");
-        audioStreamRef.current.getTracks().forEach(track => track.stop());
-        audioStreamRef.current = null;
-      }
+    setCurrentView('setup');
+    setPatientDetails('');
+    setPatientContext('');
+    setEncounterType('in-person');
+    setLlmTemplate('general-summary');
+    setError(null);
+    setFinalTranscript('');
+    setCurrentInterimTranscript('');
+    setCombinedTranscript('');
+    setSessionId(null);
+    setIsSessionSaved(false);
+    setSaveStatusMessage('');
+    setIsRecording(false);
+    setHasStreamedOnce(false);
+    if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
+      console.log("[WebSocket] Previous WebSocket connection exists. State:", webSocketRef.current.readyState, ". Closing it before resume.");
+      webSocketRef.current.close();
+      webSocketRef.current = null;
     }
-  }, [isOpen]);
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      console.log("[MediaRecorder] Previous MediaRecorder exists and is recording. Stopping it before resume.");
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current = null;
+    }
+    if (audioStreamRef.current) {
+      console.log("[Stream] Previous audio stream exists. Stopping its tracks before resume.");
+      audioStreamRef.current.getTracks().forEach(track => track.stop());
+      audioStreamRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     setCombinedTranscript(finalTranscript + currentInterimTranscript);
@@ -378,7 +376,9 @@ const AudioRecorder = ({ isOpen, onClose }) => {
       webSocketRef.current.close(1000, "User cancelled session"); // Normal closure
       webSocketRef.current = null; // Nullify after closing for clean resume
     }
-    onClose();
+    // onClose(); // onClose prop removed, navigation should handle leaving this view if needed
+    // Consider navigating to a default page like '/settings' or '/' (if settings becomes the new home)
+    // For now, this button might be re-purposed or removed if direct navigation via sidebar is preferred
   };
 
   function a11yProps(index) {
@@ -412,17 +412,23 @@ const AudioRecorder = ({ isOpen, onClose }) => {
     setActiveTab(newValue);
   };
 
-  if (!isOpen) {
-    return null;
-  }
-
   if (currentView === 'setup') {
     return (
-      <Box sx={{ p: 3, border: '1px solid #ccc', borderRadius: 2, boxShadow: 3, maxWidth: '700px', mx: 'auto', my: 2, backgroundColor: 'white' }}>
-        <Typography variant="h5" component="h2" gutterBottom sx={{ textAlign: 'center', mb: 3 }}>
-          Setup New Encounter
+      <Box sx={{ 
+        p: 3, 
+        width: '100%' 
+      }}>
+        <Typography variant="h4" component="h1" gutterBottom sx={{ textAlign: 'left', mb: 4, fontWeight: 'medium' }}>
+          Encounter
         </Typography>
-        <Stack spacing={2.5} direction="column">
+        <Stack 
+          spacing={3} 
+          direction="column"
+          sx={{ maxWidth: '800px', mx: 'auto' }}
+        >
+          <Typography variant="overline" display="block" gutterBottom sx={{ color: 'text.secondary', mt: 1 }}>
+            CONTEXT
+          </Typography>
           <FormControl fullWidth required error={!!(error && error.includes('patient details'))}>
             <TextField
               id="patient-details"
@@ -430,26 +436,32 @@ const AudioRecorder = ({ isOpen, onClose }) => {
               placeholder="e.g., John Doe - Annual Checkup"
               value={patientDetails}
               onChange={(e) => setPatientDetails(e.target.value)}
-              variant="outlined"
+              variant="standard"
+              fullWidth
+              required
+              error={!!error && !patientDetails.trim()} 
+              helperText={!!error && !patientDetails.trim() ? 'Please enter patient details' : ''}
             />
           </FormControl>
 
           <FormControl fullWidth>
             <TextField
               id="patient-context"
-              label="Patient Context (Optional)"
-              placeholder="e.g., 45 y/o male, history of hypertension, presenting with cough..."
+              placeholder="Add patient context (optional)"
               value={patientContext}
               onChange={(e) => setPatientContext(e.target.value)}
               multiline
               rows={3}
-              variant="outlined"
+              variant="standard"
             />
           </FormControl>
 
+          <Typography variant="overline" display="block" gutterBottom sx={{ color: 'text.secondary', mt: 3 }}>
+            SETTINGS
+          </Typography>
           <Grid container spacing={2}>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
+            <Grid item xs={12} sm={12}>
+              <FormControl fullWidth variant="standard">
                 <InputLabel id="encounter-type-label">Encounter Type</InputLabel>
                 <Select
                   labelId="encounter-type-label"
@@ -466,8 +478,8 @@ const AudioRecorder = ({ isOpen, onClose }) => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
+            <Grid item xs={12} sm={12}>
+              <FormControl fullWidth variant="standard">
                 <InputLabel id="llm-template-label">LLM Polishing Template</InputLabel>
                 <Select
                   labelId="llm-template-label"
@@ -486,13 +498,10 @@ const AudioRecorder = ({ isOpen, onClose }) => {
             </Grid>
           </Grid>
 
-          {error && <Typography color="error" sx={{ mt: 1, textAlign: 'center' }}>{error}</Typography>}
+          {error && <Typography color="error" sx={{ mt: 2, textAlign: 'center' }}>{error}</Typography>}
 
-          <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
-            <Button variant="outlined" onClick={onClose} sx={{ flexGrow: 1 }}>
-              Cancel
-            </Button>
-            <Button variant="contained" color="primary" onClick={handleStartEncounter} sx={{ flexGrow: 1 }}>
+          <Stack direction="row" justifyContent="center" sx={{ mt: 4 }}>
+            <Button variant="contained" color="primary" onClick={handleStartEncounter} sx={{ px: 5, py: 1.5, minWidth: '200px', fontSize: '1rem' }} fullWidth>
               Start Encounter
             </Button>
           </Stack>
@@ -505,15 +514,15 @@ const AudioRecorder = ({ isOpen, onClose }) => {
         sx={{
           display: 'flex',
           flexDirection: 'column',
-          height: 'calc(100vh - 64px - 20px)', // Adjust height considering potential header/footer and some margin
+          height: '100%',
+          width: '100%',
           bgcolor: 'background.paper',
           borderRadius: 2,
           boxShadow: 3,
-          // p: 2, // Removed padding
           overflow: 'hidden' // Ensure content doesn't overflow the rounded corners
         }}
       >
-        <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}>
+        <Box sx={{ p: 2, borderBottom: 0, borderColor: 'divider', flexShrink: 0 }}>
           <Grid container justifyContent="space-between" alignItems="center">
             <Grid item>
               <Typography variant="h6">Encounter: {patientDetails || 'N/A'}</Typography>
@@ -521,7 +530,7 @@ const AudioRecorder = ({ isOpen, onClose }) => {
           </Grid>
         </Box>
 
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}>
+        <Box sx={{ borderBottom: 0, borderColor: 'divider', flexShrink: 0 }}>
           <Tabs value={activeTab} onChange={handleTabChange} aria-label="encounter content tabs" centered>
             <Tab label="Transcript" {...a11yProps(0)} />
             <Tab label="Note" {...a11yProps(1)} />
@@ -570,37 +579,26 @@ const AudioRecorder = ({ isOpen, onClose }) => {
           </Typography>
         }
 
-        <TabPanel value={activeTab} index={0}>
-          <Box 
-            sx={{
-              flexGrow: 1, 
-              // p: 2, // Removed padding
-              // backgroundColor: '#f9f9f9', // Removed background color
-              // borderRadius: 1, // Removed border radius
-              // border: '1px solid #eee', // Removed border
-              minHeight: '150px', // Adjusted min height for better balance with buttons at top
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              overflowY: 'auto'
-            }}
-          >
-            {combinedTranscript || (isRecording ? "Listening..." : (hasStreamedOnce ? "Paused. Resume streaming or generate notes." : "Start streaming to see live transcription."))}
+        <TabPanel value={activeTab} index={0} sx={{ flexGrow: 1, overflowY: 'auto', p:0 }}>
+          <Box sx={{ p: 2, minHeight: '150px', '& p': { m: 0} }}> {/* Ensure Typography has no margin if it's a p tag */} 
+            <Typography variant="body1" component="div" style={{ whiteSpace: 'pre-wrap' }}>
+              {combinedTranscript || (isRecording ? 'Listening...' : 'Start speaking or resume to see transcript...')}
+            </Typography>
           </Box>
         </TabPanel>
 
-        <TabPanel value={activeTab} index={1}>
+        <TabPanel value={activeTab} index={1} sx={{ flexGrow: 1, overflowY: 'auto', p:0 }}>
           <Box 
             sx={{
-              flexGrow: 1, // Re-added
-              backgroundColor: '#f9f9f9', 
-              borderRadius: 1,
-              border: '1px solid #eee',
+              p: 2, 
               minHeight: '150px',
-              // Removed alignSelf and width
+              '& p': { m: 0} // Ensure Typography has no margin if it's a p tag
             }}
           >
             <Typography variant="body1" color="text.secondary">
-              Polished note will appear here once generated after saving the session.
+              {isSessionSaved && saveStatusMessage.startsWith('Notes generated') 
+                ? saveStatusMessage // Show the full save message if it contains the S3 paths
+                : 'Polished note will appear here once generated after saving the session.'}
             </Typography>
           </Box>
         </TabPanel>
@@ -614,7 +612,7 @@ const AudioRecorder = ({ isOpen, onClose }) => {
     );
   }
 
-  return null; // Should not reach here if isOpen is true
+  return null; // Should not reach here if component is properly used
 };
 
 export default AudioRecorder;

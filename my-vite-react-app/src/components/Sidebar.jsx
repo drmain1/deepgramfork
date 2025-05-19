@@ -1,12 +1,13 @@
 import { Drawer, Box, Button, Typography, List, Divider } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import SettingsIcon from '@mui/icons-material/Settings';
+import { useNavigate } from 'react-router-dom';
 import RecentRecordingItem from './RecentRecordingItem';
-import EasySetupModal from './EasySetupModal';
-import AdvancedSetupModal from './AdvancedSetupModal';
 import { useRecordings } from '../contexts/RecordingsContext';
 
-function Sidebar({ onEasySetup, onAdvancedSetup, easyModalOpen, setEasyModalOpen, advancedModalOpen, setAdvancedModalOpen, onNewSession }) {
-  const { recordings, addRecording } = useRecordings();
+function Sidebar() {
+  const { recordings } = useRecordings();
+  const navigate = useNavigate();
 
   // This local handleNewRecording might be used differently or integrated elsewhere if needed.
   // For now, the button will directly call onNewSession.
@@ -20,41 +21,50 @@ function Sidebar({ onEasySetup, onAdvancedSetup, easyModalOpen, setEasyModalOpen
   //   addRecording(newRecording);
   // };
 
+  const handleGoToSettings = () => {
+    navigate('/settings');
+  };
+
+  const handleNewRecordingClick = () => {
+    navigate('/'); // Navigate to the root path to show AudioRecorder
+  };
+
   return (
-    <>
-      <Drawer variant="permanent" sx={{ width: 250, flexShrink: 0 }}>
-        <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%' }}>
-          <Typography variant="h5" align="center" gutterBottom>
-            Dictation App
-          </Typography>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={onNewSession}
-            sx={{ mb: 2 }}
+    <Drawer variant="permanent" sx={{ width: 250, flexShrink: 0, '& .MuiDrawer-paper': { width: 250, boxSizing: 'border-box' } }}>
+      <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <Typography variant="h5" align="center" gutterBottom>
+          Dictation App
+        </Typography>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={handleNewRecordingClick} 
+          sx={{ mb: 2 }}
+        >
+          New Recording
+        </Button>
+        <Typography variant="h6">Recent Recordings</Typography>
+        <Box sx={{ flexGrow: 1, overflowY: 'auto', mb: 2 }}>
+          <List>
+            {recordings.map((recording) => (
+              <RecentRecordingItem key={recording.id} recording={recording} />
+            ))}
+          </List>
+        </Box>
+        {/* Wrapper for bottom items to ensure they are pushed to the end of the flex container */}
+        <Box sx={{ marginTop: 'auto' }}>
+          <Divider sx={{ mb: 1 }} /> 
+          <Button 
+            variant="contained" 
+            startIcon={<SettingsIcon />}
+            onClick={handleGoToSettings} 
+            sx={{ mb: 1, width: '100%' }} 
           >
-            New Recording
-          </Button>
-          <Typography variant="h6">Recent Recordings</Typography>
-          <Box sx={{ flexGrow: 1, overflowY: 'auto', mb: 2 }}>
-            <List>
-              {recordings.map((recording) => (
-                <RecentRecordingItem key={recording.id} recording={recording} />
-              ))}
-            </List>
-          </Box>
-          <Divider sx={{ mb: 2 }} />
-          <Button variant="contained" color="success" onClick={onEasySetup} sx={{ mb: 1 }}>
-            Easy Template Setup
-          </Button>
-          <Button variant="contained" color="warning" onClick={onAdvancedSetup}>
-            Advanced Template Setup
+            Settings
           </Button>
         </Box>
-      </Drawer>
-      <EasySetupModal open={easyModalOpen} onClose={() => setEasyModalOpen(false)} />
-      <AdvancedSetupModal open={advancedModalOpen} onClose={() => setAdvancedModalOpen(false)} />
-    </>
+      </Box>
+    </Drawer>
   );
 }
 
