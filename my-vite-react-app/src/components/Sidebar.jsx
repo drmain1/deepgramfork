@@ -9,7 +9,7 @@ import LoginButton from './LoginButton';
 import LogoutButton from './LogoutButton';
 
 function Sidebar() {
-  const { recordings } = useRecordings();
+  const { recordings, deletePersistedRecording } = useRecordings();
   const navigate = useNavigate();
   const { isAuthenticated, isLoading, user } = useAuth0();
 
@@ -33,6 +33,42 @@ function Sidebar() {
     navigate('/'); // Navigate to the root path to show AudioRecorder
   };
 
+  const handleDeleteRecording = async (recordingId) => {
+    if (!isAuthenticated) {
+      console.error("User not authenticated. Cannot delete recording.");
+      // Optionally, show a message to the user
+      return;
+    }
+    if (deletePersistedRecording) {
+      try {
+        console.log(`Attempting to delete recording via context: ${recordingId}`);
+        await deletePersistedRecording(recordingId);
+        // Success message or UI update could happen here if not handled by context/item itself
+      } catch (error) {
+        console.error(`Failed to delete recording ${recordingId}:`, error);
+        // Optionally, show an error message to the user
+      }
+    } else {
+      console.error('deletePersistedRecording function not available from context.');
+    }
+  };
+
+  // Filter out 'pending' recordings from display if they have an associated 'saved' or 'failed' recording
+  const processedRecordings = recordings.reduce((acc, current) => {
+    const existingRecording = acc.find((recording) => recording.id === current.id);
+    if (existingRecording) {
+      if (existingRecording.status === 'pending' && (current.status === 'saved' || current.status === 'failed')) {
+        return acc;
+      } else {
+        return acc.map((recording) => recording.id === current.id ? current : recording);
+      }
+    } else {
+      return [...acc, current];
+    }
+  }, []);
+
+  const sortedRecordings = processedRecordings.sort((a, b) => new Date(b.date) - new Date(a.date));
+
   return (
     <Drawer variant="permanent" sx={{ width: 250, flexShrink: 0, '& .MuiDrawer-paper': { width: 250, boxSizing: 'border-box' } }}>
       <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -48,13 +84,11 @@ function Sidebar() {
           New Recording
         </Button>
         <Typography variant="h6">Recent Recordings</Typography>
-        <Box sx={{ flexGrow: 1, overflowY: 'auto', mb: 2 }}>
-          <List>
-            {recordings.map((recording) => (
-              <RecentRecordingItem key={recording.id} recording={recording} />
-            ))}
-          </List>
-        </Box>
+        <List sx={{ overflowY: 'auto', flexGrow: 1 }}>
+          {sortedRecordings.map((recording) => (
+            <RecentRecordingItem key={recording.id} recording={recording} onDelete={handleDeleteRecording} />
+          ))}
+        </List>
         {/* Wrapper for bottom items to ensure they are pushed to the end of the flex container */}
         <Box sx={{ marginTop: 'auto' }}>
           <Divider sx={{ mb: 1 }} /> 

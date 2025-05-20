@@ -1,6 +1,7 @@
 import uvicorn
 import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 import os
 from dotenv import load_dotenv
@@ -14,7 +15,9 @@ import json
 import tempfile
 from pydantic import BaseModel, Field
 from fastapi import HTTPException
-from typing import Optional
+from typing import Optional, List, Dict, Any
+from fastapi import Path
+from botocore.exceptions import ClientError
 
 # Ensure the .env file is in the root of the trans10 directory or adjust path
 # Example: load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
@@ -31,6 +34,21 @@ DEFAULT_TENANT_ID = os.getenv("DEFAULT_TENANT_ID", "dev-tenant")
 # AWS_BEDROCK_REGION = os.getenv("AWS_BEDROCK_REGION", AWS_REGION)
 
 app = FastAPI()
+
+# CORS Configuration
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    # Add any other origins if necessary (e.g., your deployed frontend URL)
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"], # Allow all common methods
+    allow_headers=["Authorization", "Content-Type", "*"], # Allow common and custom headers
+)
 
 # Global placeholders for clients, to be initialized in startup event
 s3_client = None
@@ -648,6 +666,166 @@ async def save_session_data_endpoint(request_data: SaveSessionRequest):
         "saved_paths": s3_paths,
         "processing_errors": errors if errors else None
     }
+
+@app.delete("/api/v1/recordings/{user_id}/{session_id}", status_code=200)
+async def delete_session_recording(
+    user_id: str = Path(..., description="The ID of the user who owns the recording"),
+    session_id: str = Path(..., description="The ID of the session recording to delete")
+):
+    if not s3_client:
+        raise HTTPException(status_code=503, detail="S3 client not initialized. Cannot delete recording.")
+    if not AWS_S3_BUCKET_NAME:
+        raise HTTPException(status_code=503, detail="S3 bucket name not configured. Cannot delete recording.")
+
+    metadata_s3_key = f"sessions/{user_id}/{session_id}/session_metadata.json"
+    print(f"Attempting to delete recording for user {user_id}, session {session_id}. Metadata key: {metadata_s3_key}")
+
+    objects_to_delete = []
+
+    try:
+        # 1. Fetch the metadata file
+        response = s3_client.get_object(Bucket=AWS_S3_BUCKET_NAME, Key=metadata_s3_key)
+        metadata_content = response['Body'].read().decode('utf-8')
+        session_metadata = json.loads(metadata_content)
+        
+        # 2. Collect S3 keys from s3_paths in metadata
+        s3_paths_to_delete = session_metadata.get("s3_paths", {})
+        for path_key, s3_key_value in s3_paths_to_delete.items():
+            if isinstance(s3_key_value, str): # Ensure it's a string key
+                objects_to_delete.append({'Key': s3_key_value})
+                print(f"  Scheduled for deletion: {s3_key_value}")
+            else:
+                print(f"  Skipping non-string S3 path in metadata: {path_key}: {s3_key_value}")
+
+        # 3. Add the metadata file itself to the list of objects to delete
+        objects_to_delete.append({'Key': metadata_s3_key})
+        print(f"  Scheduled for deletion: {metadata_s3_key}")
+
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'NoSuchKey':
+            print(f"Metadata file {metadata_s3_key} not found. Assuming recording already deleted or never existed.")
+            # If metadata doesn't exist, there's nothing to delete based on it.
+            # We could try to delete common paths if desired, but this implies an inconsistent state.
+            # For now, return success as the state (no recording) is achieved.
+            return {"message": "Recording not found or already deleted."}
+        else:
+            print(f"S3 ClientError fetching metadata {metadata_s3_key}: {e}")
+            raise HTTPException(status_code=500, detail=f"Error fetching recording metadata: {e.response['Error']['Code']}")
+    except json.JSONDecodeError as e:
+        print(f"Error decoding metadata JSON from {metadata_s3_key}: {e}. Will attempt to delete metadata file only.")
+        # If metadata is corrupt, still try to delete the metadata file itself.
+        # Other files might be orphaned but this is a recovery attempt.
+        objects_to_delete.append({'Key': metadata_s3_key})
+    except Exception as e:
+        print(f"Unexpected error processing metadata for {metadata_s3_key}: {e}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error processing recording metadata: {str(e)}")
+
+    if not objects_to_delete:
+        # This case might happen if metadata was empty or malformed and didn't even include itself.
+        print(f"No objects identified for deletion for session {session_id}. This might indicate an issue or an already clean state.")
+        return {"message": "No files identified for deletion. Recording might be partially deleted or in an inconsistent state."}
+
+    try:
+        # 4. Delete all collected objects
+        print(f"Attempting to delete {len(objects_to_delete)} objects from S3 bucket {AWS_S3_BUCKET_NAME}...")
+        delete_response = s3_client.delete_objects(
+            Bucket=AWS_S3_BUCKET_NAME,
+            Delete={'Objects': objects_to_delete, 'Quiet': False} # Set Quiet=False to get info about deleted/errored items
+        )
+        
+        deleted_count = len(delete_response.get('Deleted', []))
+        error_count = len(delete_response.get('Errors', []))
+
+        print(f"S3 delete_objects response: Deleted: {deleted_count}, Errors: {error_count}")
+        if error_count > 0:
+            print(f"Errors during S3 deletion: {delete_response.get('Errors')}")
+            # Even if some errors, others might have succeeded. Partial success.
+            raise HTTPException(status_code=500, detail=f"Some files could not be deleted from S3. Errors: {error_count}")
+        
+        return {"message": f"Recording {session_id} and {deleted_count} associated files deleted successfully."}
+
+    except ClientError as e:
+        print(f"S3 ClientError during delete_objects for session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error deleting files from S3: {e.response['Error']['Code']}")
+    except Exception as e:
+        print(f"Unexpected error during S3 deletion for session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error deleting files: {str(e)}")
+
+
+# --- User Settings Models and Endpoints --- #
+
+class UserSettingsData(BaseModel):
+    macroPhrases: List[Dict[str, Any]] = Field(default_factory=list)
+    customVocabulary: List[Dict[str, Any]] = Field(default_factory=list)
+    officeInformation: List[str] = Field(default_factory=list) # Changed to List[str]
+    transcriptionProfiles: List[Dict[str, Any]] = Field(default_factory=list)
+
+class SaveUserSettingsRequest(BaseModel):
+    user_id: str # This should ideally come from a validated token in the future
+    settings: UserSettingsData
+
+DEFAULT_USER_SETTINGS = UserSettingsData().model_dump()
+
+@app.get("/api/v1/user_settings/{user_id}", response_model=UserSettingsData)
+async def get_user_settings(user_id: str = Path(..., description="The ID of the user whose settings are to be fetched")):
+    if not s3_client:
+        raise HTTPException(status_code=503, detail="S3 client not initialized. Cannot fetch settings.")
+    if not AWS_S3_BUCKET_NAME:
+        raise HTTPException(status_code=503, detail="S3 bucket name not configured. Cannot fetch settings.")
+
+    s3_key = f"user_settings/{user_id}/settings.json"
+    print(f"Attempting to fetch settings from S3: {AWS_S3_BUCKET_NAME}/{s3_key}")
+
+    try:
+        response = s3_client.get_object(Bucket=AWS_S3_BUCKET_NAME, Key=s3_key)
+        settings_data_json = response['Body'].read().decode('utf-8')
+        settings_data = json.loads(settings_data_json)
+        # Ensure all default keys are present if the loaded data is partial
+        # This also helps in migrating older structures if new keys are added to UserSettingsData
+        loaded_settings_with_defaults = DEFAULT_USER_SETTINGS.copy()
+        loaded_settings_with_defaults.update(settings_data) 
+        return UserSettingsData(**loaded_settings_with_defaults)
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'NoSuchKey':
+            print(f"No settings file found for user {user_id} at {s3_key}, returning defaults.")
+            return UserSettingsData(**DEFAULT_USER_SETTINGS) # Return Pydantic model instance
+        else:
+            print(f"S3 ClientError fetching settings from S3 for user {user_id}: {e}")
+            raise HTTPException(status_code=500, detail=f"Error fetching user settings from S3: {e.response['Error']['Code']}")
+    except json.JSONDecodeError as e:
+        print(f"JSONDecodeError for user {user_id} at {s3_key}: {e}. Returning default settings.")
+        # Optionally, you could try to recover or delete the malformed file
+        return UserSettingsData(**DEFAULT_USER_SETTINGS)
+    except Exception as e:
+        print(f"Unexpected error fetching settings for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error fetching user settings: {str(e)}")
+
+@app.post("/api/v1/user_settings")
+async def save_user_settings(request: SaveUserSettingsRequest):
+    if not s3_client:
+        raise HTTPException(status_code=503, detail="S3 client not initialized. Cannot save settings.")
+    if not AWS_S3_BUCKET_NAME:
+        raise HTTPException(status_code=503, detail="S3 bucket name not configured. Cannot save settings.")
+
+    s3_key = f"user_settings/{request.user_id}/settings.json"
+    print(f"Attempting to save settings to S3: {AWS_S3_BUCKET_NAME}/{s3_key}")
+
+    try:
+        s3_client.put_object(
+            Bucket=AWS_S3_BUCKET_NAME,
+            Key=s3_key,
+            Body=json.dumps(request.settings.model_dump()),
+            ContentType='application/json'
+        )
+        return {"message": "User settings saved successfully."}
+    except ClientError as e:
+        print(f"S3 ClientError saving settings to S3 for user {request.user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error saving user settings to S3: {e.response['Error']['Code']}")
+    except Exception as e:
+        print(f"Unexpected error saving settings for user {request.user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error saving user settings: {str(e)}")
+
+# --- End User Settings --- #
 
 if __name__ == "__main__":
     if not deepgram_api_key:

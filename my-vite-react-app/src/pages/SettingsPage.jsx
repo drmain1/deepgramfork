@@ -1,94 +1,65 @@
 import { Tabs, Tab, Box, Typography } from '@mui/material';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import SettingsTabs from '../components/SettingsTabs';
+import { useUserSettings } from '../contexts/UserSettingsContext';
 
 function SettingsPage() {
   const [tabValue, setTabValue] = useState(0);
-  const { user, isAuthenticated, isLoading: authLoading, getAccessTokenSilently } = useAuth0();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth0();
 
-  const [userSettings, setUserSettings] = useState({
-    transcriptionProfiles: [],
-    macroPhrases: [],
-    customVocabulary: [],
-    officeInformation: [],
-  });
-  const [settingsLoading, setSettingsLoading] = useState(true);
-
-  useEffect(() => {
-    const loadUserSettings = async () => {
-      if (isAuthenticated && user && !authLoading) {
-        setSettingsLoading(true);
-        const storedSettings = localStorage.getItem(`userSettings_${user.sub}`);
-        if (storedSettings) {
-          setUserSettings(JSON.parse(storedSettings));
-        } else {
-          setUserSettings({
-            transcriptionProfiles: [],
-            macroPhrases: [],
-            customVocabulary: [],
-            officeInformation: [],
-          });
-        }
-        setSettingsLoading(false);
-      }
-    };
-    loadUserSettings();
-  }, [isAuthenticated, user, authLoading, getAccessTokenSilently]);
-
-  const saveUserSettings = async (updatedSettings) => {
-    if (isAuthenticated && user) {
-      localStorage.setItem(`userSettings_${user.sub}`, JSON.stringify(updatedSettings));
-    }
-  };
+  const {
+    userSettings,
+    settingsLoading,
+    settingsError,
+    updateOfficeInformation,
+    updateTranscriptionProfiles,
+    updateCustomVocabulary,
+    updateMacroPhrases
+  } = useUserSettings();
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
   };
 
-  const addTranscriptionProfile = (newProfile) => {
+  const addTranscriptionProfile = async (newProfile) => {
     let status = 'success';
-    let updatedProfiles = userSettings.transcriptionProfiles;
+    let updatedProfiles = userSettings.transcriptionProfiles || [];
 
-    if (userSettings.transcriptionProfiles.find(profile => profile.id === newProfile.id)) {
+    if (updatedProfiles.find(profile => profile.id === newProfile.id)) {
       status = 'duplicate';
+      console.warn('Attempted to add duplicate transcription profile ID:', newProfile.id);
+      return status;
     } else {
-      updatedProfiles = [...userSettings.transcriptionProfiles, newProfile];
+      updatedProfiles = [...updatedProfiles, newProfile];
     }
     
-    const newSettings = { ...userSettings, transcriptionProfiles: updatedProfiles };
-    setUserSettings(newSettings);
-    saveUserSettings(newSettings);
+    try {
+      await updateTranscriptionProfiles(updatedProfiles);
+      console.log("Transcription profiles updated successfully via context.");
+    } catch (error) {
+      console.error("Failed to update transcription profiles via context:", error);
+      status = 'error';
+    }
     return status;
   };
 
-  const deleteTranscriptionProfile = (profileIdToDelete) => {
-    const updatedProfiles = userSettings.transcriptionProfiles.filter(profile => profile.id !== profileIdToDelete);
-    const newSettings = { ...userSettings, transcriptionProfiles: updatedProfiles };
-    setUserSettings(newSettings);
-    saveUserSettings(newSettings);
+  const deleteTranscriptionProfile = async (profileIdToDelete) => {
+    const updatedProfiles = (userSettings.transcriptionProfiles || []).filter(profile => profile.id !== profileIdToDelete);
+    try {
+      await updateTranscriptionProfiles(updatedProfiles);
+      console.log("Transcription profile deleted successfully via context.");
+    } catch (error) {
+      console.error("Failed to delete transcription profile via context:", error);
+    }
   };
 
-  const saveMacroPhrases = (macros) => {
-    const newSettings = { ...userSettings, macroPhrases: macros };
-    setUserSettings(newSettings);
-    saveUserSettings(newSettings);
-  };
-
-  const saveCustomVocabulary = (vocabulary) => {
-    const newSettings = { ...userSettings, customVocabulary: vocabulary };
-    setUserSettings(newSettings);
-    saveUserSettings(newSettings);
-  };
-
-  const saveOfficeInformation = (offices) => {
-    const newSettings = { ...userSettings, officeInformation: offices };
-    setUserSettings(newSettings);
-    saveUserSettings(newSettings);
-  };
-
-  if (authLoading || (isAuthenticated && settingsLoading)) {
+  if (authLoading || settingsLoading) {
     return <Typography>Loading settings...</Typography>;
+  }
+
+  if (settingsError) {
+    return <Typography>Error loading settings: {settingsError}. Please try again later.</Typography>;
   }
 
   if (!isAuthenticated) {
@@ -110,16 +81,16 @@ function SettingsPage() {
       </Tabs>
       <SettingsTabs 
         tabValue={tabValue} 
-        transcriptionProfiles={userSettings.transcriptionProfiles} 
+        transcriptionProfiles={userSettings.transcriptionProfiles}
         addTranscriptionProfile={addTranscriptionProfile} 
         deleteTranscriptionProfile={deleteTranscriptionProfile} 
         macroPhrases={userSettings.macroPhrases}
-        saveMacroPhrases={saveMacroPhrases} 
+        saveMacroPhrases={updateMacroPhrases}
         customVocabulary={userSettings.customVocabulary}
-        saveCustomVocabulary={saveCustomVocabulary} 
+        saveCustomVocabulary={updateCustomVocabulary}
         officeInformation={userSettings.officeInformation}
-        saveOfficeInformation={saveOfficeInformation}
-        settingsLoading={settingsLoading} 
+        saveOfficeInformation={updateOfficeInformation}
+        settingsLoading={settingsLoading}
       />
     </Box>
   );

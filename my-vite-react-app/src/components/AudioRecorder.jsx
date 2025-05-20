@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { useRecordings } from '../contexts/RecordingsContext';
+import { useUserSettings } from '../contexts/UserSettingsContext';
 import {
   Box,
   Button,
@@ -14,12 +15,16 @@ import {
   CircularProgress,
   Grid,
   Tabs,
-  Tab
+  Tab,
+  ToggleButton,
+  ToggleButtonGroup
 } from '@mui/material';
 
 const AudioRecorder = () => {
-  const { user, isAuthenticated, isLoading } = useAuth0();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth0();
   const { startPendingRecording, updateRecording, removeRecording } = useRecordings();
+  const { userSettings, settingsLoading } = useUserSettings();
+
   const [currentView, setCurrentView] = useState('setup');
   const [isRecording, setIsRecording] = useState(false);
   const [hasStreamedOnce, setHasStreamedOnce] = useState(false);
@@ -27,7 +32,8 @@ const AudioRecorder = () => {
   const [patientDetails, setPatientDetails] = useState('');
   const [patientContext, setPatientContext] = useState('');
   const [encounterType, setEncounterType] = useState('in-person');
-  const [llmTemplate, setLlmTemplate] = useState('general-summary');
+  const [selectedLocation, setSelectedLocation] = useState('');
+  const [selectedProfileId, setSelectedProfileId] = useState('');
   const [finalTranscript, setFinalTranscript] = useState('');
   const [currentInterimTranscript, setCurrentInterimTranscript] = useState('');
   const [combinedTranscript, setCombinedTranscript] = useState('');
@@ -45,7 +51,8 @@ const AudioRecorder = () => {
     setPatientDetails('');
     setPatientContext('');
     setEncounterType('in-person');
-    setLlmTemplate('general-summary');
+    setSelectedLocation('');
+    setSelectedProfileId('');
     setError(null);
     setFinalTranscript('');
     setCurrentInterimTranscript('');
@@ -77,6 +84,34 @@ const AudioRecorder = () => {
   }, [finalTranscript, currentInterimTranscript]);
 
   useEffect(() => {
+    if (!settingsLoading && userSettings.transcriptionProfiles) {
+      const filteredProfiles = userSettings.transcriptionProfiles.filter(
+        profile => profile.name !== 'Default/General summary'
+      );
+
+      if (filteredProfiles.length > 0) {
+        const currentProfileStillExistsInFiltered = filteredProfiles.some(p => p.id === selectedProfileId);
+        if (!selectedProfileId || !currentProfileStillExistsInFiltered) {
+          const defaultProfile = filteredProfiles.find(p => p.isDefault) || filteredProfiles[0];
+          if (defaultProfile) {
+            setSelectedProfileId(defaultProfile.id);
+          }
+        }
+      } else {
+        setSelectedProfileId('');
+      }
+    }
+
+    if (!settingsLoading && userSettings.officeInformation && userSettings.officeInformation.length > 0) {
+      if (selectedLocation === '' && !userSettings.officeInformation.includes(selectedLocation) && userSettings.officeInformation[0]) {
+        setSelectedLocation(userSettings.officeInformation[0]);
+      }
+    } else if (!settingsLoading && (!userSettings.officeInformation || userSettings.officeInformation.length === 0)){
+      setSelectedLocation('');
+    }
+  }, [userSettings, settingsLoading]);
+
+  useEffect(() => {
     return () => {
       if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
         console.log("[WebSocket] Closing due to component unmount or panel close.");
@@ -104,7 +139,25 @@ const AudioRecorder = () => {
       setCombinedTranscript('');
       setIsSessionSaved(false);
       setSaveStatusMessage('');
+
+      let newSessionId = Date.now().toString();
+      setSessionId(newSessionId);
+      startPendingRecording(newSessionId, patientDetails || 'New Session');
     }
+
+    const activeProfile = userSettings.transcriptionProfiles?.find(p => p.id === selectedProfileId);
+    const llmPrompt = activeProfile ? activeProfile.llmPrompt : 'Summarize the following clinical encounter:';
+    const profileName = activeProfile ? activeProfile.name : 'General Summary';
+
+    const encounterDetails = {
+      patient_name: patientDetails,
+      context: patientContext,
+      llm_template_name: profileName,
+      llm_prompt: llmPrompt,
+      location: selectedLocation,
+      user_id: user.sub,
+      session_id: sessionId || newSessionId,
+    };
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -126,8 +179,9 @@ const AudioRecorder = () => {
           type: 'session_config',
           patient_name: patientDetails,
           patient_context: patientContext,
-          encounter_type: encounterType,
-          llm_template: llmTemplate,
+          llm_template: profileName,
+          llm_prompt: llmPrompt,
+          location: selectedLocation,
           session_id: sessionId
         };
         console.log('Would send session_config data (if backend supported):', sessionSetupData);
@@ -143,12 +197,10 @@ const AudioRecorder = () => {
 
           mediaRecorderRef.current.onstop = () => {
             console.log("[MediaRecorder] MediaRecorder stopped.");
-            // Ensure EOS is sent if socket is still open
             if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
               console.log("[WebSocket] Sending EOS due to MediaRecorder stop.");
               webSocketRef.current.send(JSON.stringify({ type: 'eos' }));
             }
-            // Actual WebSocket closing is handled by stopRecording function or component unmount/close
           };
 
           mediaRecorderRef.current.onerror = (event) => {
@@ -178,25 +230,22 @@ const AudioRecorder = () => {
       webSocketRef.current.onmessage = (event) => {
         let message = event.data;
         if (typeof message === 'string') {
-          // Remove BOM if present (character U+FEFF)
           if (message.startsWith('\uFEFF')) {
             message = message.substring(1);
           }
 
           try {
-            // First, try to parse as JSON
             const parsedMessage = JSON.parse(message);
             if (parsedMessage.type === 'session_init') {
               console.log('Received session_init (JSON):', parsedMessage);
-              // Set session ID if not set or if it's a resume and backend sends a new one
               setSessionId(parsedMessage.session_id);
-              setError(''); // Clear previous errors on new session/resume
+              setError('');
             } else if (parsedMessage.type === 'transcript') {
               if (parsedMessage.is_final) {
                 setFinalTranscript(prev => (prev ? prev + ' ' : '') + parsedMessage.text);
-                setCurrentInterimTranscript(''); 
+                setCurrentInterimTranscript('');
               } else {
-                setCurrentInterimTranscript(parsedMessage.text); 
+                setCurrentInterimTranscript(parsedMessage.text);
               }
             } else if (parsedMessage.type === 'error') {
               console.error('Received error from server (JSON):', parsedMessage.message);
@@ -210,27 +259,26 @@ const AudioRecorder = () => {
               console.warn('Received unknown JSON message type:', parsedMessage);
             }
           } catch (e) {
-            // If JSON.parse fails, assume it's one of our plain text messages
             if (message.startsWith('Interim: ')) {
               const transcript = message.substring('Interim: '.length);
-              setCurrentInterimTranscript(transcript); 
+              setCurrentInterimTranscript(transcript);
             } else if (message.startsWith('Final: ')) {
               const transcript = message.substring('Final: '.length);
               setFinalTranscript(prev => (prev ? prev + ' ' : '') + transcript);
-              setCurrentInterimTranscript(''); 
-            } else if (message.startsWith('SessionID: ')) { // Legacy plain text session ID
+              setCurrentInterimTranscript('');
+            } else if (message.startsWith('SessionID: ')) {
               const id = message.substring('SessionID: '.length);
               setSessionId(id);
               console.log('Session ID received (plain text):', id);
               setError('');
-            } else if (message.startsWith('Error: ')) { // Plain text error
+            } else if (message.startsWith('Error: ')) {
               const errorMessage = message.substring('Error: '.length);
               console.error('Error from backend (plain text):', errorMessage);
               setError(`Streaming error: ${errorMessage}`);
-            } else if (message.startsWith('Status: ')) { // Plain text status
+            } else if (message.startsWith('Status: ')) {
               const statusMessage = message.substring('Status: '.length);
               console.log('Status from backend (plain text):', statusMessage);
-            } else if (message.startsWith("WebSocket connection established with Session ID:")) { // Legacy session init
+            } else if (message.startsWith("WebSocket connection established with Session ID:")) {
                 const parts = message.split(': ');
                 if (parts.length > 1) {
                     const id = parts[parts.length -1].trim();
@@ -260,14 +308,12 @@ const AudioRecorder = () => {
 
       webSocketRef.current.onclose = (event) => {
         console.log(`[WebSocket] WebSocket connection CLOSED. Code: ${event.code}, Reason: '${event.reason}', Clean: ${event.wasClean}`);
-        // This handler is for unexpected closures or closures not initiated by explicit stopRecording/panel close.
-        if (isRecording) { // If we thought we were recording when it closed.
+        if (isRecording) {
           console.warn("[WebSocket] Connection closed unexpectedly while 'isRecording' was true.");
-          // setError("Live connection lost. You might need to resume or restart."); // Optional: inform user
+          setError("Live connection lost. You might need to resume or restart.");
           console.log("[StateChange] Setting isRecording to FALSE (in WebSocket onclose, was recording).");
           setIsRecording(false);
         }
-        // If MediaRecorder is somehow still recording, ensure it's stopped.
         if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
           console.log("[MediaRecorder] WebSocket closed, ensuring MediaRecorder is stopped.");
           mediaRecorderRef.current.stop();
@@ -286,17 +332,15 @@ const AudioRecorder = () => {
     console.log("[Action] stopRecording (Pause) called.");
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
       console.log("[MediaRecorder] Calling MediaRecorder.stop().");
-      mediaRecorderRef.current.stop(); // This will trigger ondataavailable with last chunk, then onstop.
+      mediaRecorderRef.current.stop();
     } else {
       console.log("[MediaRecorder] MediaRecorder not recording or not initialized.");
     }
 
     if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
       console.log("[WebSocket] Closing WebSocket connection explicitly from stopRecording.");
-      // EOS is typically sent by MediaRecorder.onstop, but can be sent here if needed before closing.
-      // webSocketRef.current.send(JSON.stringify({ type: 'eos' }));
-      webSocketRef.current.close(1000, "User paused recording"); // Normal closure
-      webSocketRef.current = null; // Nullify after closing for clean resume
+      webSocketRef.current.close(1000, "User paused recording");
+      webSocketRef.current = null;
     } else {
       console.log("[WebSocket] WebSocket not open or not initialized when stopRecording called.");
     }
@@ -338,14 +382,13 @@ const AudioRecorder = () => {
     updateRecording(sessionId, { status: 'saving', name: `Saving: ${patientDetails || 'New Note'}...` });
 
     try {
-      const url = '/api/v1/save_session_data'; 
+      const url = '/api/v1/save_session_data';
       console.log("Attempting to save session with URL:", url, "and payload:", JSON.stringify({
         session_id: sessionId,
         final_transcript_text: combinedTranscript,
         patient_context: patientContext,
-        encounter_type: encounterType,
-        llm_template: llmTemplate,
-        user_id: user.sub 
+        location: selectedLocation,
+        user_id: user.sub
       }));
 
       const response = await fetch(url, {
@@ -357,9 +400,8 @@ const AudioRecorder = () => {
           session_id: sessionId,
           final_transcript_text: combinedTranscript,
           patient_context: patientContext,
-          encounter_type: encounterType,
-          llm_template: llmTemplate,
-          user_id: user.sub 
+          location: selectedLocation,
+          user_id: user.sub
         }),
       });
 
@@ -368,32 +410,27 @@ const AudioRecorder = () => {
         result = await response.json();
       } catch (jsonError) {
         console.error('Failed to parse server response as JSON:', jsonError);
-        if (response.ok) { 
-            throw new Error(`Successfully saved but failed to parse response: ${response.statusText || 'Unknown parse error'}`);
+        if (response.ok) {
+          throw new Error(`Successfully saved but failed to parse response: ${response.statusText || 'Unknown parse error'}`);
         }
-        if (response.ok) { 
-            throw new Error(`Successfully saved but failed to parse response: ${response.statusText || 'Unknown parse error'}`);
-        }
-        // For non-OK responses, result.detail will be undefined, rely on response.statusText
       }
 
       if (response.ok) {
         setSaveStatusMessage(`Notes generated and saved!\nNotes: ${result.notes_s3_path || 'N/A'}\nAudio: ${result.audio_s3_path || 'N/A'}`);
         setIsSessionSaved(true);
-        const savedName = patientDetails 
-                          ? `Note: ${patientDetails.substring(0,20)}${patientDetails.length > 20 ? '...' : ''} (${new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0, 10)})` 
-                          : `Note ${new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0, 16).replace('T', ' ')}`;
+        const savedName = patientDetails
+          ? `Note: ${patientDetails.substring(0,20)}${patientDetails.length > 20 ? '...' : ''} (${new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0, 10)})`
+          : `Note ${new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0, 16).replace('T', ' ')}`;
         updateRecording(sessionId, {
           status: 'saved',
           name: savedName,
-          date: new Date().toISOString(), 
+          date: new Date().toISOString(),
           s3PathAudio: result.audio_s3_path,
           s3PathTranscript: result.original_transcript_s3_path,
           s3PathPolished: result.notes_s3_path,
-          patientContext: patientContext, 
-          encounterType: encounterType,
-          llmTemplate: llmTemplate,
-          error: null 
+          patientContext: patientContext,
+          location: selectedLocation,
+          error: null
         });
       } else {
         const errorDetail = (result && result.detail) || response.statusText || 'Unknown server error';
@@ -415,10 +452,10 @@ const AudioRecorder = () => {
   const handleStartEncounter = () => {
     const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     setSessionId(newSessionId);
-    startPendingRecording(newSessionId); 
+    startPendingRecording(newSessionId);
     setCurrentView('recording');
     setError(null);
-    setHasStreamedOnce(false); 
+    setHasStreamedOnce(false);
   };
 
   const handleCancelAndClose = () => {
@@ -444,12 +481,13 @@ const AudioRecorder = () => {
     setPatientDetails('');
     setPatientContext('');
     setEncounterType('in-person');
-    setLlmTemplate('general-summary');
+    setSelectedLocation('');
+    setSelectedProfileId('');
     setError(null);
     setFinalTranscript('');
     setCurrentInterimTranscript('');
     setCombinedTranscript('');
-    setSessionId(null); 
+    setSessionId(null);
     setIsSessionSaved(false);
     setSaveStatusMessage('');
     setIsRecording(false);
@@ -472,10 +510,10 @@ const AudioRecorder = () => {
         id={`simple-tabpanel-${index}`}
         aria-labelledby={`simple-tab-${index}`}
         {...other}
-        style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }} 
+        style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
       >
         {value === index && (
-          <Box sx={{ p: 0, flexGrow: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}> 
+          <Box sx={{ p: 0, flexGrow: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
             {children}
           </Box>
         )}
@@ -489,15 +527,15 @@ const AudioRecorder = () => {
 
   if (currentView === 'setup') {
     return (
-      <Box sx={{ 
-        p: 3, 
-        width: '100%' 
+      <Box sx={{
+        p: 3,
+        width: '100%'
       }}>
         <Typography variant="h4" component="h1" gutterBottom sx={{ textAlign: 'left', mb: 4, fontWeight: 'medium' }}>
           Encounter
         </Typography>
-        <Stack 
-          spacing={3} 
+        <Stack
+          spacing={3}
           direction="column"
           sx={{ maxWidth: '800px', mx: 'auto' }}
         >
@@ -514,7 +552,7 @@ const AudioRecorder = () => {
               variant="standard"
               fullWidth
               required
-              error={!!error && !patientDetails.trim()} 
+              error={!!error && !patientDetails.trim()}
               helperText={!!error && !patientDetails.trim() ? 'Please enter patient details' : ''}
             />
           </FormControl>
@@ -537,37 +575,53 @@ const AudioRecorder = () => {
           <Grid container spacing={2}>
             <Grid item xs={12} sm={12}>
               <FormControl fullWidth variant="standard">
-                <InputLabel id="encounter-type-label">Encounter Type</InputLabel>
+                <InputLabel id="location-select-label">Location</InputLabel>
                 <Select
-                  labelId="encounter-type-label"
-                  id="encounter-type"
-                  value={encounterType}
-                  label="Encounter Type"
-                  onChange={(e) => setEncounterType(e.target.value)}
+                  labelId="location-select-label"
+                  id="location-select"
+                  value={selectedLocation}
+                  label="Location"
+                  onChange={(e) => setSelectedLocation(e.target.value)}
+                  disabled={settingsLoading || (!userSettings.officeInformation && !settingsLoading)}
                 >
-                  <MenuItem value="in-person">In-Person Visit</MenuItem>
-                  <MenuItem value="telehealth">Telehealth Consultation</MenuItem>
-                  <MenuItem value="phone-call">Phone Call</MenuItem>
-                  <MenuItem value="virtual-scribe">Virtual Scribe</MenuItem>
-                  <MenuItem value="other">Other</MenuItem>
+                  <MenuItem value="">
+                    <em>None</em>
+                  </MenuItem>
+                  {settingsLoading && !userSettings.officeInformation ? (
+                    <MenuItem value="" disabled>Loading locations...</MenuItem>
+                  ) : (
+                    userSettings.officeInformation && userSettings.officeInformation.map((loc, index) => (
+                      <MenuItem key={index} value={loc}>
+                        {loc}
+                      </MenuItem>
+                    ))
+                  )}
                 </Select>
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={12}>
               <FormControl fullWidth variant="standard">
-                <InputLabel id="llm-template-label">LLM Polishing Template</InputLabel>
+                <InputLabel id="profile-select-label">Transcription Profile</InputLabel>
                 <Select
-                  labelId="llm-template-label"
-                  id="llm-template"
-                  value={llmTemplate}
-                  label="LLM Polishing Template"
-                  onChange={(e) => setLlmTemplate(e.target.value)}
+                  labelId="profile-select-label"
+                  id="profile-select"
+                  value={selectedProfileId}
+                  label="Transcription Profile"
+                  onChange={(e) => setSelectedProfileId(e.target.value)}
+                  disabled={settingsLoading || (!userSettings.transcriptionProfiles && !settingsLoading)}
                 >
-                  <MenuItem value="general-summary">General Summary</MenuItem>
-                  <MenuItem value="soap-note">SOAP Note</MenuItem>
-                  <MenuItem value="progress-note">Progress Note</MenuItem>
-                  <MenuItem value="consult-note">Consultation Note</MenuItem>
-                  <MenuItem value="none">None (Raw Transcript)</MenuItem>
+                  {settingsLoading && !userSettings.transcriptionProfiles ? (
+                    <MenuItem value="" disabled>Loading profiles...</MenuItem>
+                  ) : (
+                    userSettings.transcriptionProfiles &&
+                    userSettings.transcriptionProfiles
+                      .filter(profile => profile.name !== 'Default/General summary')
+                      .map((profile) => (
+                        <MenuItem key={profile.id} value={profile.id}>
+                          {profile.name}
+                        </MenuItem>
+                      ))
+                  )}
                 </Select>
               </FormControl>
             </Grid>
@@ -585,7 +639,7 @@ const AudioRecorder = () => {
     );
   } else if (currentView === 'recording') {
     return (
-      <Box 
+      <Box
         sx={{
           display: 'flex',
           flexDirection: 'column',
@@ -594,7 +648,7 @@ const AudioRecorder = () => {
           bgcolor: 'background.paper',
           borderRadius: 2,
           boxShadow: 3,
-          overflow: 'hidden' 
+          overflow: 'hidden'
         }}
       >
         <Box sx={{ p: 2, borderBottom: 0, borderColor: 'divider', flexShrink: 0 }}>
@@ -632,54 +686,54 @@ const AudioRecorder = () => {
           </Stack>
 
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="center">
-            <Button 
-              variant="contained" 
-              color="secondary" 
-              onClick={handleSaveSession} 
+            <Button
+              variant="contained"
+              color="secondary"
+              onClick={handleSaveSession}
               disabled={isRecording || !sessionId || !combinedTranscript.trim() || isSessionSaved || saveStatusMessage.includes('Generating...')}
               sx={{ flexGrow: 1 }}
             >
               {isSessionSaved ? 'Notes Generated' : (saveStatusMessage.includes('Generating...') ? 'Generating Notes...' : 'Generate Note & Save')}
             </Button>
-            
+
             <Button variant="outlined" onClick={handleCancelAndClose} sx={{ flexGrow: 1 }}>
               Close Session
             </Button>
           </Stack>
         </Stack>
 
-        {error && !error.toLowerCase().includes('saving') && 
-          <Typography color="error" sx={{ mt:1, mb: 1, textAlign: 'center', flexShrink: 0 }}>
+        {error && !error.toLowerCase().includes('saving') && (
+          <Typography color="error" sx={{ mt: 1, mb: 1, textAlign: 'center', flexShrink: 0 }}>
             {error}
           </Typography>
-        }
+        )}
 
-        <TabPanel value={activeTab} index={0} sx={{ flexGrow: 1, overflowY: 'auto', p:0 }}>
-          <Box sx={{ p: 2, minHeight: '150px', '& p': { m: 0} }}> 
+        <TabPanel value={activeTab} index={0} sx={{ flexGrow: 1, overflowY: 'auto', p: 0 }}>
+          <Box sx={{ p: 2, minHeight: '150px', '& p': { m: 0 } }}>
             <Typography variant="body1" component="div" style={{ whiteSpace: 'pre-wrap' }}>
               {combinedTranscript || (isRecording ? 'Listening...' : 'Start speaking or resume to see transcript...')}
             </Typography>
           </Box>
         </TabPanel>
 
-        <TabPanel value={activeTab} index={1} sx={{ flexGrow: 1, overflowY: 'auto', p:0 }}>
-          <Box 
+        <TabPanel value={activeTab} index={1} sx={{ flexGrow: 1, overflowY: 'auto', p: 0 }}>
+          <Box
             sx={{
-              p: 2, 
+              p: 2,
               minHeight: '150px',
-              '& p': { m: 0} 
+              '& p': { m: 0 }
             }}
           >
             <Typography variant="body1" color="text.secondary">
-              {isSessionSaved && saveStatusMessage.startsWith('Notes generated') 
-                ? saveStatusMessage 
+              {isSessionSaved && saveStatusMessage.startsWith('Notes generated')
+                ? saveStatusMessage
                 : 'Polished note will appear here once generated after saving the session.'}
             </Typography>
           </Box>
         </TabPanel>
 
         {saveStatusMessage && (
-          <Typography sx={{ p:1, fontStyle: 'italic', color: (error && (saveStatusMessage.toLowerCase().includes('error') || saveStatusMessage.toLowerCase().includes('failed'))) ? 'error.main' : 'text.secondary', whiteSpace: 'pre-line', textAlign: 'center', flexShrink: 0 }}>
+          <Typography sx={{ p: 1, fontStyle: 'italic', color: (error && (saveStatusMessage.toLowerCase().includes('error') || saveStatusMessage.toLowerCase().includes('failed'))) ? 'error.main' : 'text.secondary', whiteSpace: 'pre-line', textAlign: 'center', flexShrink: 0 }}>
             {saveStatusMessage}
           </Typography>
         )}
@@ -687,7 +741,7 @@ const AudioRecorder = () => {
     );
   }
 
-  return null; 
+  return null;
 };
 
 export default AudioRecorder;

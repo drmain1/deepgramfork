@@ -1,15 +1,25 @@
-import { ListItem, ListItemText, ListItemIcon, Tooltip, Typography, Box } from '@mui/material';
+import { ListItem, ListItemText, ListItemIcon, Tooltip, Typography, Box, ListItemSecondaryAction, IconButton } from '@mui/material';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import SaveIcon from '@mui/icons-material/Save'; // Represents saving in progress or successfully saved
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import CloudSyncIcon from '@mui/icons-material/CloudSync'; // For 'saving' status
+import DeleteIcon from '@mui/icons-material/Delete';
 
-function RecentRecordingItem({ recording }) {
+function RecentRecordingItem({ recording, onDelete }) {
   const handleClick = () => {
     // For now, just log. Later, this could open the recording details or player.
     console.log('Clicked recording:', recording);
     // alert(`Viewing recording ${recording.id}... (Integrate with playback or transcription view)`);
+  };
+
+  const handleDelete = (e) => {
+    e.stopPropagation(); // Prevent ListItem's onClick from firing
+    if (onDelete) {
+      onDelete(recording.id);
+    } else {
+      console.log('Delete requested for:', recording.id, 'but no onDelete handler provided.');
+    }
   };
 
   const formatDate = (isoString) => {
@@ -90,14 +100,17 @@ function RecentRecordingItem({ recording }) {
                   : '3px solid transparent', // Keep space for non-active items
         paddingY: '4px' // Reduce vertical padding slightly
       }}>
-        {/* Using ListItemIcon for the status icon on the left makes more sense if not using border */} 
-        {/* <ListItemIcon sx={{minWidth: 'auto', mr: 1}}>{statusIcon}</ListItemIcon> */}
         <ListItemText 
           primary={primaryText} 
           secondary={secondaryDisplay}
           primaryTypographyProps={{ variant: 'subtitle2', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
           secondaryTypographyProps={{ component: 'div' }} // Ensure secondary can host the Box
         />
+        <ListItemSecondaryAction>
+          <IconButton edge="end" aria-label="delete" onClick={handleDelete} size="small">
+            <DeleteIcon fontSize="small" />
+          </IconButton>
+        </ListItemSecondaryAction>
       </ListItem>
     </Tooltip>
   );

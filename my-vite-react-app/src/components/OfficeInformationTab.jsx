@@ -1,34 +1,76 @@
-import React from 'react';
-import { Box, Typography, TextField, Button } from '@mui/material';
+import React, { useState } from 'react';
+import { Box, Typography, TextField, Button, List, ListItem, ListItemText, IconButton, Paper } from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
 
 function OfficeInformationTab({ officeInformation, saveOfficeInformation, settingsLoading }) {
-  // Placeholder for office information management logic
-  // - Display existing office information
-  // - Allow adding new office entries (name, address lines, city, state, zip, phone)
-  // - Allow editing/deleting existing entries
+  const [newOfficeText, setNewOfficeText] = useState('');
+
+  const handleInputChange = (e) => {
+    setNewOfficeText(e.target.value);
+  };
+
+  const handleAddOffice = () => {
+    if (!newOfficeText.trim()) {
+      alert('Please enter an office location.');
+      return;
+    }
+    const updatedOfficeInfo = [...(officeInformation || []), newOfficeText.trim()];
+    saveOfficeInformation(updatedOfficeInfo);
+    setNewOfficeText(''); // Reset form
+  };
+
+  const handleDeleteOffice = (indexToDelete) => {
+    const updatedOfficeInfo = (officeInformation || []).filter((_, index) => index !== indexToDelete);
+    saveOfficeInformation(updatedOfficeInfo);
+  };
 
   if (settingsLoading) {
     return <Typography>Loading office information...</Typography>;
   }
 
   return (
-    <Box>
-      <Typography variant="h6" gutterBottom>
-        Manage Office Information
+    <Box sx={{ p: 2 }}>
+      <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
+        Manage Office Locations
       </Typography>
-      <Typography>
-        This section will allow you to add, edit, and manage multiple office locations.
-        Currently, this is a placeholder.
-      </Typography>
-      {/* Example: Displaying current office information (to be implemented) */}
-      {/* {officeInformation && officeInformation.map((office, index) => (
-        <Box key={index} sx={{ mb: 2, p: 2, border: '1px solid grey' }}>
-          <Typography variant="subtitle1">{office.name}</Typography>
-          <Typography>{office.address}</Typography>
-        </Box>
-      ))} */}
-      {/* Example: Form to add a new office (to be implemented) */}
-      {/* <Button variant="contained" sx={{ mt: 2 }}>Add New Office</Button> */}
+
+      <Paper elevation={2} sx={{ p: 2, mb: 3, display: 'flex', alignItems: 'center' }}>
+        <TextField 
+          fullWidth 
+          label="New Office Location" 
+          value={newOfficeText} 
+          onChange={handleInputChange} 
+          variant="outlined" 
+          size="small" 
+          multiline
+          minRows={3}
+          sx={{ mr: 2 }}
+        />
+        <Button variant="contained" color="primary" onClick={handleAddOffice} disabled={settingsLoading}>
+          Add
+        </Button>
+      </Paper>
+
+      <Typography variant="subtitle1" gutterBottom sx={{ mt: 3, mb: 1 }}>Current Office Locations</Typography>
+      {(!officeInformation || officeInformation.length === 0) ? (
+        <Typography>No office locations added yet.</Typography>
+      ) : (
+        <List>
+          {officeInformation.map((office, index) => (
+            <Paper key={index} elevation={1} sx={{ mb: 1 }}>
+              <ListItem 
+                secondaryAction={
+                  <IconButton edge="end" aria-label="delete" onClick={() => handleDeleteOffice(index)} disabled={settingsLoading}>
+                    <DeleteIcon />
+                  </IconButton>
+                }
+              >
+                <ListItemText primary={office} />
+              </ListItem>
+            </Paper>
+          ))}
+        </List>
+      )}
     </Box>
   );
 }

@@ -35,8 +35,17 @@ This document outlines the structure and key components of the `my-vite-react-ap
         *   The component displays status messages to the user (e.g., "Saving...", "Session saved successfully!", or error details) based on the backend's response.
         *   This manual save mechanism replaces the previous automatic S3 upload that occurred when the WebSocket connection closed.
 *   **`CustomVocabularyTab.jsx`**: Probably a tab within a settings or configuration interface for managing custom vocabulary lists for transcription.
+    *   **Data Structure Update (May 19, 2025):**
+        *   The component now manages custom vocabulary internally as an array of objects, specifically `Array<{ term: string }>`, instead of an array of strings.
+        *   When saving, it sends this array of objects to the backend. This aligns with the `UserSettingsData` Pydantic model in `main.py`, which expects `customVocabulary: List[Dict[str, Any]]`.
+        *   This change resolved previous 422 validation errors when saving settings.
 *   **`EasySetupModal.jsx`**: Likely a modal component for a simplified or guided setup process.
 *   **`MacroPhrasesTab.jsx`**: Suggests a tab for managing macro phrases or text snippets, possibly for quick insertion into notes.
+    *   **Data Structure Update (May 19, 2025):**
+        *   Internally, macros are now managed as an array of objects: `Array<{ trigger: string, phrase: string }>`. This replaces the previous string-based format (e.g., "trigger: phrase").
+        *   The component includes logic in `useEffect` to parse `initialMacroPhrases` (which could be old string-formatted data) into this new object structure.
+        *   When saving, this array of objects is passed up, aligning with the backend `UserSettingsData` Pydantic model (`macroPhrases: List[Dict[str, Any]]`).
+        *   This change resolved previous 422 validation errors when saving settings.
 *   **`NoteStructureTab.jsx`**: Likely a tab for configuring the structure or template of generated notes.
 *   **`RecentRecordingItem.jsx`**: A component to display a single item in a list of recent recordings.
 *   **`SettingsTabs.jsx`**: A component that likely manages the tabbed interface within the settings page.
@@ -54,6 +63,75 @@ This document outlines the structure and key components of the `my-vite-react-ap
 ### `utils/` Directory
 
 *   **`generateLLMInstructions.js`**: A utility function, possibly for creating prompts or instructions for an LLM based on user input or settings.
+
+## User Settings Management and Encounter Page Enhancements (May 19, 2025)
+
+**Objective:** To centralize user settings (office locations, transcription profiles, etc.) for easier management and to integrate these settings into the encounter page for improved workflow.
+
+### 1. `UserSettingsContext.jsx` - Centralized Settings Management
+
+*   **Purpose:**
+    *   Created a new React Context (`src/contexts/UserSettingsContext.jsx`) to serve as a single source of truth for all user-specific settings.
+    *   Settings include: office information, transcription profiles, custom vocabulary, and macro phrases.
+*   **Functionality:**
+    *   The `UserSettingsProvider` component fetches initial settings from the backend API endpoint (`GET /api/v1/user_settings/{user_id}`) when an authenticated user's session starts.
+    *   It provides the `userSettings` object and loading/error states to consuming components via the `useUserSettings` hook.
+    *   It exposes specific update functions (e.g., `updateOfficeInformation`, `updateTranscriptionProfiles`, `updateCustomVocabulary`, `updateMacroPhrases`).
+    *   These update functions persist changes to the backend by making a `POST` request to `/api/v1/user_settings` with the complete updated settings object.
+*   **Integration:**
+    *   The `UserSettingsProvider` wraps the `ProtectedApp` component in `src/main.jsx`, making user settings globally available throughout the authenticated parts of the application.
+
+### 2. `SettingsPage.jsx` - Refactor to Use Context
+
+*   **Purpose:** To align the main settings interface with the new centralized `UserSettingsContext`.
+*   **Changes (`src/pages/SettingsPage.jsx`):
+    *   Removed all local state management previously used for user settings.
+    *   The page now directly consumes `userSettings`, `settingsLoading`, `settingsError`, and the context's update functions (`updateOfficeInformation`, etc.) using the `useUserSettings` hook.
+    *   When users make changes in the various settings tabs (e.g., Office Information, Transcription Profiles), the save handlers now call the appropriate update functions from the context, which then handle backend synchronization.
+
+### 3. `AudioRecorder.jsx` (Encounter Page) - New Selectors and Context Integration
+
+*   **Purpose:** To allow clinicians to select their current office location and a preferred transcription profile directly on the encounter setup screen, using the globally available settings.
+*   **Changes (`src/components/AudioRecorder.jsx`):
+    *   **Context Integration:**
+        *   The component now uses the `useUserSettings` hook to access `userSettings` (specifically `officeInformation` and `transcriptionProfiles`) and `settingsLoading`.
+    *   **New State Variables:**
+        *   `selectedLocation`: Stores the currently selected office location string.
+        *   `selectedProfileId`: Stores the ID of the currently selected transcription profile.
+        *   Defaults are set for these: the first office location and the first transcription profile marked as `isDefault` (or the first overall if none is default).
+    *   **UI Enhancements (Encounter Setup Section):**
+        *   **Location Selector:**
+            *   A new Material-UI `Select` dropdown labeled "Location".
+            *   Populated dynamically from `userSettings.officeInformation`.
+            *   Allows selection or choosing "None / Not Specified".
+        *   **Transcription Profile Selector:**
+            *   A new Material-UI `Select` dropdown labeled "Transcription Profile".
+            *   Populated dynamically from `userSettings.transcriptionProfiles`.
+            *   Allows selection or choosing "Default / General Summary".
+            *   This replaces the previous hardcoded "LLM Polishing Template" buttons.
+        *   **Removed UI:** The old "Encounter Type" (In-Person/Telehealth) buttons have been commented out, as the choice of transcription profile can now imply this.
+    *   **Updated Encounter Logic:**
+        *   When starting a recording (`_startRecordingProcess`):
+            *   The `llmPrompt` from the chosen `selectedProfileId` is used.
+            *   The `selectedLocation`, the selected profile's `name`, and its `llmPrompt` are included in the metadata sent to the backend when initiating the recording session.
+        *   When saving the session (`handleSaveSession`):
+            *   The `selectedLocation` is included in the final session data sent for persistence.
+
+## User Settings API - Data Structure Alignment (May 19, 2025)
+
+The application uses backend API endpoints (`GET /api/v1/user_settings/{user_id}` and `POST /api/v1/user_settings`) defined in `main.py` to manage user settings, which are persisted in S3. The structure of the settings is defined by the `UserSettingsData` Pydantic model on the backend.
+
+Key fields and their expected frontend data structures:
+*   **`macroPhrases`**: Expected by backend as `List[Dict[str, Any]]`.
+    *   Frontend (`MacroPhrasesTab.jsx`) now correctly sends data as `Array<{ trigger: string, phrase: string }>`.
+*   **`customVocabulary`**: Expected by backend as `List[Dict[str, Any]]`.
+    *   Frontend (`CustomVocabularyTab.jsx`) now correctly sends data as `Array<{ term: string }>`.
+*   **`officeInformation`**: Expected by backend as `List[Dict[str, Any]]`.
+    *   Frontend (`OfficeInformationTab.jsx`) is designed to send data as an array of objects (e.g., `Array<{ fieldName: string, fieldValue: string }>` or similar, representing key-value pairs for office details).
+*   **`transcriptionProfiles`**: Expected by backend as `List[Dict[str, Any]]`.
+    *   Frontend sends this as an array of profile objects (e.g., `Array<{ id: string, name: string, ...otherProfileSettings: any }>`).
+
+These frontend data structure alignments, particularly for `macroPhrases` and `customVocabulary`, were crucial in resolving 422 Unprocessable Entity errors that occurred when the frontend sent arrays of strings instead of arrays of objects. The settings are now saved successfully via the API.
 
 ## Key Application Flow Points
 
@@ -330,7 +408,7 @@ The existing "Note Structure" tab was renamed and significantly updated:
         *   Imported `getNoteSample` utility and various MUI components for dialogs (`Dialog`, `DialogTitle`, `DialogContent`, `DialogContentText`, `DialogActions`, `IconButton`, `VisibilityIcon`).
         *   Added state variables (`sampleModalOpen`, `currentSampleText`, `currentSampleTitle`) to manage the sample view dialog.
         *   "View Sample" `IconButton` (eye icon) added next to each template structure radio button (SOAP, DAP, etc.).
-        *   Clicking the icon calls `handleViewSample`, which fetches the appropriate sample using `getNoteSample` (based on the selected structure and current `outputFormat`) and displays it in an MUI `Dialog`.
+        *   Clicking the icon calls `handleViewSample`, which fetches the appropriate sample using `getNoteSample` (based on the selected structure and current `outputFormat`) and displays it in an MUI `Paper` component.
         *   The dialog uses a `<pre>` tag to preserve the formatting of the sample text.
 
 ### 3. LLM Instruction Generation Overhaul
@@ -684,3 +762,60 @@ Enable user-specific settings for "Macro Phrases," "Custom Vocabulary," and "Tra
     *   **File:** `my-vite-react-app/src/contexts/RecordingsContext.jsx`
     *   **Change:** Only recordings that have a string `id` starting with `session_` and a valid `status` field (e.g., 'pending', 'saving', 'saved', 'failed') are now loaded into the application state.
     *   **Outcome:** This ensures that only valid, current-format recordings are displayed, effectively cleaning up any old placeholder data from view.
+
+## Recording Deletion Feature (Implemented May 20, 2025)
+
+**Objective:** Allow users to delete specific recordings from the recent recordings list, which also removes the associated data from S3.
+
+### 1. Frontend Changes (`my-vite-react-app`)
+
+*   **`src/components/RecentRecordingItem.jsx`:**
+    *   Added a delete `IconButton` (with `DeleteIcon` from Material-UI) to each recording item using `ListItemSecondaryAction`.
+    *   The component now accepts an `onDelete` prop.
+    *   A `handleDelete` function is triggered on icon click, which calls `onDelete(recording.id)` and stops event propagation to prevent the item itself from being clicked.
+
+*   **`src/components/Sidebar.jsx`:**
+    *   Retrieves `deletePersistedRecording` function from `useRecordings()` context.
+    *   A `handleDeleteRecording(recordingId)` function was added.
+        *   This function checks for user authentication.
+        *   It calls `await deletePersistedRecording(recordingId)` from the context.
+        *   Includes `try...catch` for error logging if the deletion fails.
+    *   The `onDelete={handleDeleteRecording}` prop is passed to each `RecentRecordingItem` instance.
+
+*   **`src/contexts/RecordingsContext.jsx`:**
+    *   Imported `useAuth0` to get `getAccessTokenSilently` and `user` details.
+    *   A new asynchronous function `deletePersistedRecording(sessionId)` was added:
+        *   Checks if the user is authenticated.
+        *   Retrieves an access token using `getAccessTokenSilently()`.
+        *   Makes an authenticated `DELETE` request to the backend API endpoint: `/api/v1/recordings/{user.sub}/{sessionId}`.
+        *   If the backend deletion is successful, it calls the existing local `removeRecording(sessionId)` function to update the UI by removing the item from the `recordings` state.
+        *   Includes error handling and console logging for the API call and local state update process.
+    *   `deletePersistedRecording` is exposed through the `RecordingsContext.Provider`.
+
+### 2. Backend Changes (`backend/main.py`)
+
+*   **New API Endpoint:**
+    *   A `DELETE` endpoint `/api/v1/recordings/{user_id}/{session_id}` was implemented.
+    *   Path parameters `user_id` and `session_id` are used to identify the recording.
+*   **Deletion Logic:**
+    1.  **Check Prerequisites**: Ensures `s3_client` and `AWS_S3_BUCKET_NAME` are initialized.
+    2.  **Fetch Metadata**: Retrieves the `session_metadata.json` file from S3 (path: `sessions/{user_id}/{session_id}/session_metadata.json`). This metadata file contains the S3 keys for all files associated with the recording session (e.g., audio WAV, raw transcript JSON, polished note text).
+    3.  **Collect File Keys**: Parses the metadata to gather all S3 object keys listed within its `s3_paths` attribute. The metadata file key itself is also added to this list for deletion.
+    4.  **S3 Delete Operation**: Uses `s3_client.delete_objects()` to remove all collected S3 objects from the bucket in a single batch operation.
+    5.  **Error Handling & Logging**: Robust error handling is included for:
+        *   S3 client/bucket configuration issues.
+        *   `NoSuchKey` errors (if metadata is not found, it assumes the recording is already deleted).
+        *   JSON decoding errors if metadata is corrupt (attempts to delete the corrupt metadata file).
+        *   General `ClientError` during S3 operations.
+        *   Detailed logging of the process and any errors encountered.
+    6.  **Response**: Returns a JSON response indicating success (including the count of deleted files) or an appropriate HTTP error status with details if the deletion failed.
+
+### 3. User Flow for Deletion
+
+1.  User clicks the delete icon next to a recording in the `Sidebar`'s recent recordings list.
+2.  The `handleDelete` function in `RecentRecordingItem.jsx` calls the `onDelete` prop passed from `Sidebar.jsx`.
+3.  `Sidebar.jsx`'s `handleDeleteRecording` function calls `deletePersistedRecording(sessionId)` from `RecordingsContext`.
+4.  `RecordingsContext` makes an authenticated `DELETE` request to `/api/v1/recordings/{user_id}/{session_id}`.
+5.  The backend endpoint in `main.py` processes the request, identifies all associated S3 files via `session_metadata.json`, and deletes them from the S3 bucket.
+6.  If the backend confirms successful deletion, `RecordingsContext` then calls `removeRecording(sessionId)` to remove the recording from the local state, causing the UI to update and the item to disappear from the list.
+7.  Errors at any stage are logged to the console, and potentially could be surfaced to the user with future enhancements (e.g., toast notifications).
