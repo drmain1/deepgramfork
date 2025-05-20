@@ -2,7 +2,19 @@ import React from 'react';
 import { Box, Typography, List, ListItem, ListItemText, Paper, IconButton } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 
-function TranscriptionProfilesTab({ transcriptionProfiles, deleteTranscriptionProfile }) {
+function TranscriptionProfilesTab({ transcriptionProfiles, deleteTranscriptionProfile, settingsLoading }) {
+  
+  if (settingsLoading) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Transcription Profiles Management
+        </Typography>
+        <Typography sx={{ mt: 2 }}>Loading transcription profiles...</Typography>
+      </Box>
+    );
+  }
+  
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h6" gutterBottom>

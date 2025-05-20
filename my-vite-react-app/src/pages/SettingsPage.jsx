@@ -1,35 +1,99 @@
 import { Tabs, Tab, Box, Typography } from '@mui/material';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useAuth0 } from '@auth0/auth0-react';
 import SettingsTabs from '../components/SettingsTabs';
 
 function SettingsPage() {
   const [tabValue, setTabValue] = useState(0);
-  const [transcriptionProfiles, setTranscriptionProfiles] = useState([]); // Added state for profiles
+  const { user, isAuthenticated, isLoading: authLoading, getAccessTokenSilently } = useAuth0();
+
+  const [userSettings, setUserSettings] = useState({
+    transcriptionProfiles: [],
+    macroPhrases: [],
+    customVocabulary: [],
+    officeInformation: [],
+  });
+  const [settingsLoading, setSettingsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadUserSettings = async () => {
+      if (isAuthenticated && user && !authLoading) {
+        setSettingsLoading(true);
+        const storedSettings = localStorage.getItem(`userSettings_${user.sub}`);
+        if (storedSettings) {
+          setUserSettings(JSON.parse(storedSettings));
+        } else {
+          setUserSettings({
+            transcriptionProfiles: [],
+            macroPhrases: [],
+            customVocabulary: [],
+            officeInformation: [],
+          });
+        }
+        setSettingsLoading(false);
+      }
+    };
+    loadUserSettings();
+  }, [isAuthenticated, user, authLoading, getAccessTokenSilently]);
+
+  const saveUserSettings = async (updatedSettings) => {
+    if (isAuthenticated && user) {
+      localStorage.setItem(`userSettings_${user.sub}`, JSON.stringify(updatedSettings));
+    }
+  };
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
   };
 
-  // Function to add a new transcription profile
   const addTranscriptionProfile = (newProfile) => {
-    let status = 'success'; // Default status
-    setTranscriptionProfiles((prevProfiles) => {
-      // Prevent adding duplicates based on id
-      if (prevProfiles.find(profile => profile.id === newProfile.id)) {
-        status = 'duplicate';
-        return prevProfiles;
-      }
-      return [...prevProfiles, newProfile];
-    });
-    return status; // Return status
+    let status = 'success';
+    let updatedProfiles = userSettings.transcriptionProfiles;
+
+    if (userSettings.transcriptionProfiles.find(profile => profile.id === newProfile.id)) {
+      status = 'duplicate';
+    } else {
+      updatedProfiles = [...userSettings.transcriptionProfiles, newProfile];
+    }
+    
+    const newSettings = { ...userSettings, transcriptionProfiles: updatedProfiles };
+    setUserSettings(newSettings);
+    saveUserSettings(newSettings);
+    return status;
   };
 
-  // Function to delete a transcription profile
   const deleteTranscriptionProfile = (profileIdToDelete) => {
-    setTranscriptionProfiles((prevProfiles) => 
-      prevProfiles.filter(profile => profile.id !== profileIdToDelete)
-    );
+    const updatedProfiles = userSettings.transcriptionProfiles.filter(profile => profile.id !== profileIdToDelete);
+    const newSettings = { ...userSettings, transcriptionProfiles: updatedProfiles };
+    setUserSettings(newSettings);
+    saveUserSettings(newSettings);
   };
+
+  const saveMacroPhrases = (macros) => {
+    const newSettings = { ...userSettings, macroPhrases: macros };
+    setUserSettings(newSettings);
+    saveUserSettings(newSettings);
+  };
+
+  const saveCustomVocabulary = (vocabulary) => {
+    const newSettings = { ...userSettings, customVocabulary: vocabulary };
+    setUserSettings(newSettings);
+    saveUserSettings(newSettings);
+  };
+
+  const saveOfficeInformation = (offices) => {
+    const newSettings = { ...userSettings, officeInformation: offices };
+    setUserSettings(newSettings);
+    saveUserSettings(newSettings);
+  };
+
+  if (authLoading || (isAuthenticated && settingsLoading)) {
+    return <Typography>Loading settings...</Typography>;
+  }
+
+  if (!isAuthenticated) {
+    return <Typography>Please log in to manage your settings.</Typography>;
+  }
 
   return (
     <Box>
@@ -41,13 +105,21 @@ function SettingsPage() {
         <Tab label="Narrative Templates" />
         <Tab label="Macro Phrases" />
         <Tab label="Custom Vocabulary" />
+        <Tab label="Office Information" /> 
         <Tab label="Transcription Profiles" /> 
       </Tabs>
       <SettingsTabs 
         tabValue={tabValue} 
-        transcriptionProfiles={transcriptionProfiles} // Pass profiles
-        addTranscriptionProfile={addTranscriptionProfile} // Pass add function
-        deleteTranscriptionProfile={deleteTranscriptionProfile} // Pass delete function
+        transcriptionProfiles={userSettings.transcriptionProfiles} 
+        addTranscriptionProfile={addTranscriptionProfile} 
+        deleteTranscriptionProfile={deleteTranscriptionProfile} 
+        macroPhrases={userSettings.macroPhrases}
+        saveMacroPhrases={saveMacroPhrases} 
+        customVocabulary={userSettings.customVocabulary}
+        saveCustomVocabulary={saveCustomVocabulary} 
+        officeInformation={userSettings.officeInformation}
+        saveOfficeInformation={saveOfficeInformation}
+        settingsLoading={settingsLoading} 
       />
     </Box>
   );

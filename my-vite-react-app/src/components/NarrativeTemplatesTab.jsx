@@ -46,14 +46,21 @@ const templatesBySpecialty = {
   ],
 };
 
-function NarrativeTemplatesTab({ addTranscriptionProfile }) {
+// MODIFIED: Accept settingsLoading prop
+function NarrativeTemplatesTab({ addTranscriptionProfile, settingsLoading }) {
   const [selectedSpecialty, setSelectedSpecialty] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState(null); 
   const [saveButtonState, setSaveButtonState] = useState({ text: 'Save to Transcription Profile', icon: null, color: 'primary', disabled: false });
 
   useEffect(() => {
-    setSaveButtonState({ text: 'Save to Transcription Profile', icon: null, color: 'primary', disabled: false });
-  }, [selectedTemplate]);
+    // Reset button state when template changes, but also consider settingsLoading
+    setSaveButtonState({
+      text: 'Save to Transcription Profile',
+      icon: null,
+      color: 'primary',
+      disabled: settingsLoading || !selectedTemplate // MODIFIED: Disable if settings are loading or no template selected
+    });
+  }, [selectedTemplate, settingsLoading]); // MODIFIED: Add settingsLoading to dependency array
 
   const handleSpecialtyChange = (event) => {
     setSelectedSpecialty(event.target.value);
@@ -148,7 +155,7 @@ function NarrativeTemplatesTab({ addTranscriptionProfile }) {
             sx={{ mt: 2 }}
             onClick={handleSaveProfile} 
             startIcon={saveButtonState.icon} 
-            disabled={saveButtonState.disabled || !selectedTemplate}
+            disabled={saveButtonState.disabled || settingsLoading} // MODIFIED: Also disable if settingsLoading is true directly here
           >
             {saveButtonState.text}
           </Button>

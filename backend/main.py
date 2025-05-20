@@ -507,77 +507,80 @@ async def websocket_stream_endpoint(websocket: WebSocket):
 class SaveSessionRequest(BaseModel):
     session_id: str
     final_transcript_text: str 
-    claude_custom_instructions: Optional[str] = None 
+    user_id: str  
+    patient_context: Optional[str] = None 
+    encounter_type: Optional[str] = None  
+    llm_template: Optional[str] = None    
 
-@app.post("/api/v1/save_session_data")
+@app.post("/api/v1/save_session_data") 
 async def save_session_data_endpoint(request_data: SaveSessionRequest):
-    """
-    Receives session_id, final transcript text, and optional Claude custom instructions.
-    Saves the original transcript to S3.
-    Saves the corresponding local WAV audio file (identified by session_id) to S3.
-    Optionally polishes the transcript using Bedrock (Claude Haiku) and saves it to S3.
-    Removes the local temporary WAV file after successful S3 upload.
-    """
     session_id = request_data.session_id
     original_transcript = request_data.final_transcript_text
-    custom_instructions = request_data.claude_custom_instructions 
+    user_id = request_data.user_id 
+    patient_context = request_data.patient_context 
+    encounter_type = request_data.encounter_type   
+    llm_template = request_data.llm_template     
 
-    print(f"Received request to save session data for session_id: {session_id}")
-    if custom_instructions:
-        print(f"Custom Claude instructions provided for session_id: {session_id}")
-    
+    custom_instructions = f"Patient Context: {patient_context}\nEncounter Type: {encounter_type}\nTemplate: {llm_template}" 
+
+    print(f"Received save request for session: {session_id}, user: {user_id}")
+
+    global s3_client, bedrock_runtime_client
+    if s3_client is None:
+        print("CRITICAL: S3 client not initialized when save_session_data_endpoint was called.")
+        # raise HTTPException(status_code=500, detail="S3 client not available. Cannot save data.")
+        # For now, we'll let it try and fail in the helper functions if s3_client is truly None.
+
+    if bedrock_runtime_client is None:
+        print("WARN: Bedrock client not initialized when save_session_data_endpoint was called. Polishing might be skipped.")
+
+
     s3_paths = {}
     errors = []
 
-    # Ensure s3_client is initialized
-    if not s3_client or not AWS_S3_BUCKET_NAME:
-        error_msg = "S3 client or bucket name not configured. Cannot save session data."
-        print(f"Error for session_id {session_id}: {error_msg}")
-        raise HTTPException(status_code=500, detail=error_msg)
-
-    # 1. Save original transcript to S3
-    try:
-        print(f"Attempting to save original transcript for session_id: {session_id}")
-        s3_original_transcript_path = await save_text_to_s3(
-            s3_client=s3_client,
-            aws_s3_bucket_name=AWS_S3_BUCKET_NAME,
-            tenant_id=DEFAULT_TENANT_ID,
-            session_id=session_id,
-            content=original_transcript,
-            folder="transcripts/original" # Specific subfolder for original transcripts
-        )
-        if s3_original_transcript_path:
-            s3_paths["original_transcript"] = s3_original_transcript_path
-            print(f"Original transcript saved to: {s3_original_transcript_path}")
-        else:
-            errors.append("Failed to save original transcript to S3.")
-    except Exception as e:
-        print(f"Error saving original transcript for {session_id}: {e}")
-        errors.append(f"Error saving original transcript: {str(e)}")
-
-    # 2. Save audio file to S3
     local_wav_file_path = os.path.join(TEMP_AUDIO_DIR, f"{session_id}.wav")
-    if not os.path.exists(local_wav_file_path):
-        warning_msg = f"Local WAV file {local_wav_file_path} not found for session_id {session_id}. Cannot save audio to S3."
-        print(warning_msg)
-        errors.append(warning_msg) # Log as a processing error/warning
-    else:
+
+    if s3_client:
+        print(f"Attempting to save original transcript for session_id: {session_id}, user_id: {user_id}")
         try:
-            print(f"Attempting to save audio file {local_wav_file_path} for session_id: {session_id}")
+            s3_original_transcript_path = await save_text_to_s3(
+                s3_client=s3_client,
+                aws_s3_bucket_name=AWS_S3_BUCKET_NAME,
+                tenant_id=user_id,  
+                session_id=session_id,
+                content=original_transcript,
+                folder="transcripts/original" 
+            )
+            if s3_original_transcript_path:
+                s3_paths["original_transcript"] = s3_original_transcript_path
+                print(f"Original transcript saved to: {s3_original_transcript_path}")
+            else:
+                errors.append("Failed to save original transcript to S3.")
+        except Exception as e:
+            print(f"Error saving original transcript for {session_id}: {e}")
+            errors.append(f"Error saving original transcript: {str(e)}")
+    else:
+        message = "S3 client not configured. Skipping original transcript S3 upload."
+        print(message)
+        errors.append(message)
+
+    if s3_client and os.path.exists(local_wav_file_path):
+        print(f"Attempting to save audio file for session_id: {session_id}, user_id: {user_id}")
+        try:
             s3_audio_path = await save_audio_file_to_s3(
                 s3_client=s3_client,
                 aws_s3_bucket_name=AWS_S3_BUCKET_NAME,
-                tenant_id=DEFAULT_TENANT_ID,
+                tenant_id=user_id,  
                 session_id=session_id,
                 local_file_path=local_wav_file_path,
-                folder="audio" # Specific subfolder for audio files
+                folder="audio"
             )
             if s3_audio_path:
                 s3_paths["audio"] = s3_audio_path
                 print(f"Audio file saved to: {s3_audio_path}")
                 try:
                     os.remove(local_wav_file_path)
-                    print(f"Removed temporary local WAV file: {local_wav_file_path}")
+                    print(f"Successfully removed temporary local WAV file: {local_wav_file_path}")
                 except OSError as e_remove:
                     print(f"Error removing temporary local WAV file {local_wav_file_path}: {e_remove}")
                     # Not adding to main 'errors' as S3 upload succeeded, but good to log
@@ -586,11 +589,17 @@ async def save_session_data_endpoint(request_data: SaveSessionRequest):
         except Exception as e:
             print(f"Error saving audio file for {session_id}: {e}")
             errors.append(f"Error saving audio file: {str(e)}")
+    elif s3_client and not os.path.exists(local_wav_file_path):
+        message = f"Local audio file not found at {local_wav_file_path}. Skipping audio S3 upload."
+        print(message)
+        errors.append(message)
+    elif not s3_client:
+        message = "S3 client not configured. Skipping audio S3 upload."
+        print(message)
+        errors.append(message)
 
-    # 3. Polish transcript with Bedrock (if configured and s3_client is available)
-    polished_transcript_content = original_transcript # Default to original if polishing fails or is skipped
-    if bedrock_runtime_client and s3_client: # Ensure s3_client is also available for saving polished transcript
-        print(f"Attempting to polish transcript for session_id: {session_id}")
+    if bedrock_runtime_client and s3_client: 
+        print(f"Attempting to polish transcript for session_id: {session_id}, user_id: {user_id}")
         try:
             polished_result = await polish_transcript_with_bedrock(
                 transcript=original_transcript,
@@ -600,14 +609,13 @@ async def save_session_data_endpoint(request_data: SaveSessionRequest):
             if polished_result and polished_result.strip() != original_transcript.strip():
                 polished_transcript_content = polished_result.strip()
                 print(f"Transcript polished successfully for session_id: {session_id}")
-                # 4. Save polished transcript to S3
                 s3_polished_transcript_path = await save_text_to_s3(
                     s3_client=s3_client,
                     aws_s3_bucket_name=AWS_S3_BUCKET_NAME,
-                    tenant_id=DEFAULT_TENANT_ID,
+                    tenant_id=user_id,  
                     session_id=session_id,
                     content=polished_transcript_content,
-                    folder="transcripts/polished" # Specific subfolder for polished transcripts
+                    folder="transcripts/polished" 
                 )
                 if s3_polished_transcript_path:
                     s3_paths["polished_transcript"] = s3_polished_transcript_path
@@ -629,7 +637,6 @@ async def save_session_data_endpoint(request_data: SaveSessionRequest):
 
     response_message = "Session data processing completed."
     if not s3_paths and errors:
-         # If nothing was saved and there are errors, it's a more critical failure.
          raise HTTPException(status_code=500, detail=f"Failed to save any session data to S3 for session_id {session_id}. Errors: {'; '.join(errors)}")
     
     if errors:

@@ -71,7 +71,7 @@ This document outlines the structure and key components of the `my-vite-react-ap
 
 **Objective:** Improve initial user experience and streamline access to settings.
 
-1.  **Initial View Updated (`App.jsx`):**
+1.  **Initial View Updated (`App.jsx`):
     *   The application no longer defaults to displaying the `SettingsPage` on first load.
     *   Instead, the root route (`/`) now displays a welcoming message: "Welcome to the Dictation App! Click 'New Recording' in the sidebar to start a new session, or go to 'Settings' to configure your preferences."
     *   The `SettingsPage` remains accessible via the dedicated `/settings` route.
@@ -84,12 +84,54 @@ This document outlines the structure and key components of the `my-vite-react-ap
     *   This button uses `react-router-dom`'s `useNavigate` hook to navigate the user to the `/settings` page when clicked.
     *   The `Sidebar`'s main flex container in `App.jsx` was given `height: '100vh'` and styling adjustments were made to the `Sidebar.jsx` to ensure the new "Settings" button is correctly positioned at the bottom.
 
-3.  **Macro Phrases Management Revamped (`components/MacroPhrasesTab.jsx`) (May 19, 2025):**
+3.  **Macro Phrases Management Revamped (`components/MacroPhrasesTab.jsx`) (May 19, 2025):
     *   The UI for managing macro phrases within the "Settings" page has been significantly overhauled.
     *   The previous system (initially a browser `prompt()`, then a Material-UI `Dialog`) has been replaced with a more intuitive two-pane layout:
         *   **Left Pane**: Contains a "New Macro" button and a scrollable list of all existing macros. Each list item displays the macro's trigger and a preview of its phrase. Clicking an item selects it for editing.
         *   **Right Pane**: Functions as an editor. It displays input fields for the "Trigger" and the "Full Phrase" of the selected macro (or for a new macro). "Save" and "Delete" buttons are provided for managing the entry.
     *   This new interface allows for easier creation, selection, editing, and deletion of macro phrases directly within the tab, providing a more streamlined user experience inspired by common settings interfaces.
+
+## Authentication with Auth0 (Implemented May 19, 2025)
+
+**Objective:** Secure the entire application, requiring users to log in before accessing any features.
+
+**Implementation Details:**
+
+1.  **Auth0 Application Setup:**
+    *   An application was created in the Auth0 dashboard.
+    *   Type: Single Page Web Application.
+    *   **Key Configuration in Auth0 Portal:**
+        *   **Allowed Callback URLs**: Configured to `http://localhost:5173` (and any deployment URLs). This is crucial for redirecting users back to the app after login.
+        *   **Allowed Logout URLs**: Configured to `http://localhost:5173` (and deployment URLs).
+        *   **Allowed Web Origins**: Configured to `http://localhost:5173` (and deployment URLs).
+        *   Domain and Client ID were obtained from the Auth0 application settings.
+
+2.  **Frontend Integration (`my-vite-react-app`):**
+    *   **SDK Installation:** The `@auth0/auth0-react` SDK was installed via npm/yarn.
+    *   **Environment Variables:**
+        *   An `.env` file was created in the root of the Vite project (`my-vite-react-app/.env`).
+        *   `VITE_AUTH0_DOMAIN` and `VITE_AUTH0_CLIENT_ID` were added to this file with the values from the Auth0 dashboard.
+        *   The `.env` file was added to `.gitignore` to prevent committing sensitive credentials.
+    *   **`Auth0Provider` Setup (`src/main.jsx`):**
+        *   The root `App` component is wrapped with `<Auth0Provider>`.
+        *   The provider is configured with the `domain` and `clientId` from the environment variables.
+        *   `authorizationParams.redirect_uri` is set to `window.location.origin` to redirect users to the app's root after login.
+    *   **Protecting the Entire Application (`src/main.jsx`):**
+        *   The `App` component is wrapped with the `withAuthenticationRequired` higher-order component (HOC) from the Auth0 SDK.
+        *   A new component `AuthLoading.jsx` (`src/components/AuthLoading.jsx`) was created to display a loading indicator (Material-UI `CircularProgress`) while the SDK checks authentication status and handles redirection. This component is used as the `onRedirecting` option in `withAuthenticationRequired`.
+        *   This setup ensures that no part of the application is accessible until the user successfully authenticates.
+    *   **Login/Logout Components:**
+        *   `LoginButton.jsx` (`src/components/LoginButton.jsx`): Uses the `useAuth0().loginWithRedirect` method to redirect users to the Auth0 Universal Login page.
+        *   `LogoutButton.jsx` (`src/components/LogoutButton.jsx`): Uses the `useAuth0().logout` method with `logoutParams: { returnTo: window.location.origin }` to log users out and return them to the app's root.
+    *   **Sidebar Integration (`src/components/Sidebar.jsx`):**
+        *   The `useAuth0()` hook is used to get `isAuthenticated`, `isLoading`, and `user` information.
+        *   Conditionally displays:
+            *   A loading message if `isLoading` is true.
+            *   The user's email (if available) and the `LogoutButton` if `isAuthenticated` is true.
+            *   The `LoginButton` if `isAuthenticated` is false (and not loading).
+        *   These UI elements are placed near the "Settings" button at the bottom of the sidebar.
+
+**Outcome:** The entire application is now protected. Unauthenticated users attempting to access any page are automatically redirected to the Auth0 login page. After successful authentication, they are redirected back to the application and can access its features.
 
 ## UI Alignment Issue: 'Note' Tab Content (In `AudioRecorder.jsx`)
 
@@ -432,7 +474,7 @@ The way LLM instructions are generated was significantly changed to give develop
     *   **Dependencies:** `aws-sdk`.
     *   **Core Logic (for `GET` user-data):**
         *   Receive user ID (from Auth0 token validation by API Gateway or passed from it).
-        *   Construct S3 key: `user-data/${userId}/transcription_profiles.json`.
+        *   Construct S3 key: `user-data/${userId}/feature_data.json`.
         *   Use `s3.getObject()` to fetch.
         *   Handle "NoSuchKey" errors (e.g., for new users, return empty array).
         *   Return JSON data.
@@ -468,7 +510,7 @@ The way LLM instructions are generated was significantly changed to give develop
         *   Handle loading states and errors.
     *   **Saving Data (`addTranscriptionProfile`, `deleteTranscriptionProfile`):**
         *   After updating local React state, get the API token.
-        *   Make a `POST` request to your API Gateway endpoint (e.g., `/user/transcription-profiles`) with the *entire updated* `transcriptionProfiles` array in the request body and the auth token.
+        *   Make a `POST` request to your API Gateway endpoint (e.g., `/user/transcription-profiles`) with the *entire updated array* of profiles in the request body and the auth token.
         *   The backend Lambda will overwrite the user's `transcription_profiles.json` in S3.
         *   Handle success/error feedback.
 2.  **S3 Object:** `user-data/{AUTH0_USER_ID}/transcription_profiles.json`
@@ -519,3 +561,126 @@ The way LLM instructions are generated was significantly changed to give develop
     *   API Gateway authorizer is critical.
     *   S3 bucket must remain private.
 *   **Testing:** Thoroughly test the auth flow, data loading, saving, and edge cases (new users, errors).
+
+## S3 Multi-Tenancy for User Data Isolation (Implemented May 19, 2025)
+
+**Objective:** To ensure that each user's session data (audio recordings and transcripts) is stored separately and securely in the AWS S3 bucket (`deeepgramtrans1`).
+
+**Implementation Approach:** User-specific S3 prefixes.
+
+**Details:**
+
+1.  **User Identification:**
+    *   The frontend (`AudioRecorder.jsx`) utilizes the `useAuth0()` hook to obtain the authenticated user's unique identifier (`user.sub`).
+
+2.  **Frontend (`AudioRecorder.jsx`):**
+    *   The `handleSaveSession` function (responsible for initiating the save process) now includes the `user.sub` as `user_id` in the payload of the `POST` request to the backend endpoint `/api/v1/save_session_data`.
+    *   The endpoint URL in `handleSaveSession` was also updated from `/save_session_s3` to `/api/v1/save_session_data` for consistency with the backend.
+
+3.  **Backend (`backend/main.py`):
+    *   The Pydantic request model `SaveSessionRequest` for the `/api/v1/save_session_data` endpoint was updated to include `user_id: str`, `patient_context: Optional[str]`, `encounter_type: Optional[str]`, and `llm_template: Optional[str]`. The previous `claude_custom_instructions` field was removed.
+    *   The `save_session_data_endpoint` function now extracts the `user_id` from the request.
+    *   This `user_id` is then passed as the `tenant_id` argument to the S3 utility functions (`save_text_to_s3`, `save_audio_file_to_s3`) located in `backend/aws_utils.py`.
+
+4.  **S3 Utility Functions (`backend/aws_utils.py`):
+    *   The `save_text_to_s3` and `save_audio_file_to_s3` functions use the provided `tenant_id` (which is the `user.sub`) to construct the S3 object key. For example:
+        *   `s3_key = f"{tenant_id}/{folder}/{session_id}.txt"`
+        *   `s3_key = f"{tenant_id}/{folder}/{session_id}.wav"`
+    *   This ensures that files for each user are stored under a unique prefix corresponding to their `user.sub` within the `deeepgramtrans1` bucket (e.g., `s3://deeepgramtrans1/auth0|xxxxxxxxxxxx/audio/session123.wav`).
+
+**Outcome:** Session data for different users is now segregated into user-specific "folders" (prefixes) in the S3 bucket, enhancing data organization and enabling potential future user-specific access controls.
+
+## User-Specific Settings (Implemented May 19, 2025)
+
+**Objective:**
+Enable user-specific settings for "Macro Phrases," "Custom Vocabulary," and "Transcription Profiles" that persist across sessions and devices (initially using localStorage, with S3 planned for true cross-device).
+
+**Key Changes:**
+
+1.  **Centralized Settings Management (`pages/SettingsPage.jsx`):**
+    *   Integrates `useAuth0` from `@auth0/auth0-react` to get the authenticated user's ID (specifically `user.sub`).
+    *   Manages a unified `userSettings` state object which holds `transcriptionProfiles`, `macroPhrases`, and `customVocabulary`.
+    *   On component mount (triggered when `user` object from Auth0 is available), it attempts to load these settings from `localStorage`. The key used for storage is derived from the user's ID (e.g., `userSettings-${user.sub}`).
+    *   If no settings are found in `localStorage` for the user, it initializes with empty arrays for each setting type.
+    *   A `settingsLoading` boolean state is managed to indicate when settings are being fetched/initialized, allowing child components to display loading indicators.
+    *   Functions like `addTranscriptionProfile`, `deleteTranscriptionProfile`, and new functions `saveMacroPhrases` and `saveCustomVocabulary` now update this central `userSettings` state. After updating the state, the entire `userSettings` object is persisted back to `localStorage` under the user-specific key.
+
+2.  **Props Drilling for Settings (`components/SettingsTabs.jsx`):**
+    *   Modified to pass down the `macroPhrases` and `customVocabulary` arrays from `userSettings`, their respective save functions (`saveMacroPhrases`, `saveCustomVocabulary`), and the `settingsLoading` boolean to the `MacroPhrasesTab` and `CustomVocabularyTab` components.
+    *   It also passes the `settingsLoading` prop to `TranscriptionProfilesTab`, and `NarrativeTemplatesTab` to enable them to react to the loading state.
+
+3.  **`MacroPhrasesTab.jsx` Refactor:**
+    *   Removed its previous reliance on `TemplateContext` for managing macro phrases.
+    *   Now accepts `initialMacroPhrases` (from `userSettings.macroPhrases` via props), `saveMacroPhrases` (prop function from `SettingsPage`), and `settingsLoading` (prop) as props.
+    *   Uses an internal `macros` state, which is initialized and updated from the `initialMacroPhrases` prop via `useEffect`.
+    *   When a macro is saved or deleted, it calls the `saveMacroPhrases` prop function, passing the *entire updated array* of macros to be saved by `SettingsPage`.
+    *   Displays a loading message if `settingsLoading` is true, preventing interaction until settings are loaded.
+
+4.  **`CustomVocabularyTab.jsx` Refactor:**
+    *   Removed its previous reliance on `TemplateContext`.
+    *   Accepts `initialCustomVocabulary` (from `userSettings.customVocabulary` via props), `saveCustomVocabulary` (prop function from `SettingsPage`), and `settingsLoading` (prop) as props.
+    *   Uses an internal `vocabulary` state, managed similarly to `MacroPhrasesTab` via `useEffect` and the `initialCustomVocabulary` prop.
+    *   Added functionality to delete vocabulary items, with a delete icon next to each item in the list.
+    *   When a word/phrase is added or deleted, it calls the `saveCustomVocabulary` prop function with the complete updated list.
+    *   Includes logic to prevent adding duplicate entries to the vocabulary list.
+    *   Displays a loading message if `settingsLoading` is true.
+
+5.  **Loading State Handling in Other Tabs:**
+    *   **`components/TranscriptionProfilesTab.jsx`**: Updated to accept the `settingsLoading` prop. It now displays a "Loading transcription profiles..." message when `settingsLoading` is true, instead of rendering the list of profiles.
+    *   **`components/NarrativeTemplatesTab.jsx`**: Updated to accept the `settingsLoading` prop. The "Save to Transcription Profile" button is now disabled if `settingsLoading` is true. This prevents users from attempting to save a new profile before the existing profiles (and other settings) have been loaded, which could lead to data inconsistencies.
+
+**Persistence Mechanism:**
+*   Currently, user settings are stored in the browser's `localStorage`. Each authenticated user's settings are stored under a unique key that includes their Auth0 user ID (`user.sub`).
+*   This approach ensures that settings persist across browser sessions for the *same user on the same browser and device*.
+*   **Limitation**: `localStorage` is device and browser-specific. Settings will not automatically sync across different devices or browsers.
+*   **Long-term Strategy**: The plan is to replace `localStorage` with a backend solution utilizing AWS S3 for storing user settings. This will involve creating backend API endpoints for fetching and saving settings, allowing them to be truly persistent and accessible across any device the user logs into.
+
+## S3 Integration, Live Recording Status, and Data Cleanup (May 19, 2025)
+
+**Objective:** Resolve issues with saving transcriptions to S3, provide real-time feedback on recording status in the UI, and ensure data integrity for displayed recordings.
+
+**Implementation Details:**
+
+1.  **S3 Save Functionality (404 Error Resolution):**
+    *   **Problem:** Attempts to save session data (transcriptions, audio) to S3 via the backend endpoint (`/api/v1/save_session_data`) were resulting in 404 errors from the frontend.
+    *   **Solution:** The Vite development server (`vite.config.js`) was configured to proxy API requests starting with `/api` to the backend server running on `http://localhost:8000`.
+    *   **File:** `my-vite-react-app/vite.config.js`
+    *   **Change:** Added a `server.proxy` object to `defineConfig`:
+        ```javascript
+        server: {
+          proxy: {
+            '/api': {
+              target: 'http://localhost:8000',
+              changeOrigin: true,
+            },
+          },
+        },
+        ```
+    *   **Outcome:** This resolved the 404 errors, allowing the frontend to successfully communicate with the backend endpoint for saving sessions to S3.
+
+2.  **Live Recording Status in Sidebar:**
+    *   **Goal:** Display new recordings in the sidebar as "pending" immediately upon starting a session, and update their status (e.g., "saving", "saved", "failed") dynamically.
+    *   **`RecordingsContext.jsx` Enhancements (`my-vite-react-app/src/contexts/RecordingsContext.jsx`):
+        *   New functions `startPendingRecording`, `updateRecording`, and `removeRecording` were added to manage the lifecycle of recordings in the shared state.
+        *   `startPendingRecording`: Adds a new recording with 'pending' status and a temporary name when a session starts.
+        *   `updateRecording`: Updates an existing recording's status, name, and other details (like S3 paths upon successful save).
+        *   `removeRecording`: Removes a recording, used if a pending session is cancelled.
+    *   **`AudioRecorder.jsx` Integration (`my-vite-react-app/src/components/AudioRecorder.jsx`):
+        *   Calls `startPendingRecording` from the context when a new transcription session begins.
+        *   Calls `updateRecording` with 'saving' status before attempting to save, then with 'saved' (including details like formatted name, S3 paths) or 'failed' (with error message) based on the API response from `/api/v1/save_session_data`.
+        *   Calls `removeRecording` if a session is stopped before any attempt to save.
+    *   **`RecentRecordingItem.jsx` Enhancements (`my-vite-react-app/src/components/RecentRecordingItem.jsx`):
+        *   The component was significantly updated to visually reflect the recording's `status`:
+            *   **Icons:** Displays different Material-UI icons for each status (e.g., `HourglassEmptyIcon` for pending, `CloudSyncIcon` for saving, `CheckCircleOutlineIcon` for saved, `ErrorOutlineIcon` for failed).
+            *   **Styling:** Applies conditional styling, including status text color and a colored left border on the list item, to make the status immediately apparent.
+            *   **Text Display:** Shows a descriptive status message. For 'saved' items, it displays "Saved: [formatted date/time]".
+            *   **Tooltips:** Provides detailed tooltips on hover for 'saved' recordings (showing full name, date, patient context, S3 paths, etc.) and for 'failed' recordings (showing the error message).
+            *   Date formatting was improved for display.
+    *   **Outcome:** The sidebar now provides immediate and clear feedback on the status of each recording throughout its lifecycle, enhancing user experience.
+
+3.  **Filtering Old/Placeholder Recordings from `localStorage`:**
+    *   **Problem:** Old or malformed recording data persisted in `localStorage` could be displayed incorrectly or cause issues.
+    *   **Solution:** The initialization logic in `RecordingsProvider` (`RecordingsContext.jsx`) was updated to filter recordings loaded from `localStorage`.
+    *   **File:** `my-vite-react-app/src/contexts/RecordingsContext.jsx`
+    *   **Change:** Only recordings that have a string `id` starting with `session_` and a valid `status` field (e.g., 'pending', 'saving', 'saved', 'failed') are now loaded into the application state.
+    *   **Outcome:** This ensures that only valid, current-format recordings are displayed, effectively cleaning up any old placeholder data from view.

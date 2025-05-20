@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useAuth0 } from '@auth0/auth0-react';
+import { useRecordings } from '../contexts/RecordingsContext';
 import {
   Box,
   Button,
@@ -16,6 +18,8 @@ import {
 } from '@mui/material';
 
 const AudioRecorder = () => {
+  const { user, isAuthenticated, isLoading } = useAuth0();
+  const { startPendingRecording, updateRecording, removeRecording } = useRecordings();
   const [currentView, setCurrentView] = useState('setup');
   const [isRecording, setIsRecording] = useState(false);
   const [hasStreamedOnce, setHasStreamedOnce] = useState(false);
@@ -322,11 +326,29 @@ const AudioRecorder = () => {
       return;
     }
 
+    if (!user || !user.sub) {
+      setError('User not authenticated or user ID is missing. Cannot save session.');
+      setSaveStatusMessage('Error: User authentication issue.');
+      return;
+    }
+
     setSaveStatusMessage('Generating and saving notes...');
     setIsSessionSaved(false);
 
+    updateRecording(sessionId, { status: 'saving', name: `Saving: ${patientDetails || 'New Note'}...` });
+
     try {
-      const response = await fetch('http://localhost:8000/save_session_s3', {
+      const url = '/api/v1/save_session_data'; 
+      console.log("Attempting to save session with URL:", url, "and payload:", JSON.stringify({
+        session_id: sessionId,
+        final_transcript_text: combinedTranscript,
+        patient_context: patientContext,
+        encounter_type: encounterType,
+        llm_template: llmTemplate,
+        user_id: user.sub 
+      }));
+
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -336,59 +358,112 @@ const AudioRecorder = () => {
           final_transcript_text: combinedTranscript,
           patient_context: patientContext,
           encounter_type: encounterType,
-          llm_template: llmTemplate
+          llm_template: llmTemplate,
+          user_id: user.sub 
         }),
       });
 
-      const result = await response.json();
+      let result = {};
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        console.error('Failed to parse server response as JSON:', jsonError);
+        if (response.ok) { 
+            throw new Error(`Successfully saved but failed to parse response: ${response.statusText || 'Unknown parse error'}`);
+        }
+        if (response.ok) { 
+            throw new Error(`Successfully saved but failed to parse response: ${response.statusText || 'Unknown parse error'}`);
+        }
+        // For non-OK responses, result.detail will be undefined, rely on response.statusText
+      }
 
       if (response.ok) {
         setSaveStatusMessage(`Notes generated and saved!\nNotes: ${result.notes_s3_path || 'N/A'}\nAudio: ${result.audio_s3_path || 'N/A'}`);
         setIsSessionSaved(true);
+        const savedName = patientDetails 
+                          ? `Note: ${patientDetails.substring(0,20)}${patientDetails.length > 20 ? '...' : ''} (${new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0, 10)})` 
+                          : `Note ${new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0, 16).replace('T', ' ')}`;
+        updateRecording(sessionId, {
+          status: 'saved',
+          name: savedName,
+          date: new Date().toISOString(), 
+          s3PathAudio: result.audio_s3_path,
+          s3PathTranscript: result.original_transcript_s3_path,
+          s3PathPolished: result.notes_s3_path,
+          patientContext: patientContext, 
+          encounterType: encounterType,
+          llmTemplate: llmTemplate,
+          error: null 
+        });
       } else {
-        setSaveStatusMessage(`Error saving session: ${result.detail || response.statusText}`);
-        setError(`Error saving session: ${result.detail || response.statusText}`);
+        const errorDetail = (result && result.detail) || response.statusText || 'Unknown server error';
+        setSaveStatusMessage(`Error saving session: ${errorDetail}`);
+        setError(`Error saving session: ${errorDetail}`);
         setIsSessionSaved(false);
+        updateRecording(sessionId, { status: 'failed', name: `Failed: ${patientDetails || 'New Note'}`, error: errorDetail });
       }
     } catch (err) {
       console.error('Failed to save session:', err);
-      setSaveStatusMessage(`Failed to save session: ${err.message}`);
-      setError(`Failed to save session: ${err.message}`);
+      const errorMessage = err.message || 'Failed to process save request.';
+      setSaveStatusMessage(`Failed to save session: ${errorMessage}`);
+      setError(`Failed to save session: ${errorMessage}`);
       setIsSessionSaved(false);
+      updateRecording(sessionId, { status: 'failed', name: `Failed: ${patientDetails || 'New Note'}`, error: errorMessage });
     }
   };
 
   const handleStartEncounter = () => {
-    if (!patientDetails.trim()) {
-      setError('Please enter patient details or a session name.');
-      return;
-    }
-    setError(null);
+    const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    setSessionId(newSessionId);
+    startPendingRecording(newSessionId); 
     setCurrentView('recording');
+    setError(null);
+    setHasStreamedOnce(false); 
   };
 
   const handleCancelAndClose = () => {
-    if (isRecording) {
-      stopRecording();
+    if (webSocketRef.current) {
+      webSocketRef.current.close();
+      webSocketRef.current = null;
     }
-    if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
-      console.log("[WebSocket] Closing WebSocket connection explicitly from handleCancelAndClose.");
-      webSocketRef.current.close(1000, "User cancelled session"); // Normal closure
-      webSocketRef.current = null; // Nullify after closing for clean resume
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current = null;
     }
-    // onClose(); // onClose prop removed, navigation should handle leaving this view if needed
-    // Consider navigating to a default page like '/settings' or '/' (if settings becomes the new home)
-    // For now, this button might be re-purposed or removed if direct navigation via sidebar is preferred
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach(track => track.stop());
+      audioStreamRef.current = null;
+    }
+    setIsRecording(false);
+
+    if (sessionId && !isSessionSaved) {
+      removeRecording(sessionId);
+    }
+
+    setCurrentView('setup');
+    setPatientDetails('');
+    setPatientContext('');
+    setEncounterType('in-person');
+    setLlmTemplate('general-summary');
+    setError(null);
+    setFinalTranscript('');
+    setCurrentInterimTranscript('');
+    setCombinedTranscript('');
+    setSessionId(null); 
+    setIsSessionSaved(false);
+    setSaveStatusMessage('');
+    setIsRecording(false);
+    setHasStreamedOnce(false);
   };
 
-  function a11yProps(index) {
+  const a11yProps = (index) => {
     return {
       id: `simple-tab-${index}`,
       'aria-controls': `simple-tabpanel-${index}`,
     };
-  }
+  };
 
-  function TabPanel(props) {
+  const TabPanel = (props) => {
     const { children, value, index, ...other } = props;
     return (
       <div
@@ -397,16 +472,16 @@ const AudioRecorder = () => {
         id={`simple-tabpanel-${index}`}
         aria-labelledby={`simple-tab-${index}`}
         {...other}
-        style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }} // Ensure TabPanel itself can grow and manage overflow
+        style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }} 
       >
         {value === index && (
-          <Box sx={{ p: 0, flexGrow: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}> {/* Apply p:0 to override default TabPanel padding if needed, manage overflow here */} 
+          <Box sx={{ p: 0, flexGrow: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}> 
             {children}
           </Box>
         )}
       </div>
     );
-  }
+  };
 
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
@@ -519,7 +594,7 @@ const AudioRecorder = () => {
           bgcolor: 'background.paper',
           borderRadius: 2,
           boxShadow: 3,
-          overflow: 'hidden' // Ensure content doesn't overflow the rounded corners
+          overflow: 'hidden' 
         }}
       >
         <Box sx={{ p: 2, borderBottom: 0, borderColor: 'divider', flexShrink: 0 }}>
@@ -580,7 +655,7 @@ const AudioRecorder = () => {
         }
 
         <TabPanel value={activeTab} index={0} sx={{ flexGrow: 1, overflowY: 'auto', p:0 }}>
-          <Box sx={{ p: 2, minHeight: '150px', '& p': { m: 0} }}> {/* Ensure Typography has no margin if it's a p tag */} 
+          <Box sx={{ p: 2, minHeight: '150px', '& p': { m: 0} }}> 
             <Typography variant="body1" component="div" style={{ whiteSpace: 'pre-wrap' }}>
               {combinedTranscript || (isRecording ? 'Listening...' : 'Start speaking or resume to see transcript...')}
             </Typography>
@@ -592,12 +667,12 @@ const AudioRecorder = () => {
             sx={{
               p: 2, 
               minHeight: '150px',
-              '& p': { m: 0} // Ensure Typography has no margin if it's a p tag
+              '& p': { m: 0} 
             }}
           >
             <Typography variant="body1" color="text.secondary">
               {isSessionSaved && saveStatusMessage.startsWith('Notes generated') 
-                ? saveStatusMessage // Show the full save message if it contains the S3 paths
+                ? saveStatusMessage 
                 : 'Polished note will appear here once generated after saving the session.'}
             </Typography>
           </Box>
@@ -612,7 +687,7 @@ const AudioRecorder = () => {
     );
   }
 
-  return null; // Should not reach here if component is properly used
+  return null; 
 };
 
 export default AudioRecorder;

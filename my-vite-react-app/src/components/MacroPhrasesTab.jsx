@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Button,
@@ -13,7 +13,6 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { useTemplate } from '../contexts/TemplateContext';
 
 const parseMacroString = (macroStr) => {
   if (typeof macroStr !== 'string') return { trigger: '', phrase: '' };
@@ -31,12 +30,20 @@ const formatMacroString = (trigger, phrase) => {
   return `${t}: ${p}`;
 };
 
-function MacroPhrasesTab() {
-  const { macroPhrases, setMacroPhrases } = useTemplate();
-
+function MacroPhrasesTab({ macroPhrases: initialMacroPhrases, saveMacroPhrases, settingsLoading }) {
+  const [macros, setMacros] = useState(initialMacroPhrases || []);
   const [selectedMacroIndex, setSelectedMacroIndex] = useState(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [editForm, setEditForm] = useState({ trigger: '', phrase: '' });
+
+  useEffect(() => {
+    setMacros(initialMacroPhrases || []);
+    if (selectedMacroIndex !== null && selectedMacroIndex >= (initialMacroPhrases || []).length) {
+      setSelectedMacroIndex(null);
+      setIsCreatingNew(false);
+      setEditForm({ trigger: '', phrase: '' });
+    }
+  }, [initialMacroPhrases, selectedMacroIndex]);
 
   const handleNewMacroClick = () => {
     setSelectedMacroIndex(null);
@@ -47,7 +54,7 @@ function MacroPhrasesTab() {
   const handleMacroSelect = (index) => {
     setSelectedMacroIndex(index);
     setIsCreatingNew(false);
-    const parsed = parseMacroString(macroPhrases[index]);
+    const parsed = parseMacroString(macros[index]);
     setEditForm({ trigger: parsed.trigger, phrase: parsed.phrase });
   };
 
@@ -63,22 +70,29 @@ function MacroPhrasesTab() {
     }
 
     const newMacroString = formatMacroString(editForm.trigger, editForm.phrase);
+    let updatedMacros;
 
     if (isCreatingNew) {
-      const newPhrases = [...macroPhrases, newMacroString];
-      setMacroPhrases(newPhrases);
+      updatedMacros = [...macros, newMacroString];
       setIsCreatingNew(false);
-      setSelectedMacroIndex(newPhrases.length - 1);
     } else if (selectedMacroIndex !== null) {
-      const updatedMacroPhrases = [...macroPhrases];
-      updatedMacroPhrases[selectedMacroIndex] = newMacroString;
-      setMacroPhrases(updatedMacroPhrases);
+      updatedMacros = [...macros];
+      updatedMacros[selectedMacroIndex] = newMacroString;
+    } else {
+      return; // Should not happen if UI is correct
+    }
+    setMacros(updatedMacros); 
+    saveMacroPhrases(updatedMacros); 
+    if (isCreatingNew) {
+        setSelectedMacroIndex(updatedMacros.length - 1);
     }
   };
 
   const handleDelete = () => {
     if (selectedMacroIndex !== null && !isCreatingNew) {
-      setMacroPhrases(macroPhrases.filter((_, index) => index !== selectedMacroIndex));
+      const updatedMacros = macros.filter((_, index) => index !== selectedMacroIndex);
+      setMacros(updatedMacros); 
+      saveMacroPhrases(updatedMacros); 
       setSelectedMacroIndex(null);
       setIsCreatingNew(false);
       setEditForm({ trigger: '', phrase: '' });
@@ -86,6 +100,10 @@ function MacroPhrasesTab() {
   };
 
   const showEditor = isCreatingNew || selectedMacroIndex !== null;
+
+  if (settingsLoading) {
+    return <Typography sx={{ p: 2 }}>Loading macros...</Typography>;
+  }
 
   return (
     <Box sx={{ p: 2, flexGrow: 1 }}>
@@ -101,7 +119,7 @@ function MacroPhrasesTab() {
           </Button>
           <Paper elevation={2} sx={{ maxHeight: { xs: '200px', md: 'calc(100vh - 220px)' }, overflowY: 'auto' }}>
             <List component="nav" disablePadding>
-              {macroPhrases.length > 0 ? macroPhrases.map((macroStr, index) => {
+              {macros.length > 0 ? macros.map((macroStr, index) => {
                 const parsed = parseMacroString(macroStr);
                 return (
                   <ListItemButton
