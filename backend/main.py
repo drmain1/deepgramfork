@@ -20,6 +20,9 @@ from fastapi import Path
 from botocore.exceptions import ClientError
 from datetime import datetime, timedelta
 
+# Import the refactored Deepgram handler
+from .deepgram_utils import handle_deepgram_websocket
+
 # Ensure the .env file is in the root of the trans10 directory or adjust path
 # Example: load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
 dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
@@ -105,31 +108,7 @@ deepgram_client = AsyncLiveClient(config)
 import tempfile
 
 # Import the new AWS utility functions
-from aws_utils import polish_transcript_with_bedrock, save_text_to_s3, save_audio_file_to_s3
-
-async def convert_raw_pcm_to_wav(input_pcm_path: str, output_wav_path: str) -> bool:
-    ffmpeg_cmd = [
-        'ffmpeg',
-        '-f', 's16le',      # Format: signed 16-bit little-endian PCM
-        '-ar', '16000',     # Audio rate: 16kHz
-        '-ac', '1',         # Audio channels: mono
-        '-i', input_pcm_path,
-        '-y',               # Overwrite output file if it exists
-        output_wav_path
-    ]
-    print(f"Converting PCM to WAV: {' '.join(ffmpeg_cmd)}")
-    process = await asyncio.create_subprocess_exec(
-        *ffmpeg_cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
-    )
-    stdout, stderr = await process.communicate()
-    if process.returncode == 0:
-        print(f"Successfully converted {input_pcm_path} to {output_wav_path}")
-        return True
-    else:
-        print(f"Error converting PCM to WAV. FFMPEG stderr: {stderr.decode().strip()}")
-        return False
+from .aws_utils import polish_transcript_with_bedrock, save_text_to_s3, save_audio_file_to_s3
 
 html = """
 <!DOCTYPE html>
@@ -196,372 +175,14 @@ async def websocket_test_endpoint(websocket: WebSocket):
 
 @app.websocket("/stream")
 async def websocket_stream_endpoint(websocket: WebSocket):
-    await websocket.accept() # CRITICAL: Accept connection first
-    print(f"WebSocket connection accepted from: {websocket.client.host}:{websocket.client.port}")
-
-    session_id = datetime.now().strftime("%Y%m%d%H%M%S%f") # Added microsecond for more uniqueness
-    # Default Deepgram options
-    dg_smart_format = True
-    dg_diarize = False
-    dg_utterances = False
-    # num_speakers is not directly used in LiveOptions for basic diarization, but could be logged or used if advanced features are enabled.
-
-    initial_message_str = await websocket.receive_text()
-    try:
-        initial_message = json.loads(initial_message_str)
-        print(f"Received initial message from client: {initial_message}")
-        user_id_from_client = initial_message.get("user_id")
-        selected_profile_id_from_client = initial_message.get("profile_id") # Assuming frontend sends 'profile_id'
-
-        if user_id_from_client and selected_profile_id_from_client:
-            print(f"Attempting to load settings for user: {user_id_from_client} to find profile: {selected_profile_id_from_client}")
-            try:
-                user_settings = await get_user_settings(user_id_from_client) # This is an async function
-                if user_settings and user_settings.transcriptionProfiles:
-                    selected_profile = next((p for p in user_settings.transcriptionProfiles if p.id == selected_profile_id_from_client), None)
-                    if selected_profile:
-                        print(f"Found profile '{selected_profile.name}'. Applying its Deepgram settings.")
-                        dg_smart_format = selected_profile.smart_format
-                        dg_diarize = selected_profile.diarize
-                        dg_utterances = selected_profile.utterances
-                        # dg_num_speakers = selected_profile.num_speakers # Store if needed later
-                        print(f"Using profile settings: smart_format={dg_smart_format}, diarize={dg_diarize}, utterances={dg_utterances}")
-                    else:
-                        print(f"Profile ID {selected_profile_id_from_client} not found for user {user_id_from_client}. Using default Deepgram options.")
-                else:
-                    print(f"No transcription profiles found for user {user_id_from_client} or settings are empty. Using default Deepgram options.")
-            except Exception as e_settings:
-                print(f"Error fetching or processing user settings for profile selection: {e_settings}. Using default Deepgram options.")
-        else:
-            print("Initial message from client did not contain user_id or profile_id. Using default Deepgram options.")
-
-    except json.JSONDecodeError:
-        print(f"Could not decode initial message as JSON: {initial_message_str}. Using default Deepgram options.")
-    except Exception as e_initial_msg:
-        print(f"Error processing initial message from client: {e_initial_msg}. Using default Deepgram options.")
-
-
-    # Send session_id to client AFTER processing initial message and potentially profile settings
-    try:
-        await websocket.send_text(json.dumps({"type": "session_init", "session_id": session_id}))
-        print(f"Sent session_init with session_id: {session_id} to client.")
-    except Exception as e:
-        print(f"Error sending session_id to client: {e}")
-        # Optionally, close connection if session_id cannot be sent, or handle error
-        # For now, we'll proceed, but client won't be able to save.
-
-    dg_connection = None
-    ffmpeg_proc = None
-    raw_pcm_file_fd, raw_pcm_file_path = tempfile.mkstemp(suffix='.pcm')
-    os.close(raw_pcm_file_fd)
-    print(f"Temporary raw PCM file will be at: {raw_pcm_file_path}")
-
-    # Initialize final_transcript_accumulator for this session
-    # This list will store dicts like {"is_final": True, "channel_index": [0], "speech_final": True, "channel": [0], "duration": ..., "start": ..., "transcript": "..."}
-    # Or just the transcript strings if that's how it was designed.
-    # Based on MEMORY[87d2e5d1-84c8-4936-9725-68bccc12560c] it accumulates transcript segments.
-    final_transcript_accumulator = [] 
-
-    try:
-        # Define event handlers (nested functions)
-        async def on_open_handler(client, open_data, **kwargs):
-            print(f"Deepgram Connection Open. Client instance: {client}, Open Data: {open_data}")
-
-        async def on_message_handler(client, result, **kwargs):
-            # print(f"--- Deepgram on_message RAW Result: {result}") 
-            transcript = result.channel.alternatives[0].transcript
-            if transcript:
-                # print(f"Transcript from Deepgram: {transcript}")
-                # await websocket.send_text(transcript) # Send transcript to client
-                if result.is_final:
-                    print(f"Sending Final transcript to client: {transcript}")
-                    await websocket.send_text(f"Final: {transcript}")
-                    final_transcript_accumulator.append(transcript) # Accumulate final
-                else:
-                    # print(f"Sending Interim transcript to client: {transcript}")
-                    await websocket.send_text(f"Interim: {transcript}")
-                    # full_transcript_accumulator.append(transcript) # DO NOT append interim for S3
-            # else:
-                # print("Transcript from Deepgram is empty.")
-            
-            if result.is_final:
-                print("Deepgram: Final transcript received.")
-            if result.speech_final:
-                 print("Deepgram: Speech final marker received.")
-
-        async def on_metadata_handler(client, metadata, **kwargs):
-            print(f"Deepgram Metadata: {metadata}")
-
-        async def on_speech_started_handler(client, speech_started, **kwargs):
-            print(f"Deepgram Speech Started: {speech_started}")
-
-        async def on_utterance_end_handler(client, utterance_end, **kwargs):
-            print(f"Deepgram Utterance Ended: {utterance_end}")
-
-        async def on_error_handler(client, error_payload, **kwargs):
-            error_message = error_payload.get('message') or str(error_payload)
-            print(f"Deepgram Error: {error_message}")
-            # More detailed error introspection if needed
-            if hasattr(error_payload, 'err_code') and hasattr(error_payload, 'err_msg'):
-                print(f"Deepgram Error Code: {error_payload.err_code}, Message: {error_payload.err_msg}")
-            # Close client WebSocket on critical Deepgram error
-            # Consider which errors are critical enough to warrant this.
-            # await websocket.close(code=1011, reason=f"Deepgram error: {error_message}")
-
-        async def on_warning_handler(client, warning_payload, **kwargs):
-            print(f"Deepgram Warning: {warning_payload}")
-
-        async def on_close_handler(client_instance, *, close: CloseResponse, **kwargs):
-            print(f"Deepgram Connection Closed. Code: {close.code if close else 'N/A'}, Reason: {close.reason if close else 'N/A'}")
-
-        dg_connection = AsyncLiveClient(config)
-        dg_connection.on(LiveTranscriptionEvents.Open, on_open_handler)
-        dg_connection.on(LiveTranscriptionEvents.Transcript, on_message_handler)
-        dg_connection.on(LiveTranscriptionEvents.Metadata, on_metadata_handler)
-        dg_connection.on(LiveTranscriptionEvents.SpeechStarted, on_speech_started_handler)
-        dg_connection.on(LiveTranscriptionEvents.UtteranceEnd, on_utterance_end_handler)
-        dg_connection.on(LiveTranscriptionEvents.Error, on_error_handler)
-        dg_connection.on(LiveTranscriptionEvents.Warning, on_warning_handler)
-        dg_connection.on(LiveTranscriptionEvents.Close, on_close_handler)
-
-        options = LiveOptions(
-            model="nova-3-medical",
-            language="en-US",
-            smart_format=dg_smart_format, # Use derived value
-            diarize=dg_diarize,           # Use derived value
-            encoding="linear16",
-            sample_rate=16000,
-            channels=1,
-            interim_results=True, # Enable interim results for faster feedback
-            utterance_end_ms="1000",
-            vad_events=True,
-        )
-
-        print("Attempting to start Deepgram connection...")
-        if not await dg_connection.start(options):
-            print("Failed to start Deepgram connection.")
-            await websocket.close(code=1011, reason="Failed to connect to speech service")
-            return
-        print("Deepgram connection started successfully.")
-
-        # Start ffmpeg process for transcoding
-        ffmpeg_command = [
-            'ffmpeg',
-            '-loglevel', 'error',  # Or 'info'/'debug' for more verbose ffmpeg logs
-            '-i', 'pipe:0',       # Input from stdin (data from client WebSocket)
-            '-f', 's16le',        # Output format: signed 16-bit little-endian PCM
-            '-acodec', 'pcm_s16le',# Audio codec: PCM s16le
-            '-ac', '1',           # Number of audio channels: 1 (mono)
-            '-ar', '16000',       # Audio sample rate: 16000 Hz
-            'pipe:1'              # Output to stdout (to be sent to Deepgram)
-        ]
-        print(f"Starting ffmpeg process with command: {' '.join(ffmpeg_command)}")
-        ffmpeg_proc = await asyncio.create_subprocess_exec(
-            *ffmpeg_command,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        print("ffmpeg process started.")
-
-        # Task to read FFMPEG's stdout, forward to Deepgram, and write to PCM file
-        async def read_ffmpeg_stdout_and_forward_to_deepgram():
-            try:
-                while True:
-                    if ffmpeg_proc.stdout is None:
-                        print("FFMPEG stdout is None. Breaking read loop.")
-                        break
-                    
-                    data = await ffmpeg_proc.stdout.read(4096) # Read up to 4096 bytes
-                    
-                    if not data:
-                        print("FFMPEG stdout EOF. Breaking read loop.")
-                        break # End of stream
-                    
-                    if dg_connection and dg_connection.is_connected:
-                         await dg_connection.send(data) # MODIFIED: Added await
-                    else:
-                        print("Deepgram connection not available or closed. Cannot send data. Breaking read loop.")
-                    
-                    if raw_pcm_file_path and os.path.exists(raw_pcm_file_path):
-                        try:
-                            with open(raw_pcm_file_path, 'ab') as f:
-                                f.write(data)
-                        except Exception as e_write:
-                            print(f"Error writing to PCM file: {e_write}")
-                            # Decide if we should close the file or try to continue
-                            break # Stop processing if file writing fails
-                    
-            except asyncio.CancelledError:
-                print("read_ffmpeg_stdout_and_forward_to_deepgram task cancelled.")
-            except Exception as e:
-                print(f"Error in read_ffmpeg_stdout_and_forward_to_deepgram: {e}")
-            finally:
-                print("Exiting read_ffmpeg_stdout_and_forward_to_deepgram.")
-
-        # Task to log FFMPEG's stderr
-        async def log_ffmpeg_stderr():
-            try:
-                while True:
-                    line = await ffmpeg_proc.stderr.readline()
-                    if not line:
-                        print("ffmpeg stderr EOF, stopping logger.")
-                        break # ffmpeg process has closed its stderr
-                    print(f"ffmpeg stderr: {line.decode('utf-8', errors='ignore').strip()}")
-            except asyncio.CancelledError:
-                print("ffmpeg stderr logging task cancelled.")
-            except Exception as e:
-                print(f"Error in log_ffmpeg_stderr_output: {e}")
-            finally:
-                print("log_ffmpeg_stderr_output task finished.")
-
-        # Start tasks
-        # Task to forward client audio to FFMPEG's stdin
-        async def forward_audio_to_ffmpeg():
-            print("DEBUG: forward_audio_to_ffmpeg task started.") # New log
-            try:
-                while True:
-                    print("DEBUG: Attempting to receive audio data from client WebSocket...") # New log
-                    audio_data_from_client = await websocket.receive_bytes()
-                    print(f"DEBUG: Received {len(audio_data_from_client)} bytes from client WebSocket.") # Modified log
-
-                    if audio_data_from_client:
-                        if ffmpeg_proc and ffmpeg_proc.stdin and not ffmpeg_proc.stdin.is_closing():
-                            try:
-                                ffmpeg_proc.stdin.write(audio_data_from_client)
-                                await ffmpeg_proc.stdin.drain()
-                            except BrokenPipeError:
-                                print("ffmpeg stdin broken pipe. Likely ffmpeg process terminated.")
-                                # Consider whether to await websocket.close() here or let the main try/finally handle it.
-                                break
-                            except Exception as e:
-                                print(f"Error writing to ffmpeg stdin: {e}")
-                                # Consider closing or breaking based on error severity
-                                break
-                        else:
-                            print("ffmpeg process stdin not available. Ending receive loop.")
-                            break
-                    else:
-                        # Client might send an empty message to signal end of stream, or it might be an error.
-                        print("DEBUG: Received empty data from client. Assuming end of stream or issue.") # Modified log
-                        break
-            
-            except asyncio.CancelledError:
-                print("forward_audio_to_ffmpeg task cancelled.")
-            except Exception as e:
-                print(f"Error in forward_audio_to_ffmpeg: {e}")
-                print(f"Type of error in forward_audio_to_ffmpeg: {type(e)}")
-            finally:
-                print("Exiting forward_audio_to_ffmpeg.")
-
-        forward_audio_task = asyncio.create_task(forward_audio_to_ffmpeg())
-        read_ffmpeg_stdout_and_forward_to_deepgram_task = asyncio.create_task(read_ffmpeg_stdout_and_forward_to_deepgram())
-        log_ffmpeg_stderr_task = asyncio.create_task(log_ffmpeg_stderr())
-
-        # Ensure all tasks are awaited to catch exceptions and ensure cleanup
-        await asyncio.gather(
-            forward_audio_task,
-            read_ffmpeg_stdout_and_forward_to_deepgram_task, 
-            log_ffmpeg_stderr_task,
-            return_exceptions=True # Allows us to see exceptions from tasks if any
-        )
-
-    except WebSocketDisconnect as e:
-        print(f"Client {websocket.client.host}:{websocket.client.port} disconnected. Code: {e.code}, Reason: {e.reason if e.reason else 'N/A'}")
-    except Exception as e:
-        print(f"Error in WebSocket stream for {websocket.client.host}:{websocket.client.port}: {e}")
-        # Consider logging traceback for more detailed debugging
-        import traceback
-        traceback.print_exc()
-        # Attempt to close the WebSocket gracefully if it's not already closed
-        if not websocket.client_state == WebSocketState.DISCONNECTED:
-            await websocket.close(code=1011, reason=f"Server error: {str(e)[:120]}") # Max reason length is 123 bytes
-    finally:
-        print(f"Cleaning up resources for session_id: {session_id}")
-
-        # 1. Ensure Deepgram connection is closed
-        if dg_connection and dg_connection.is_connected:
-            print("Closing Deepgram connection...")
-            await dg_connection.finish()
-            print("Deepgram connection closed.")
-        elif dg_connection:
-            print("Deepgram connection was not active or already closed.")
-
-        # 2. Ensure FFMPEG process is terminated
-        if ffmpeg_proc:
-            print("Terminating FFMPEG process...")
-            if ffmpeg_proc.stdin and not ffmpeg_proc.stdin.is_closing():
-                try:
-                    ffmpeg_proc.stdin.close()
-                    await ffmpeg_proc.stdin.wait_closed() # Ensure it's fully closed
-                    print("FFMPEG stdin closed.")
-                except Exception as e_ffmpeg_stdin:
-                    print(f"Error closing FFMPEG stdin: {e_ffmpeg_stdin}")
-            
-            if ffmpeg_proc.returncode is None: # Check if process is still running
-                try:
-                    ffmpeg_proc.terminate() # Send SIGTERM
-                    await asyncio.wait_for(ffmpeg_proc.wait(), timeout=5.0) # Wait for termination
-                    print(f"FFMPEG process terminated with code: {ffmpeg_proc.returncode}")
-                except asyncio.TimeoutError:
-                    print("FFMPEG process did not terminate in time, killing...")
-                    ffmpeg_proc.kill() # Send SIGKILL
-                    await ffmpeg_proc.wait()
-                    print(f"FFMPEG process killed, code: {ffmpeg_proc.returncode}")
-                except Exception as e_ffmpeg_term:
-                    print(f"Error terminating FFMPEG process: {e_ffmpeg_term}")
-            else:
-                print(f"FFMPEG process already exited with code: {ffmpeg_proc.returncode}")
-
-        # 3. Convert raw PCM to WAV and save it
-        target_wav_filename = f"{session_id}.wav"
-        target_wav_path = os.path.join(TEMP_AUDIO_DIR, target_wav_filename)
-        print(f"Preparing to convert PCM ({raw_pcm_file_path}) to WAV ({target_wav_path})")
-
-        if os.path.exists(raw_pcm_file_path) and os.path.getsize(raw_pcm_file_path) > 0:
-            conversion_success = await convert_raw_pcm_to_wav(raw_pcm_file_path, target_wav_path)
-            if conversion_success:
-                print(f"Audio for session {session_id} successfully converted and saved to {target_wav_path}")
-            else:
-                print(f"Failed to convert/save audio for session {session_id} to WAV.")
-        elif os.path.exists(raw_pcm_file_path):
-            print(f"Temporary PCM file {raw_pcm_file_path} is empty. Skipping WAV conversion.")
-        else:
-            print(f"Temporary PCM file {raw_pcm_file_path} not found. Cannot convert to WAV.")
-
-        # 4. Clean up temporary raw PCM file
-        if os.path.exists(raw_pcm_file_path):
-            try:
-                os.remove(raw_pcm_file_path)
-                print(f"Removed temporary PCM file: {raw_pcm_file_path}")
-            except OSError as e_remove_pcm:
-                print(f"Error removing temporary PCM file {raw_pcm_file_path}: {e_remove_pcm}")
-        
-        # Final cleanup of tasks (if they were defined and might still be pending)
-        # This is more of a safeguard; ideally, tasks should exit cleanly when their inputs/outputs close.
-        tasks_to_cancel = []
-        if 'forward_audio_task' in locals() and not forward_audio_task.done():
-             tasks_to_cancel.append(forward_audio_task)
-        if 'read_ffmpeg_stdout_and_forward_to_deepgram_task' in locals() and not read_ffmpeg_stdout_and_forward_to_deepgram_task.done():
-             tasks_to_cancel.append(read_ffmpeg_stdout_and_forward_to_deepgram_task)
-        if 'log_ffmpeg_stderr_task' in locals() and not log_ffmpeg_stderr_task.done():
-            tasks_to_cancel.append(log_ffmpeg_stderr_task)
-        
-        for task in tasks_to_cancel:
-            if not task.done():
-                try:
-                    task.cancel()
-                    # Using asyncio.wait_for with a short timeout to prevent indefinite blocking
-                    await asyncio.wait_for(task, timeout=1.0) 
-                except asyncio.CancelledError:
-                    print(f"Task {task.get_name()} was cancelled as expected.")
-                except asyncio.TimeoutError:
-                    print(f"Timeout waiting for task {task.get_name()} to cancel. It might be stuck.")
-                except Exception as e_task_cancel:
-                    print(f"Error cancelling task {task.get_name()}: {e_task_cancel}")
-
-        print(f"Finished cleanup for WebSocket session_id: {session_id}")
-
+    """
+    Handles the primary WebSocket streaming connection for Deepgram transcription.
+    This endpoint now delegates the complex streaming logic to handle_deepgram_websocket
+    from the deepgram_utils module.
+    """
+    # The get_user_settings function from this file is passed as a callable
+    # to handle_deepgram_websocket, allowing it to fetch user-specific settings.
+    await handle_deepgram_websocket(websocket, get_user_settings)
 
 class TranscriptionProfileItem(BaseModel):
     id: str = Field(..., description="Unique identifier for the profile")
@@ -812,10 +433,10 @@ async def delete_session_recording(
         # 1. Fetch the metadata file
         response = s3_client.get_object(Bucket=AWS_S3_BUCKET_NAME, Key=metadata_s3_key)
         metadata_content = response['Body'].read().decode('utf-8')
-        session_metadata = json.loads(metadata_content)
+        metadata = json.loads(metadata_content)
         
         # 2. Collect S3 keys from s3_paths in metadata
-        s3_paths_to_delete = session_metadata.get("s3_paths", {})
+        s3_paths_to_delete = metadata.get("s3_paths", {})
         for path_key, s3_key_value in s3_paths_to_delete.items():
             if isinstance(s3_key_value, str): # Ensure it's a string key
                 objects_to_delete.append({'Key': s3_key_value})
@@ -983,4 +604,4 @@ if __name__ == "__main__":
         print("deepgram_api_key not found. Ensure .env is in the /Users/davidmain/Desktop/trans10 directory and contains the key 'deepgram_api_key'.")
     else:
         print(f"deepgram_api_key found: {deepgram_api_key[:5]}...")
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True, ws_ping_interval=20, ws_ping_timeout=20)
+    uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True, ws_ping_interval=20, ws_ping_timeout=20)
