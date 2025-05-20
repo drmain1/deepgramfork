@@ -1,4 +1,4 @@
-import { Drawer, Box, Button, Typography, List, Divider } from '@mui/material';
+import { Drawer, Box, Button, Typography, List, Divider, ListItemText } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import SettingsIcon from '@mui/icons-material/Settings';
 import { useNavigate } from 'react-router-dom';
@@ -9,7 +9,7 @@ import LoginButton from './LoginButton';
 import LogoutButton from './LogoutButton';
 
 function Sidebar() {
-  const { recordings, deletePersistedRecording } = useRecordings();
+  const { recordings, deletePersistedRecording, isFetchingRecordings } = useRecordings();
   const navigate = useNavigate();
   const { isAuthenticated, isLoading, user } = useAuth0();
 
@@ -80,11 +80,21 @@ function Sidebar() {
           startIcon={<AddIcon />}
           onClick={handleNewRecordingClick} 
           sx={{ mb: 2 }}
+          disabled={isLoading || !isAuthenticated} // Disable if auth is loading or not authenticated
         >
           New Recording
         </Button>
         <Typography variant="h6">Recent Recordings</Typography>
         <List sx={{ overflowY: 'auto', flexGrow: 1 }}>
+          {isFetchingRecordings && recordings.length === 0 && (
+            <ListItemText primary="Loading recordings..." sx={{ textAlign: 'center', color: 'text.secondary', mt: 2 }} />
+          )}
+          {!isFetchingRecordings && recordings.length === 0 && isAuthenticated && (
+            <ListItemText primary="No recent recordings found." sx={{ textAlign: 'center', color: 'text.secondary', mt: 2 }} />
+          )}
+          {!isAuthenticated && !isLoading && (
+            <ListItemText primary="Login to see recordings." sx={{ textAlign: 'center', color: 'text.secondary', mt: 2}}/>
+          )}
           {sortedRecordings.map((recording) => (
             <RecentRecordingItem key={recording.id} recording={recording} onDelete={handleDeleteRecording} />
           ))}
@@ -111,6 +121,7 @@ function Sidebar() {
             startIcon={<SettingsIcon />}
             onClick={handleGoToSettings} 
             sx={{ mb: 1, width: '100%' }} 
+            disabled={isLoading || !isAuthenticated} // Disable if auth is loading or not authenticated
           >
             Settings
           </Button>

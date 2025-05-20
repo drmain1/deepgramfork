@@ -15,9 +15,10 @@ import json
 import tempfile
 from pydantic import BaseModel, Field
 from fastapi import HTTPException
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from fastapi import Path
 from botocore.exceptions import ClientError
+from datetime import datetime, timedelta
 
 # Ensure the .env file is in the root of the trans10 directory or adjust path
 # Example: load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
@@ -199,9 +200,48 @@ async def websocket_stream_endpoint(websocket: WebSocket):
     print(f"WebSocket connection accepted from: {websocket.client.host}:{websocket.client.port}")
 
     session_id = datetime.now().strftime("%Y%m%d%H%M%S%f") # Added microsecond for more uniqueness
-    tenant_id_to_use = DEFAULT_TENANT_ID 
-    
-    # Send session_id to client immediately after connection
+    # Default Deepgram options
+    dg_smart_format = True
+    dg_diarize = False
+    dg_utterances = False
+    # num_speakers is not directly used in LiveOptions for basic diarization, but could be logged or used if advanced features are enabled.
+
+    initial_message_str = await websocket.receive_text()
+    try:
+        initial_message = json.loads(initial_message_str)
+        print(f"Received initial message from client: {initial_message}")
+        user_id_from_client = initial_message.get("user_id")
+        selected_profile_id_from_client = initial_message.get("profile_id") # Assuming frontend sends 'profile_id'
+
+        if user_id_from_client and selected_profile_id_from_client:
+            print(f"Attempting to load settings for user: {user_id_from_client} to find profile: {selected_profile_id_from_client}")
+            try:
+                user_settings = await get_user_settings(user_id_from_client) # This is an async function
+                if user_settings and user_settings.transcriptionProfiles:
+                    selected_profile = next((p for p in user_settings.transcriptionProfiles if p.id == selected_profile_id_from_client), None)
+                    if selected_profile:
+                        print(f"Found profile '{selected_profile.name}'. Applying its Deepgram settings.")
+                        dg_smart_format = selected_profile.smart_format
+                        dg_diarize = selected_profile.diarize
+                        dg_utterances = selected_profile.utterances
+                        # dg_num_speakers = selected_profile.num_speakers # Store if needed later
+                        print(f"Using profile settings: smart_format={dg_smart_format}, diarize={dg_diarize}, utterances={dg_utterances}")
+                    else:
+                        print(f"Profile ID {selected_profile_id_from_client} not found for user {user_id_from_client}. Using default Deepgram options.")
+                else:
+                    print(f"No transcription profiles found for user {user_id_from_client} or settings are empty. Using default Deepgram options.")
+            except Exception as e_settings:
+                print(f"Error fetching or processing user settings for profile selection: {e_settings}. Using default Deepgram options.")
+        else:
+            print("Initial message from client did not contain user_id or profile_id. Using default Deepgram options.")
+
+    except json.JSONDecodeError:
+        print(f"Could not decode initial message as JSON: {initial_message_str}. Using default Deepgram options.")
+    except Exception as e_initial_msg:
+        print(f"Error processing initial message from client: {e_initial_msg}. Using default Deepgram options.")
+
+
+    # Send session_id to client AFTER processing initial message and potentially profile settings
     try:
         await websocket.send_text(json.dumps({"type": "session_init", "session_id": session_id}))
         print(f"Sent session_init with session_id: {session_id} to client.")
@@ -287,7 +327,8 @@ async def websocket_stream_endpoint(websocket: WebSocket):
         options = LiveOptions(
             model="nova-3-medical",
             language="en-US",
-            smart_format=True,
+            smart_format=dg_smart_format, # Use derived value
+            diarize=dg_diarize,           # Use derived value
             encoding="linear16",
             sample_rate=16000,
             channels=1,
@@ -522,6 +563,91 @@ async def websocket_stream_endpoint(websocket: WebSocket):
         print(f"Finished cleanup for WebSocket session_id: {session_id}")
 
 
+class TranscriptionProfileItem(BaseModel):
+    id: str = Field(..., description="Unique identifier for the profile")
+    name: str = Field(..., description="User-defined name for the profile")
+    llmPrompt: Optional[str] = Field(default=None, description="Custom LLM prompt/template for this profile")
+    isDefault: Optional[bool] = Field(default=False, description="Whether this is the default profile")
+    # Deepgram specific options
+    smart_format: Optional[bool] = Field(default=True, description="Enable Deepgram Smart Formatting")
+    diarize: Optional[bool] = Field(default=False, description="Enable Deepgram Speaker Diarization")
+    num_speakers: Optional[int] = Field(default=None, ge=1, description="Suggested number of speakers if diarization is enabled") # ge=1 means greater than or equal to 1 if set
+    utterances: Optional[bool] = Field(default=False, description="Enable Deepgram Word-Level Timestamps (utterances)")
+
+class UserSettingsData(BaseModel):
+    macroPhrases: List[Dict[str, Any]] = Field(default_factory=list)
+    customVocabulary: List[Dict[str, Any]] = Field(default_factory=list)
+    officeInformation: List[str] = Field(default_factory=list) # Consider changing to List[Dict[str, Any]] based on UIsetup.md
+    transcriptionProfiles: List[TranscriptionProfileItem] = Field(default_factory=list)
+
+class SaveUserSettingsRequest(BaseModel):
+    user_id: str # This should ideally come from a validated token in the future
+    settings: UserSettingsData
+
+DEFAULT_USER_SETTINGS = UserSettingsData().model_dump()
+
+@app.get("/api/v1/user_settings/{user_id}", response_model=UserSettingsData)
+async def get_user_settings(user_id: str = Path(..., description="The ID of the user whose settings are to be fetched")):
+    if not s3_client:
+        raise HTTPException(status_code=503, detail="S3 client not initialized. Cannot fetch settings.")
+    if not AWS_S3_BUCKET_NAME:
+        raise HTTPException(status_code=503, detail="S3 bucket name not configured. Cannot fetch settings.")
+
+    s3_key = f"user_settings/{user_id}/settings.json"
+    print(f"Attempting to fetch settings from S3: {AWS_S3_BUCKET_NAME}/{s3_key}")
+
+    try:
+        response = s3_client.get_object(Bucket=AWS_S3_BUCKET_NAME, Key=s3_key)
+        settings_data_json = response['Body'].read().decode('utf-8')
+        settings_data = json.loads(settings_data_json)
+        # Ensure all default keys are present if the loaded data is partial
+        # This also helps in migrating older structures if new keys are added to UserSettingsData
+        loaded_settings_with_defaults = DEFAULT_USER_SETTINGS.copy()
+        loaded_settings_with_defaults.update(settings_data) 
+        return UserSettingsData(**loaded_settings_with_defaults)
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'NoSuchKey':
+            print(f"No settings file found for user {user_id} at {s3_key}, returning defaults.")
+            return UserSettingsData(**DEFAULT_USER_SETTINGS) # Return Pydantic model instance
+        else:
+            print(f"S3 ClientError fetching settings from S3 for user {user_id}: {e}")
+            raise HTTPException(status_code=500, detail=f"Error fetching user settings from S3: {e.response['Error']['Code']}")
+    except json.JSONDecodeError as e:
+        print(f"JSONDecodeError for user {user_id} at {s3_key}: {e}. Returning default settings.")
+        # Optionally, you could try to recover or delete the malformed file
+        return UserSettingsData(**DEFAULT_USER_SETTINGS)
+    except Exception as e:
+        print(f"Unexpected error fetching settings for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error fetching user settings: {str(e)}")
+
+@app.post("/api/v1/user_settings")
+async def save_user_settings(request: SaveUserSettingsRequest):
+    if not s3_client:
+        raise HTTPException(status_code=503, detail="S3 client not initialized. Cannot save settings.")
+    if not AWS_S3_BUCKET_NAME:
+        raise HTTPException(status_code=503, detail="S3 bucket name not configured. Cannot save settings.")
+
+    s3_key = f"user_settings/{request.user_id}/settings.json"
+    print(f"Attempting to save settings to S3: {AWS_S3_BUCKET_NAME}/{s3_key}")
+
+    try:
+        s3_client.put_object(
+            Bucket=AWS_S3_BUCKET_NAME,
+            Key=s3_key,
+            Body=json.dumps(request.settings.model_dump()),
+            ContentType='application/json'
+        )
+        # Return the saved settings object directly
+        return request.settings
+    except ClientError as e:
+        print(f"S3 ClientError saving settings to S3 for user {request.user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error saving user settings to S3: {e.response['Error']['Code']}")
+    except Exception as e:
+        print(f"Unexpected error saving settings for user {request.user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error saving user settings: {str(e)}")
+
+# --- End User Settings --- #
+
 class SaveSessionRequest(BaseModel):
     session_id: str
     final_transcript_text: str 
@@ -752,80 +878,105 @@ async def delete_session_recording(
         raise HTTPException(status_code=500, detail=f"Unexpected error deleting files: {str(e)}")
 
 
-# --- User Settings Models and Endpoints --- #
+class RecordingInfo(BaseModel):
+    id: str # session_id
+    name: str # Derived name, e.g., from patient context or session title
+    date: datetime # Last modified date of the metadata file or a date from metadata
+    status: str = "saved" # This endpoint returns saved recordings
+    s3PathAudio: Optional[str] = None
+    s3PathTranscript: Optional[str] = None
+    s3PathPolished: Optional[str] = None
+    s3PathMetadata: str # S3 key for the session_metadata.json file itself
+    patientContext: Optional[str] = None
+    encounterType: Optional[str] = None # Or selected profile name
+    llmTemplateName: Optional[str] = None # Name of the LLM template/profile used
+    location: Optional[str] = None
+    durationSeconds: Optional[int] = None
+    # Add any other relevant fields that might be in session_metadata.json and useful for display
 
-class UserSettingsData(BaseModel):
-    macroPhrases: List[Dict[str, Any]] = Field(default_factory=list)
-    customVocabulary: List[Dict[str, Any]] = Field(default_factory=list)
-    officeInformation: List[str] = Field(default_factory=list) # Changed to List[str]
-    transcriptionProfiles: List[Dict[str, Any]] = Field(default_factory=list)
-
-class SaveUserSettingsRequest(BaseModel):
-    user_id: str # This should ideally come from a validated token in the future
-    settings: UserSettingsData
-
-DEFAULT_USER_SETTINGS = UserSettingsData().model_dump()
-
-@app.get("/api/v1/user_settings/{user_id}", response_model=UserSettingsData)
-async def get_user_settings(user_id: str = Path(..., description="The ID of the user whose settings are to be fetched")):
+@app.get("/api/v1/user_recordings/{user_id}", response_model=List[RecordingInfo])
+async def get_user_recordings(user_id: str = Path(..., description="User's unique identifier")):
     if not s3_client:
-        raise HTTPException(status_code=503, detail="S3 client not initialized. Cannot fetch settings.")
+        print("S3 client not initialized. Cannot fetch recordings.")
+        raise HTTPException(status_code=503, detail="S3 service not available")
     if not AWS_S3_BUCKET_NAME:
-        raise HTTPException(status_code=503, detail="S3 bucket name not configured. Cannot fetch settings.")
+        print("AWS_S3_BUCKET_NAME not configured.")
+        raise HTTPException(status_code=500, detail="S3 bucket configuration missing")
 
-    s3_key = f"user_settings/{user_id}/settings.json"
-    print(f"Attempting to fetch settings from S3: {AWS_S3_BUCKET_NAME}/{s3_key}")
+    recordings_info = []
+    prefix = f"user_recordings/{user_id}/"
+    fifteen_days_ago = datetime.now(datetime.utcnow().tzinfo) - timedelta(days=15)
 
     try:
-        response = s3_client.get_object(Bucket=AWS_S3_BUCKET_NAME, Key=s3_key)
-        settings_data_json = response['Body'].read().decode('utf-8')
-        settings_data = json.loads(settings_data_json)
-        # Ensure all default keys are present if the loaded data is partial
-        # This also helps in migrating older structures if new keys are added to UserSettingsData
-        loaded_settings_with_defaults = DEFAULT_USER_SETTINGS.copy()
-        loaded_settings_with_defaults.update(settings_data) 
-        return UserSettingsData(**loaded_settings_with_defaults)
+        paginator = s3_client.get_paginator('list_objects_v2')
+        for page in paginator.paginate(Bucket=AWS_S3_BUCKET_NAME, Prefix=prefix):
+            if "Contents" not in page:
+                continue
+            for obj in page["Contents"]:
+                if obj['Key'].endswith('session_metadata.json'):
+                    # S3 LastModified is already timezone-aware (UTC)
+                    if obj['LastModified'] < fifteen_days_ago:
+                        print(f"Skipping old recording: {obj['Key']}, modified: {obj['LastModified']}")
+                        continue
+                    
+                    try:
+                        metadata_obj = s3_client.get_object(Bucket=AWS_S3_BUCKET_NAME, Key=obj['Key'])
+                        metadata_content = metadata_obj['Body'].read().decode('utf-8')
+                        metadata = json.loads(metadata_content)
+
+                        # Construct RecordingInfo
+                        session_id = metadata.get('session_id') or obj['Key'].split('/')[-2]
+                        
+                        # Determine recording name - prioritize patient name/session title from metadata
+                        rec_name = "Recording"
+                        if metadata.get('patientNameSessionTitle'):
+                            rec_name = metadata['patientNameSessionTitle']
+                        elif metadata.get('patientContext'): # Fallback to patientContext if patientNameSessionTitle is not present
+                             rec_name = metadata['patientContext']
+                        else: # Fallback to a generic name with session_id
+                            rec_name = f"Session {session_id[:8]}..."
+
+                        # Date: Use 'sessionStartTime' from metadata if available, else S3 LastModified for the metadata file
+                        record_date_str = metadata.get('sessionStartTime')
+                        record_date = obj['LastModified'] # Default to metadata file's S3 LastModified time
+                        if record_date_str:
+                            try:
+                                record_date = datetime.fromisoformat(record_date_str.replace('Z', '+00:00'))
+                            except ValueError:
+                                print(f"Warning: Could not parse sessionStartTime '{record_date_str}' for {obj['Key']}. Using S3 LastModified.")
+                        
+                        info = RecordingInfo(
+                            id=session_id,
+                            name=rec_name,
+                            date=record_date, # Use parsed or S3 LastModified date
+                            s3PathAudio=metadata.get('s3_key_audio_final') or metadata.get('s3_path_audio'),
+                            s3PathTranscript=metadata.get('s3_key_transcript_raw') or metadata.get('s3_path_transcript'),
+                            s3PathPolished=metadata.get('s3_key_transcript_polished') or metadata.get('s3_path_polished_note'),
+                            s3PathMetadata=obj['Key'],
+                            patientContext=metadata.get('patientContext'),
+                            encounterType=metadata.get('encounterType'), # This might be the old field
+                            llmTemplateName=metadata.get('llmTemplateName') or metadata.get('selectedProfileName'), # Check for new and old field names
+                            location=metadata.get('selectedLocation'),
+                            durationSeconds=metadata.get('duration_seconds') # Ensure this key exists in your metadata if used
+                        )
+                        recordings_info.append(info)
+                    except ClientError as e:
+                        print(f"Error reading/processing metadata file {obj['Key']}: {e}")
+                    except json.JSONDecodeError as e:
+                        print(f"Error decoding JSON from {obj['Key']}: {e}")
+                    except Exception as e:
+                        print(f"Unexpected error processing object {obj['Key']}: {e}")
+                        
+        # Sort recordings by date, most recent first
+        recordings_info.sort(key=lambda r: r.date, reverse=True)
+        return recordings_info
+
     except ClientError as e:
-        if e.response['Error']['Code'] == 'NoSuchKey':
-            print(f"No settings file found for user {user_id} at {s3_key}, returning defaults.")
-            return UserSettingsData(**DEFAULT_USER_SETTINGS) # Return Pydantic model instance
-        else:
-            print(f"S3 ClientError fetching settings from S3 for user {user_id}: {e}")
-            raise HTTPException(status_code=500, detail=f"Error fetching user settings from S3: {e.response['Error']['Code']}")
-    except json.JSONDecodeError as e:
-        print(f"JSONDecodeError for user {user_id} at {s3_key}: {e}. Returning default settings.")
-        # Optionally, you could try to recover or delete the malformed file
-        return UserSettingsData(**DEFAULT_USER_SETTINGS)
+        print(f"S3 ClientError listing objects with prefix {prefix}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error listing recordings from S3: {e.response['Error']['Code']}")
     except Exception as e:
-        print(f"Unexpected error fetching settings for user {user_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Unexpected error fetching user settings: {str(e)}")
-
-@app.post("/api/v1/user_settings")
-async def save_user_settings(request: SaveUserSettingsRequest):
-    if not s3_client:
-        raise HTTPException(status_code=503, detail="S3 client not initialized. Cannot save settings.")
-    if not AWS_S3_BUCKET_NAME:
-        raise HTTPException(status_code=503, detail="S3 bucket name not configured. Cannot save settings.")
-
-    s3_key = f"user_settings/{request.user_id}/settings.json"
-    print(f"Attempting to save settings to S3: {AWS_S3_BUCKET_NAME}/{s3_key}")
-
-    try:
-        s3_client.put_object(
-            Bucket=AWS_S3_BUCKET_NAME,
-            Key=s3_key,
-            Body=json.dumps(request.settings.model_dump()),
-            ContentType='application/json'
-        )
-        return {"message": "User settings saved successfully."}
-    except ClientError as e:
-        print(f"S3 ClientError saving settings to S3 for user {request.user_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Error saving user settings to S3: {e.response['Error']['Code']}")
-    except Exception as e:
-        print(f"Unexpected error saving settings for user {request.user_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Unexpected error saving user settings: {str(e)}")
-
-# --- End User Settings --- #
+        print(f"Unexpected error listing recordings for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error listing recordings: {str(e)}")
 
 if __name__ == "__main__":
     if not deepgram_api_key:

@@ -819,3 +819,48 @@ Enable user-specific settings for "Macro Phrases," "Custom Vocabulary," and "Tra
 5.  The backend endpoint in `main.py` processes the request, identifies all associated S3 files via `session_metadata.json`, and deletes them from the S3 bucket.
 6.  If the backend confirms successful deletion, `RecordingsContext` then calls `removeRecording(sessionId)` to remove the recording from the local state, causing the UI to update and the item to disappear from the list.
 7.  Errors at any stage are logged to the console, and potentially could be surfaced to the user with future enhancements (e.g., toast notifications).
+
+## Deepgram Integration and Transcription Profile Enhancements (May 20, 2025)
+
+**Objective:** Integrate Deepgram-specific transcription options into user-configurable transcription profiles, ensure these settings are used during live transcription, and make the UI for saving these profiles robust and user-friendly.
+
+### 1. Deepgram Options in UI (`NarrativeTemplatesTab.jsx`)
+
+*   **Purpose:** Allow users to customize transcription profiles with specific Deepgram features.
+*   **Changes (`src/components/NarrativeTemplatesTab.jsx`):
+    *   **New State & UI Elements:** Added state variables and Material-UI `Switch` toggles for:
+        *   Smart Formatting (`smart_format`)
+        *   Speaker Diarization (`diarize`)
+        *   Number of Speakers (`num_speakers`) - (Input field, enabled when diarization is on)
+        *   Word-Level Timestamps (`utterances` - Deepgram's term for word-level timestamps/details)
+    *   Descriptive sub-labels were added beneath each toggle to explain its function.
+    *   **`handleSaveProfile` Function:**
+        *   Modified to include these new Deepgram options in the `profileToSave` object when creating/saving a new transcription profile.
+        *   The function was made `async` to correctly `await` the `addTranscriptionProfile` function from the context, which is crucial for receiving the correct save status.
+        *   Extensive efforts were made to refine the button's visual feedback (e.g., "Saving...", "Saved!", "Already Saved!", "Save Failed") using `saveButtonState` and an `isSavingProfile` flag to manage transitions and prevent conflicts between direct state sets and `useEffect` hooks reacting to `settingsLoading`.
+
+### 2. Using Selected Profile in Live Transcription
+
+*   **`AudioRecorder.jsx` Changes:**
+    *   When initiating a new transcription session (WebSocket `onopen`):
+        *   The `AudioRecorder` now sends an initial message to the backend `/stream` WebSocket endpoint containing the `user_id` and the `selectedProfileId` (chosen by the user on the encounter setup screen).
+*   **Backend `/stream` Endpoint Changes (`main.py`):
+    *   The WebSocket endpoint (`websocket_stream_endpoint`) was modified to:
+        *   Receive the `user_id` and `selectedProfileId` from the client's initial message.
+        *   Fetch the user's settings using `get_user_settings`.
+        *   Find the specific transcription profile matching `selectedProfileId` from the user's `transcriptionProfiles`.
+        *   Use the Deepgram-specific boolean flags (`smart_format`, `diarize`, `utterances`) and `num_speakers` from this selected profile when initializing `LiveOptions` for the Deepgram SDK.
+        *   Includes fallback default Deepgram options if a profile isn't found or if specific settings are missing from the profile.
+
+### 3. API and State Management for Transcription Profiles
+
+*   **Reactivity Fix - Backend (`main.py`):
+    *   The `POST /api/v1/user_settings` endpoint (function `save_user_settings`) was initially returning only a success message (`{"message": "User settings saved successfully."}`).
+    *   This was changed to return the *entire updated user settings object* (`request.settings`) upon successful save.
+*   **Reactivity Fix - Frontend (`UserSettingsContext.jsx`):
+    *   The `saveUserSettings` function in the context correctly updates its internal `userSettings` state using the full object returned by the backend (`setUserSettings(savedData)`).
+    *   This change (returning the full object from backend) resolved an issue where the list of transcription profiles (and other settings-dependent UI) would not update immediately after saving a new profile without a manual page refresh. The UI now reflects changes instantly.
+
+### 4. Ongoing Issues
+
+*   Despite multiple attempts and different strategies (refining `useEffect` dependencies, introducing `isSavingProfile` state), the button animation/feedback for the "Save to Transcription Profile" button in `NarrativeTemplatesTab.jsx` remains problematic, not consistently displaying the "Saving...", "Saved!", etc., states as intended.

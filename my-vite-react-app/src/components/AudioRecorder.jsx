@@ -17,7 +17,9 @@ import {
   Tabs,
   Tab,
   ToggleButton,
-  ToggleButtonGroup
+  ToggleButtonGroup,
+  Switch,
+  FormControlLabel
 } from '@mui/material';
 
 const AudioRecorder = () => {
@@ -41,6 +43,7 @@ const AudioRecorder = () => {
   const [isSessionSaved, setIsSessionSaved] = useState(false);
   const [saveStatusMessage, setSaveStatusMessage] = useState('');
   const [activeTab, setActiveTab] = useState(0);
+  const [isMultilingual, setIsMultilingual] = useState(false);
 
   const mediaRecorderRef = useRef(null);
   const webSocketRef = useRef(null);
@@ -175,6 +178,22 @@ const AudioRecorder = () => {
       webSocketRef.current.onopen = () => {
         console.log('[WebSocket] Connection OPENED successfully.');
         setError(null);
+
+        // Send initial metadata for profile selection before anything else
+        if (user && user.sub && selectedProfileId) {
+          const initialMetadata = {
+            type: 'initial_metadata', // Backend expects this type to identify the purpose
+            user_id: user.sub,
+            profile_id: selectedProfileId
+          };
+          webSocketRef.current.send(JSON.stringify(initialMetadata));
+          console.log('[WebSocket] Sent initial_metadata:', initialMetadata);
+        } else {
+          console.warn('[WebSocket] Could not send initial_metadata: user_id or profile_id missing.', { userId: user ? user.sub : 'undefined', profileId: selectedProfileId });
+          // Potentially send an error to the backend or handle this state, 
+          // as backend might be expecting this for setting up Deepgram options.
+        }
+
         const sessionSetupData = {
           type: 'session_config',
           patient_name: patientDetails,
@@ -599,7 +618,7 @@ const AudioRecorder = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} sm={12}>
+            <Grid item xs={12} sm={6}>
               <FormControl fullWidth variant="standard">
                 <InputLabel id="profile-select-label">Transcription Profile</InputLabel>
                 <Select
@@ -624,6 +643,16 @@ const AudioRecorder = () => {
                   )}
                 </Select>
               </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControlLabel
+                control={<Switch checked={isMultilingual} onChange={(e) => setIsMultilingual(e.target.checked)} />}
+                label="Enable Multilingual Support"
+                sx={{ mt: 1, mb: 0.5, width: '100%', justifyContent: 'flex-start'}}
+              />
+            </Grid>
+
+            <Grid item xs={12} sx={{ mt: 0.5, mb: 2 }}>
             </Grid>
           </Grid>
 
