@@ -187,3 +187,18 @@ Following previous fixes, the "Recent Recordings" feature on the home page was s
 **Outcome:**
 
 With these adjustments, the [`/api/v1/user_recordings/{user_id}`](backend/main.py:518) endpoint now correctly lists recordings based on the presence of original transcript files in the designated S3 path (`{user_id}/transcripts/original/`). This aligns the "Recent Recordings" feature with the current transcript-centric storage workflow, and the UI should now display these recordings.
+
+
+5/21/25 10:48am
+I've updated the backend to handle the deletion of transcripts from S3.
+
+Specifically:
+
+Added a new utility function delete_s3_object to backend/aws_utils.py.
+Modified the existing API endpoint DELETE /api/v1/recordings/{user_id}/{session_id} in backend/main.py:
+It now uses delete_s3_object.
+It attempts to delete the original transcript ({user_id}/transcripts/original/{session_id}.txt).
+It attempts to delete the polished transcript ({user_id}/transcripts/polished/{session_id}.txt).
+It also attempts to delete the corresponding audio file ({user_id}/audio/{session_id}.wav) and an old-pattern metadata file (sessions/{user_id}/{session_id}/session_metadata.json) for better cleanup.
+The UI should now correctly trigger the deletion of these files from S3.
+

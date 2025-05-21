@@ -115,3 +115,20 @@ async def save_audio_file_to_s3(s3_client, aws_s3_bucket_name: str, tenant_id: s
     except Exception as e:
         print(f"Error uploading {s3_key} to S3 (via aws_utils): {e}")
         return None
+
+async def delete_s3_object(s3_client, aws_s3_bucket_name: str, s3_key: str):
+    if not s3_client or not aws_s3_bucket_name:
+        print(f"S3 client or bucket name not provided. Skipping S3 delete for {s3_key}.")
+        return False
+    
+    try:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            None,
+            lambda: s3_client.delete_object(Bucket=aws_s3_bucket_name, Key=s3_key)
+        )
+        print(f"Successfully deleted {s3_key} from S3 bucket {aws_s3_bucket_name} (via aws_utils).")
+        return True
+    except Exception as e:
+        print(f"Error deleting {s3_key} from S3 (via aws_utils): {e}")
+        return False

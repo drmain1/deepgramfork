@@ -108,7 +108,7 @@ deepgram_client = AsyncLiveClient(config)
 import tempfile
 
 # Import the new AWS utility functions
-from .aws_utils import polish_transcript_with_bedrock, save_text_to_s3, save_audio_file_to_s3
+from .aws_utils import polish_transcript_with_bedrock, save_text_to_s3, save_audio_file_to_s3, delete_s3_object
 
 html = """
 <!DOCTYPE html>
@@ -424,79 +424,64 @@ async def delete_session_recording(
     if not AWS_S3_BUCKET_NAME:
         raise HTTPException(status_code=503, detail="S3 bucket name not configured. Cannot delete recording.")
 
-    metadata_s3_key = f"sessions/{user_id}/{session_id}/session_metadata.json"
-    print(f"Attempting to delete recording for user {user_id}, session {session_id}. Metadata key: {metadata_s3_key}")
+    print(f"Attempting to delete transcripts for user {user_id}, session {session_id}.")
 
-    objects_to_delete = []
+    original_transcript_key = f"{user_id}/transcripts/original/{session_id}.txt"
+    polished_transcript_key = f"{user_id}/transcripts/polished/{session_id}.txt"
+    audio_key = f"{user_id}/audio/{session_id}.wav" # Also attempt to delete audio file
+    # Attempt to delete the old metadata file path as well, if it exists
+    # This path might be `sessions/{user_id}/{session_id}/session_metadata.json`
+    # or `user_recordings/{user_id}/{some_subfolder}/{session_id}.session_metadata.json`
+    # For now, let's try the `sessions/...` pattern as it was in the previous version of this delete function.
+    metadata_s3_key_old_pattern = f"sessions/{user_id}/{session_id}/session_metadata.json"
 
-    try:
-        # 1. Fetch the metadata file
-        response = s3_client.get_object(Bucket=AWS_S3_BUCKET_NAME, Key=metadata_s3_key)
-        metadata_content = response['Body'].read().decode('utf-8')
-        metadata = json.loads(metadata_content)
+
+    deleted_count = 0
+    error_messages = [] # To collect any specific error messages if needed later
+
+    # --- Delete Original Transcript ---
+    print(f"  Attempting to delete original transcript: {original_transcript_key}")
+    original_deleted = await delete_s3_object(s3_client, AWS_S3_BUCKET_NAME, original_transcript_key)
+    if original_deleted:
+        deleted_count += 1
+        print(f"  Successfully deleted original transcript: {original_transcript_key}")
+    else:
+        # delete_s3_object logs its own errors. We note here it wasn't successful.
+        print(f"  Failed to delete or original transcript not found: {original_transcript_key}")
+
+    # --- Delete Polished Transcript ---
+    print(f"  Attempting to delete polished transcript: {polished_transcript_key}")
+    polished_deleted = await delete_s3_object(s3_client, AWS_S3_BUCKET_NAME, polished_transcript_key)
+    if polished_deleted:
+        deleted_count += 1
+        print(f"  Successfully deleted polished transcript: {polished_transcript_key}")
+    else:
+        print(f"  Failed to delete or polished transcript not found: {polished_transcript_key}")
+
+    # --- Delete Audio File (Optional but good for cleanup) ---
+    print(f"  Attempting to delete audio file: {audio_key}")
+    audio_deleted = await delete_s3_object(s3_client, AWS_S3_BUCKET_NAME, audio_key)
+    if audio_deleted:
+        deleted_count += 1
+        print(f"  Successfully deleted audio file: {audio_key}")
+    else:
+        print(f"  Failed to delete or audio file not found: {audio_key}")
         
-        # 2. Collect S3 keys from s3_paths in metadata
-        s3_paths_to_delete = metadata.get("s3_paths", {})
-        for path_key, s3_key_value in s3_paths_to_delete.items():
-            if isinstance(s3_key_value, str): # Ensure it's a string key
-                objects_to_delete.append({'Key': s3_key_value})
-                print(f"  Scheduled for deletion: {s3_key_value}")
-            else:
-                print(f"  Skipping non-string S3 path in metadata: {path_key}: {s3_key_value}")
+    # --- Delete old pattern metadata file (Optional but good for cleanup) ---
+    print(f"  Attempting to delete old pattern metadata file: {metadata_s3_key_old_pattern}")
+    metadata_old_deleted = await delete_s3_object(s3_client, AWS_S3_BUCKET_NAME, metadata_s3_key_old_pattern)
+    if metadata_old_deleted:
+        deleted_count += 1
+        print(f"  Successfully deleted old pattern metadata file: {metadata_s3_key_old_pattern}")
+    else:
+        print(f"  Failed to delete or old pattern metadata file not found: {metadata_s3_key_old_pattern}")
 
-        # 3. Add the metadata file itself to the list of objects to delete
-        objects_to_delete.append({'Key': metadata_s3_key})
-        print(f"  Scheduled for deletion: {metadata_s3_key}")
 
-    except ClientError as e:
-        if e.response['Error']['Code'] == 'NoSuchKey':
-            print(f"Metadata file {metadata_s3_key} not found. Assuming recording already deleted or never existed.")
-            # If metadata doesn't exist, there's nothing to delete based on it.
-            # We could try to delete common paths if desired, but this implies an inconsistent state.
-            # For now, return success as the state (no recording) is achieved.
-            return {"message": "Recording not found or already deleted."}
-        else:
-            print(f"S3 ClientError fetching metadata {metadata_s3_key}: {e}")
-            raise HTTPException(status_code=500, detail=f"Error fetching recording metadata: {e.response['Error']['Code']}")
-    except json.JSONDecodeError as e:
-        print(f"Error decoding metadata JSON from {metadata_s3_key}: {e}. Will attempt to delete metadata file only.")
-        # If metadata is corrupt, still try to delete the metadata file itself.
-        # Other files might be orphaned but this is a recovery attempt.
-        objects_to_delete.append({'Key': metadata_s3_key})
-    except Exception as e:
-        print(f"Unexpected error processing metadata for {metadata_s3_key}: {e}")
-        raise HTTPException(status_code=500, detail=f"Unexpected error processing recording metadata: {str(e)}")
-
-    if not objects_to_delete:
-        # This case might happen if metadata was empty or malformed and didn't even include itself.
-        print(f"No objects identified for deletion for session {session_id}. This might indicate an issue or an already clean state.")
-        return {"message": "No files identified for deletion. Recording might be partially deleted or in an inconsistent state."}
-
-    try:
-        # 4. Delete all collected objects
-        print(f"Attempting to delete {len(objects_to_delete)} objects from S3 bucket {AWS_S3_BUCKET_NAME}...")
-        delete_response = s3_client.delete_objects(
-            Bucket=AWS_S3_BUCKET_NAME,
-            Delete={'Objects': objects_to_delete, 'Quiet': False} # Set Quiet=False to get info about deleted/errored items
-        )
-        
-        deleted_count = len(delete_response.get('Deleted', []))
-        error_count = len(delete_response.get('Errors', []))
-
-        print(f"S3 delete_objects response: Deleted: {deleted_count}, Errors: {error_count}")
-        if error_count > 0:
-            print(f"Errors during S3 deletion: {delete_response.get('Errors')}")
-            # Even if some errors, others might have succeeded. Partial success.
-            raise HTTPException(status_code=500, detail=f"Some files could not be deleted from S3. Errors: {error_count}")
-        
-        return {"message": f"Recording {session_id} and {deleted_count} associated files deleted successfully."}
-
-    except ClientError as e:
-        print(f"S3 ClientError during delete_objects for session {session_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Error deleting files from S3: {e.response['Error']['Code']}")
-    except Exception as e:
-        print(f"Unexpected error during S3 deletion for session {session_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Unexpected error deleting files: {str(e)}")
+    if deleted_count > 0:
+        return {"message": f"Successfully deleted {deleted_count} associated file(s) for session {session_id}."}
+    else:
+        # This implies none of the targeted files (original, polished, audio, old metadata) were found or deleted.
+        return {"message": f"No files found to delete for session {session_id}. They may have already been deleted or never existed at the expected paths."}
 
 
 class RecordingInfo(BaseModel):
