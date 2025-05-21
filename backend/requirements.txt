@@ -3,3 +3,5 @@ uvicorn[standard]
 python-dotenv
 websockets
 boto3
+deepgram-sdk
+ffmpeg-python

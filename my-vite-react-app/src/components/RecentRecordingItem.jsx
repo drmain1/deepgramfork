@@ -1,4 +1,5 @@
-import { ListItem, ListItemText, ListItemIcon, Tooltip, Typography, Box, ListItemSecondaryAction, IconButton } from '@mui/material';
+import React from 'react';
+import { ListItem, ListItemText, Tooltip, Typography, Box, ListItemSecondaryAction, IconButton } from '@mui/material'; // Removed ListItemIcon as it's not used directly here, ensure it's not needed or re-add if it was a mistake.
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import SaveIcon from '@mui/icons-material/Save'; // Represents saving in progress or successfully saved
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
@@ -6,11 +7,53 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import CloudSyncIcon from '@mui/icons-material/CloudSync'; // For 'saving' status
 import DeleteIcon from '@mui/icons-material/Delete';
 
+// This wrapper will be the direct child of Tooltip
+// and will correctly forward refs and props.
+const TooltipCompatibleWrapper = React.forwardRef((props, ref) => {
+  // Spread all props (including those from Tooltip and any custom ones) onto the div
+  return <div {...props} ref={ref} />;
+});
+TooltipCompatibleWrapper.displayName = 'TooltipCompatibleWrapper';
+
 function RecentRecordingItem({ recording, onDelete }) {
-  const handleClick = () => {
-    // For now, just log. Later, this could open the recording details or player.
+  const handleClick = async () => {
     console.log('Clicked recording:', recording);
-    // alert(`Viewing recording ${recording.id}... (Integrate with playback or transcription view)`);
+
+    let transcriptS3Key = null;
+    if (recording.s3PathPolished) {
+      transcriptS3Key = recording.s3PathPolished;
+      console.log('Attempting to fetch polished transcript:', transcriptS3Key);
+    } else if (recording.s3PathTranscript) {
+      transcriptS3Key = recording.s3PathTranscript;
+      console.log('Attempting to fetch original transcript:', transcriptS3Key);
+    } else {
+      console.log('No S3 path found for polished or original transcript for this recording.');
+      alert('No transcript available for this recording.');
+      return;
+    }
+
+    if (transcriptS3Key) {
+      try {
+        // Ensure the API URL is correct, especially the host and port if not running on the same origin.
+        // For development, if frontend is 5173 and backend is 8000, you need the full URL.
+        const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+        const response = await fetch(`${apiUrl}/api/v1/s3_object_content?s3_key=${encodeURIComponent(transcriptS3Key)}`);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Failed to fetch transcript: ${response.status} ${response.statusText}. Server says: ${errorText}`);
+        }
+        
+        const transcriptContent = await response.text();
+        console.log('Transcript Content:', transcriptContent);
+        // For now, alert the content. Later, display it in a modal or dedicated view.
+        alert(`Transcript for ${recording.name}:\n\n${transcriptContent.substring(0, 500)}${transcriptContent.length > 500 ? '...' : ''}`);
+
+      } catch (error) {
+        console.error('Error fetching transcript:', error);
+        alert(`Could not fetch transcript: ${error.message}`);
+      }
+    }
   };
 
   const handleDelete = (e) => {
@@ -93,25 +136,33 @@ function RecentRecordingItem({ recording, onDelete }) {
 
   return (
     <Tooltip title={tooltipTitle} placement="right-start" arrow>
-      <ListItem button onClick={handleClick} sx={{ 
-        borderLeft: recording.status === 'pending' ? '3px solid orange' 
-                  : recording.status === 'saving' ? '3px solid blue' 
-                  : recording.status === 'failed' ? '3px solid red' 
-                  : '3px solid transparent', // Keep space for non-active items
-        paddingY: '4px' // Reduce vertical padding slightly
-      }}>
-        <ListItemText 
-          primary={primaryText} 
-          secondary={secondaryDisplay}
-          primaryTypographyProps={{ variant: 'subtitle2', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-          secondaryTypographyProps={{ component: 'div' }} // Ensure secondary can host the Box
-        />
-        <ListItemSecondaryAction>
-          <IconButton edge="end" aria-label="delete" onClick={handleDelete} size="small">
-            <DeleteIcon fontSize="small" />
-          </IconButton>
-        </ListItemSecondaryAction>
-      </ListItem>
+      <TooltipCompatibleWrapper>
+        {/* The ListItem is now a child of the TooltipCompatibleWrapper */}
+        <ListItem
+          button // Reverted to boolean prop
+          onClick={handleClick}
+          sx={{
+            borderLeft: recording.status === 'pending' ? '3px solid orange'
+                      : recording.status === 'saving' ? '3px solid blue'
+                      : recording.status === 'failed' ? '3px solid red'
+                      : '3px solid transparent', // Keep space for non-active items
+            paddingY: '4px', // Reduce vertical padding slightly
+            width: '100%' // Ensure ListItem takes full width of the wrapper
+          }}
+        >
+          <ListItemText
+            primary={primaryText}
+            secondary={secondaryDisplay}
+            primaryTypographyProps={{ variant: 'subtitle2', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            secondaryTypographyProps={{ component: 'div' }} // Ensure secondary can host the Box
+          />
+          <ListItemSecondaryAction>
+            <IconButton edge="end" aria-label="delete" onClick={handleDelete} size="small">
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </ListItemSecondaryAction>
+        </ListItem>
+      </TooltipCompatibleWrapper>
     </Tooltip>
   );
 }

@@ -18,7 +18,7 @@ from fastapi import HTTPException
 from typing import Optional, List, Dict, Any, Union
 from fastapi import Path
 from botocore.exceptions import ClientError
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Import the refactored Deepgram handler
 from .deepgram_utils import handle_deepgram_websocket
@@ -507,7 +507,7 @@ class RecordingInfo(BaseModel):
     s3PathAudio: Optional[str] = None
     s3PathTranscript: Optional[str] = None
     s3PathPolished: Optional[str] = None
-    s3PathMetadata: str # S3 key for the session_metadata.json file itself
+    s3PathMetadata: Optional[str] = None # S3 key for the session_metadata.json file itself, now optional
     patientContext: Optional[str] = None
     encounterType: Optional[str] = None # Or selected profile name
     llmTemplateName: Optional[str] = None # Name of the LLM template/profile used
@@ -517,6 +517,7 @@ class RecordingInfo(BaseModel):
 
 @app.get("/api/v1/user_recordings/{user_id}", response_model=List[RecordingInfo])
 async def get_user_recordings(user_id: str = Path(..., description="User's unique identifier")):
+    print(f"--- get_user_recordings called with user_id: '{user_id}' ---") # Enhanced log
     if not s3_client:
         print("S3 client not initialized. Cannot fetch recordings.")
         raise HTTPException(status_code=503, detail="S3 service not available")
@@ -525,80 +526,113 @@ async def get_user_recordings(user_id: str = Path(..., description="User's uniqu
         raise HTTPException(status_code=500, detail="S3 bucket configuration missing")
 
     recordings_info = []
-    prefix = f"user_recordings/{user_id}/"
-    fifteen_days_ago = datetime.now(datetime.utcnow().tzinfo) - timedelta(days=15)
+    # New prefix targeting the original transcript files directly.
+    prefix = f"{user_id}/transcripts/original/"
+    print(f"Attempting to list recordings for user_id: '{user_id}' in bucket '{AWS_S3_BUCKET_NAME}' with prefix: '{prefix}' (based on original transcripts)") # Enhanced log
+
+    fifteen_days_ago = datetime.now(timezone.utc) - timedelta(days=15)
+    print(f"Filtering for recordings newer than: {fifteen_days_ago.isoformat()}") # Enhanced log
 
     try:
         paginator = s3_client.get_paginator('list_objects_v2')
+        print(f"Initialized S3 paginator for bucket '{AWS_S3_BUCKET_NAME}', prefix '{prefix}'") # Enhanced log
         for page in paginator.paginate(Bucket=AWS_S3_BUCKET_NAME, Prefix=prefix):
             if "Contents" not in page:
+                print("S3 page response did not contain 'Contents' key. Skipping page.") # Enhanced log
                 continue
+            
+            print(f"S3 page Contents (found {len(page['Contents'])} items):") # Enhanced log
+            for i, item in enumerate(page["Contents"]): # Log all items first
+                print(f"  Item {i+1}: Key='{item['Key']}', LastModified='{item['LastModified']}'")
+
             for obj in page["Contents"]:
-                if obj['Key'].endswith('session_metadata.json'):
-                    # S3 LastModified is already timezone-aware (UTC)
-                    if obj['LastModified'] < fifteen_days_ago:
-                        print(f"Skipping old recording: {obj['Key']}, modified: {obj['LastModified']}")
-                        continue
-                    
+                obj_key = obj['Key'] # Full S3 key, e.g., "user_id/transcripts/original/session_id.txt"
+                
+                # S3 LastModified is already timezone-aware (UTC)
+                if obj['LastModified'] < fifteen_days_ago:
+                    print(f"FILTERED OUT (too old): Key='{obj_key}', LastModified='{obj['LastModified']}'") # Enhanced log
+                    continue
+
+                # We are looking for .txt files (original transcripts)
+                if obj_key.endswith('.txt'):
+                    print(f"MATCHED SUFFIX (.txt): Key='{obj_key}'. Proceeding to process.") # Enhanced log
                     try:
-                        metadata_obj = s3_client.get_object(Bucket=AWS_S3_BUCKET_NAME, Key=obj['Key'])
-                        metadata_content = metadata_obj['Body'].read().decode('utf-8')
-                        metadata = json.loads(metadata_content)
-
-                        # Construct RecordingInfo
-                        session_id = metadata.get('session_id') or obj['Key'].split('/')[-2]
+                        # Extract session_id from the filename part of the S3 key
+                        # e.g., from "user_id/transcripts/original/some_session_id.txt" -> "some_session_id"
+                        filename_with_extension = obj_key.split('/')[-1]
+                        session_id = filename_with_extension.rsplit('.', 1)[0]
                         
-                        # Determine recording name - prioritize patient name/session title from metadata
-                        rec_name = "Recording"
-                        if metadata.get('patientNameSessionTitle'):
-                            rec_name = metadata['patientNameSessionTitle']
-                        elif metadata.get('patientContext'): # Fallback to patientContext if patientNameSessionTitle is not present
-                             rec_name = metadata['patientContext']
-                        else: # Fallback to a generic name with session_id
-                            rec_name = f"Session {session_id[:8]}..."
+                        record_date = obj['LastModified'] # Use S3 object's LastModified for the date
 
-                        # Date: Use 'sessionStartTime' from metadata if available, else S3 LastModified for the metadata file
-                        record_date_str = metadata.get('sessionStartTime')
-                        record_date = obj['LastModified'] # Default to metadata file's S3 LastModified time
-                        if record_date_str:
+                        s3_path_transcript_original = obj_key # The S3 key of the .txt file itself
+                        s3_path_transcript_polished = f"{user_id}/transcripts/polished/{session_id}.txt"
+                        
+                        # Attempt to create a more friendly name if session_id is a timestamp like '20250521084548959319'
+                        rec_name = f"Tx @ {session_id}" # Default name
+                        if len(session_id) == 20 and session_id.isdigit(): # Basic check for timestamp-like string
                             try:
-                                record_date = datetime.fromisoformat(record_date_str.replace('Z', '+00:00'))
+                                ts_dt = datetime.strptime(session_id[:14], "%Y%m%d%H%M%S")
+                                rec_name = ts_dt.strftime("Transcript %Y-%m-%d %H:%M")
                             except ValueError:
-                                print(f"Warning: Could not parse sessionStartTime '{record_date_str}' for {obj['Key']}. Using S3 LastModified.")
-                        
+                                pass # Keep default if parsing fails
+
                         info = RecordingInfo(
                             id=session_id,
-                            name=rec_name,
-                            date=record_date, # Use parsed or S3 LastModified date
-                            s3PathAudio=metadata.get('s3_key_audio_final') or metadata.get('s3_path_audio'),
-                            s3PathTranscript=metadata.get('s3_key_transcript_raw') or metadata.get('s3_path_transcript'),
-                            s3PathPolished=metadata.get('s3_key_transcript_polished') or metadata.get('s3_path_polished_note'),
-                            s3PathMetadata=obj['Key'],
-                            patientContext=metadata.get('patientContext'),
-                            encounterType=metadata.get('encounterType'), # This might be the old field
-                            llmTemplateName=metadata.get('llmTemplateName') or metadata.get('selectedProfileName'), # Check for new and old field names
-                            location=metadata.get('selectedLocation'),
-                            durationSeconds=metadata.get('duration_seconds') # Ensure this key exists in your metadata if used
+                            name=rec_name, # Use session_id or formatted timestamp as the name
+                            date=record_date,
+                            s3PathAudio=None, # Audio files are not used for this listing
+                            s3PathTranscript=s3_path_transcript_original,
+                            s3PathPolished=s3_path_transcript_polished,
+                            s3PathMetadata=None, # Metadata files are not the source of this list
+                            patientContext=None,
+                            encounterType=None,
+                            llmTemplateName=None,
+                            location=None,
+                            durationSeconds=None,
+                            status="saved" # Default status from RecordingInfo model
                         )
                         recordings_info.append(info)
-                    except ClientError as e:
-                        print(f"Error reading/processing metadata file {obj['Key']}: {e}")
-                    except json.JSONDecodeError as e:
-                        print(f"Error decoding JSON from {obj['Key']}: {e}")
                     except Exception as e:
-                        print(f"Unexpected error processing object {obj['Key']}: {e}")
+                        print(f"Unexpected error processing transcript file {obj_key}: {e}")
                         
         # Sort recordings by date, most recent first
         recordings_info.sort(key=lambda r: r.date, reverse=True)
+        print(f"Found {len(recordings_info)} recordings for user {user_id} (from original transcripts) within the last 15 days.")
         return recordings_info
 
     except ClientError as e:
-        print(f"S3 ClientError listing objects with prefix {prefix}: {e}")
-        raise HTTPException(status_code=500, detail=f"Error listing recordings from S3: {e.response['Error']['Code']}")
+        print(f"S3 ClientError listing transcript files for user {user_id} with prefix {prefix}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error listing transcript files from S3: {e.response['Error']['Code']}")
     except Exception as e:
-        print(f"Unexpected error listing recordings for user {user_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Unexpected error listing recordings: {str(e)}")
+        print(f"Unexpected error listing transcript files for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error listing transcript files: {str(e)}")
 
+from fastapi.responses import PlainTextResponse
+
+@app.get("/api/v1/s3_object_content", response_class=PlainTextResponse)
+async def get_s3_object_content(s3_key: str):
+    if not s3_client:
+        print("S3 client not initialized. Cannot fetch S3 object content.")
+        raise HTTPException(status_code=503, detail="S3 service not available")
+    if not AWS_S3_BUCKET_NAME:
+        print("AWS_S3_BUCKET_NAME not configured.")
+        raise HTTPException(status_code=500, detail="S3 bucket configuration missing")
+
+    print(f"Attempting to fetch S3 object content for key: {s3_key} from bucket: {AWS_S3_BUCKET_NAME}")
+    try:
+        response = s3_client.get_object(Bucket=AWS_S3_BUCKET_NAME, Key=s3_key)
+        content = response['Body'].read().decode('utf-8')
+        return content
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'NoSuchKey':
+            print(f"S3 object not found: {s3_key}")
+            raise HTTPException(status_code=404, detail=f"S3 object not found: {s3_key}")
+        else:
+            print(f"S3 ClientError fetching S3 object {s3_key}: {e}")
+            raise HTTPException(status_code=500, detail=f"Error fetching S3 object: {e.response['Error']['Code']}")
+    except Exception as e:
+        print(f"Unexpected error fetching S3 object {s3_key}: {e}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error fetching S3 object: {str(e)}")
 if __name__ == "__main__":
     if not deepgram_api_key:
         print("deepgram_api_key not found. Ensure .env is in the /Users/davidmain/Desktop/trans10 directory and contains the key 'deepgram_api_key'.")

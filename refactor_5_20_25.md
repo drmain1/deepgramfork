@@ -65,3 +65,125 @@ These follow-up changes were critical for:
 *   Ensuring the backend server could be started reliably using `python backend/main.py` from the project root.
 *   Resolving the primary issue where the frontend was not displaying streaming transcripts due to a mismatch in WebSocket message formats.
 *   The application's streaming transcription functionality is now confirmed to be working as expected.
+
+### S3 Storage Workflow Investigation & Unification Plan (May 21, 2025)
+
+Following the initial refactoring, an investigation into S3 storage workflows for transcripts and audio recordings was conducted based on observations of potentially duplicate or misaligned data storage paths.
+
+**Summary of Findings (from `backend/` code analysis):**
+
+*   **Multiple S3 Storage Patterns Identified:**
+    1.  **Transcript Archival Workflow:**
+        *   Original transcripts are saved by [`backend/main.py`](backend/main.py:311) (via [`save_text_to_s3`](backend/aws_utils.py:77)) to S3 paths like `s3://<your_bucket>/{user_id}/transcripts/original/{session_id}.txt`.
+        *   Polished transcripts are saved by [`backend/main.py`](backend/main.py:377) (via [`save_text_to_s3`](backend/aws_utils.py:77)) to S3 paths like `s3://<your_bucket>/{user_id}/transcripts/polished/{session_id}.txt`.
+    2.  **Audio Archival Workflow:**
+        *   `.wav` audio files, generated locally by [`backend/deepgram_utils.py`](backend/deepgram_utils.py:1) (as noted in the refactoring summary), are uploaded by [`backend/main.py`](backend/main.py:335) (via [`save_audio_file_to_s3`](backend/aws_utils.py:96)) to S3 paths like `s3://<your_bucket>/{user_id}/audio/{session_id}.wav`.
+
+*   **Discrepancy with User-Facing `user_recordings/` Path:**
+    *   The application's "recent recordings" feature (displayed on the home page) and the associated API endpoint [`/api/v1/user_recordings/{user_id}`](backend/main.py:518) in [`backend/main.py`](backend/main.py:519) expect `.wav` files and `session_metadata.json` files to reside in an S3 path structure like `s3://<your_bucket>/user_recordings/{user_id}/{some_subfolder_likely_date_based}/`.
+    *   Crucially, the analysis of the `backend/` Python code **did not locate the logic responsible for writing** `.wav` files or `session_metadata.json` files to this specific `user_recordings/` path. The `backend/main.py` code only shows logic for *reading* `session_metadata.json` from this location.
+
+**Conceptual Plan for Code Cleanup and Workflow Unification:**
+
+The primary challenge is the apparent disconnect between where the `backend/` code currently *writes* audio/metadata and where the application *expects to read* them for the "recent recordings" feature. The objective is to consolidate these into a single, coherent, and authoritative workflow.
+
+1.  **Critical Next Step: Locate the Missing "Write" Logic for `user_recordings/`**.
+    *   This is the immediate priority. The mechanism that creates S3 objects (both `.wav` and `session_metadata.json`) in the `user_recordings/{user_id}/{date_or_other_subfolder}/` path must be identified.
+    *   **Potential Areas for Investigation (extending beyond the `backend/` Python module):**
+        *   Other Python scripts, microservices, or related projects.
+        *   Frontend application code (e.g., within `my-vite-react-app/`) for any "save transcript," "finalize session," or similar actions that might trigger this S3 upload.
+        *   CI/CD pipelines or automated deployment scripts.
+        *   AWS S3 bucket configurations (e.g., Lambda triggers, S3 Event Notifications) that might be processing or moving files (e.g., from the `user_id/audio/` path) into the `user_recordings/` structure and generating metadata.
+
+2.  **Define the Single Source of Truth.**
+    *   Based on its use for user-facing features, the `user_recordings/` S3 path structure is the strong candidate for the single, authoritative location for finalized recordings and their associated metadata.
+
+3.  **Consolidate Data Workflows (Conceptual Steps):**
+    *   Once the "write" logic for `user_recordings/` is fully understood:
+        *   **Standardize `.wav` Uploads:** Modify the identified logic or the existing [`save_audio_file_to_s3`](backend/aws_utils.py:96) usage in [`backend/main.py`](backend/main.py:335) to ensure `.wav` files (originating from [`deepgram_utils.py`](backend/deepgram_utils.py:1)) are consistently uploaded to the correct `user_recordings/.../...wav` path.
+        *   **Centralize `session_metadata.json` Generation:** Ensure a single, robust process for creating a comprehensive `session_metadata.json` file. This file should include all relevant information (e.g., paths to the audio file, original/polished transcripts if applicable, duration, timestamps, user IDs, session IDs). This metadata file must be uploaded to the corresponding `user_recordings/.../...session_metadata.json` path.
+    *   **Evaluate and Potentially Deprecate Old Paths:**
+        *   The current S3 paths (`user_id/audio/` and `user_id/transcripts/original/`, `user_id/transcripts/polished/`) need re-evaluation.
+        *   If their content is fully represented or superseded by the data in `user_recordings/`, the code writing to these older paths should be deprecated and eventually removed to avoid redundancy and confusion.
+        *   Consider whether original/polished transcript text should be embedded within `session_metadata.json` or stored as separate linked files within the same `user_recordings/{user_id}/{date_folder}/` structure.
+
+4.  **Data Migration Strategy (If Necessary).**
+    *   Develop a plan for handling existing data in the `user_id/audio/` or `user_id/transcripts/` S3 paths. Options include archiving, deleting, or migrating to the new `user_recordings/` structure to ensure historical data consistency, if required.
+
+5.  **Thorough Testing.**
+    *   After any consolidation and refactoring, rigorously test the entire workflow: recording, processing, saving to S3, and the accurate display of recent recordings in the application.
+
+### Transcript Display Fixes for Recent Recordings (May 21, 2025)
+
+Following the S3 storage investigation, a series of changes were implemented to enable the display of transcript content when a user clicks on an item in the "Recent Recordings" list.
+
+**Key Actions and Rationale:**
+
+1.  **Fix for Tooltip/ListItem Prop Errors (`my-vite-react-app/src/components/RecentRecordingItem.jsx`):**
+    *   **Initial Problem:** Console warnings indicated issues with how the MUI `Tooltip` component was interacting with its child `ListItem` component, specifically regarding prop forwarding (`MUI: The children component of the Tooltip is not forwarding its props correctly`) and a non-boolean `button` attribute being rendered to the DOM.
+    *   **Solution:**
+        *   A wrapper component, `TooltipCompatibleWrapper`, was created using `React.forwardRef`. This `div` acts as the direct child of the `Tooltip`.
+        *   The `ListItem` was then placed *inside* this `TooltipCompatibleWrapper`.
+        *   This pattern ensures that the `Tooltip` correctly passes its required props (like `ref`, event handlers) to a compatible element, resolving the forwarding errors.
+        *   The `button` prop on `ListItem` was reverted to its standard boolean usage, and the associated DOM warning disappeared once the `Tooltip` interaction was corrected.
+
+2.  **Backend API Endpoint for S3 Content (`backend/main.py`):**
+    *   **Requirement:** A new backend endpoint was needed to securely fetch the content of transcript files (or any text file) stored in S3.
+    *   **Implementation:**
+        *   A new GET endpoint, [`/api/v1/s3_object_content`](backend/main.py:605), was added.
+        *   This endpoint accepts an `s3_key` as a query parameter.
+        *   It uses the existing `s3_client` and `AWS_S3_BUCKET_NAME` to fetch the specified object from S3.
+        *   The content of the S3 object is returned as plain text.
+        *   Error handling was included for cases like "object not found" or other S3 client errors.
+
+3.  **Frontend Logic to Fetch and Display Transcript (`my-vite-react-app/src/components/RecentRecordingItem.jsx`):**
+    *   **Enhancement to `handleClick`:** The `handleClick` function in `RecentRecordingItem.jsx` was modified:
+        *   It now determines the appropriate S3 key for the transcript to display, preferring `recording.s3PathPolished` if available, otherwise falling back to `recording.s3PathTranscript`.
+        *   It constructs the URL for the new [`/api/v1/s3_object_content`](backend/main.py:605) endpoint, passing the determined S3 key.
+        *   An asynchronous `fetch` call is made to this endpoint.
+        *   Upon a successful response, the transcript text is extracted.
+        *   Currently, the fetched transcript is logged to the console and displayed to the user via a browser `alert()`.
+
+4.  **Correction of S3 Path Retrieval in `get_user_recordings` (`backend/main.py`):**
+    *   **Problem:** The frontend was reporting "No S3 path found for polished or original transcript" even when data was expected to exist. Investigation revealed that the [`/api/v1/user_recordings/{user_id}`](backend/main.py:518) endpoint in `backend/main.py` was not correctly extracting the S3 paths for transcripts from the `session_metadata.json` files. It was looking for top-level keys (e.g., `metadata['s3_path_transcript']`) instead of a likely nested structure (e.g., `metadata['s3_paths']['original_transcript']`).
+    *   **Solution:** The [`get_user_recordings`](backend/main.py:519) function was updated to:
+        *   First, attempt to retrieve transcript S3 keys from a nested `s3_paths` dictionary within the loaded `metadata`.
+        *   Provide fallbacks to the older, top-level key names for backward compatibility if the `s3_paths` dictionary or specific keys within it are not found.
+        *   This ensures that `s3PathTranscript` and `s3PathPolished` are correctly populated in the `RecordingInfo` objects returned to the frontend.
+
+**Outcome:**
+
+With these changes, the console errors related to the `Tooltip` and `ListItem` in the frontend have been resolved. More importantly, the functionality to click on a recent recording and view its transcript (fetched from S3 via the new backend endpoint) is now working. The backend correctly provides the necessary S3 paths for transcripts to the frontend.
+### Aligning "Recent Recordings" with Transcript-Only Workflow (May 21, 2025)
+
+Following previous fixes, the "Recent Recordings" feature on the home page was still not displaying any recordings. Investigation revealed that the backend API (`/api/v1/user_recordings/{user_id}`) was not aligned with the current S3 storage strategy, which prioritizes transcript files over audio files or the previously used `user_recordings/` S3 path.
+
+**Problem Diagnosis:**
+
+*   The frontend was correctly calling the backend API, and the `user_id` (including URL-encoded characters like `|` as `%7C`) was being correctly interpreted by FastAPI.
+*   Initial backend logic (after some refactoring attempts) was either looking for `.wav` files or relying on `session_metadata.json` files in outdated S3 locations (e.g., `user_recordings/{user_id}/`).
+*   The primary S3 storage for user sessions now revolves around:
+    *   Original transcripts: `s3://<BUCKET_NAME>/{user_id}/transcripts/original/{session_id}.txt`
+    *   Polished transcripts: `s3://<BUCKET_NAME>/{user_id}/transcripts/polished/{session_id}.txt`
+*   A Pydantic validation error occurred because the `RecordingInfo` model expected `s3PathMetadata` to be a string, but the revised logic correctly attempted to set it to `None` as individual metadata files are no longer the source for the recordings list.
+
+**Key Changes and Rationale:**
+
+1.  **Modified `get_user_recordings` in [`backend/main.py`](backend/main.py:519):**
+    *   The S3 prefix for listing objects was changed to `f"{user_id}/transcripts/original/"`.
+    *   The function now iterates through objects in this prefix, specifically looking for `.txt` files (original transcripts).
+    *   For each `.txt` file found:
+        *   The `session_id` is extracted from the filename.
+        *   The `RecordingInfo.id` and `RecordingInfo.name` are set using this `session_id` (with a basic attempt to format timestamp-like session IDs for better display).
+        *   `RecordingInfo.date` is populated using the S3 object's `LastModified` timestamp.
+        *   `RecordingInfo.s3PathTranscript` is set to the S3 key of the original transcript file.
+        *   `RecordingInfo.s3PathPolished` is constructed as `f"{user_id}/transcripts/polished/{session_id}.txt"`, allowing the frontend to attempt to fetch it if it exists.
+        *   Fields that are no longer directly available from this listing method (e.g., `s3PathAudio`, `s3PathMetadata`, `patientContext`, `durationSeconds`) are explicitly set to `None`.
+    *   Enhanced logging was temporarily added during debugging to inspect S3 object listing and filtering, which helped identify the Pydantic validation error.
+
+2.  **Updated `RecordingInfo` Pydantic Model in [`backend/main.py`](backend/main.py:502):**
+    *   The `s3PathMetadata` field was changed from `s3PathMetadata: str` to `s3PathMetadata: Optional[str] = None`. This resolved the validation error, as setting it to `None` is now valid when constructing `RecordingInfo` objects based on transcript files rather than individual metadata files.
+
+**Outcome:**
+
+With these adjustments, the [`/api/v1/user_recordings/{user_id}`](backend/main.py:518) endpoint now correctly lists recordings based on the presence of original transcript files in the designated S3 path (`{user_id}/transcripts/original/`). This aligns the "Recent Recordings" feature with the current transcript-centric storage workflow, and the UI should now display these recordings.
