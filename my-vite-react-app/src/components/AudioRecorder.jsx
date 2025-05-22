@@ -722,7 +722,7 @@ useEffect(() => {
                   <Button
                     variant="contained"
                     color="secondary"
-                    onClick={() => generatePdfFromText(editablePolishedNote, `polished-note-${selectedRecordingId || 'current'}.pdf`)}
+                    onClick={() => generatePdfFromText(editablePolishedNote, `polished-note-${selectedRecordingId || 'current'}.pdf`, selectedLocation)}
                     disabled={isLoadingSelectedTranscript}
                   >
                     Save as PDF
