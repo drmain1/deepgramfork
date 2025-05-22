@@ -10,6 +10,14 @@ export function RecordingsProvider({ children }) {
   });
   const [isFetchingRecordings, setIsFetchingRecordings] = useState(false);
 
+  // State for selected recording and its transcript content
+  const [selectedRecordingId, setSelectedRecordingId] = useState(null);
+  const [originalTranscriptContent, setOriginalTranscriptContent] = useState(null);
+  const [polishedTranscriptContent, setPolishedTranscriptContent] = useState(null);
+  const [isLoadingSelectedTranscript, setIsLoadingSelectedTranscript] = useState(false);
+  const [selectedTranscriptError, setSelectedTranscriptError] = useState(null);
+
+
   useEffect(() => {
     if (isAuthenticated && user && user.sub) {
       localStorage.setItem(`recordings_${user.sub}`, JSON.stringify(recordings));
@@ -141,13 +149,115 @@ export function RecordingsProvider({ children }) {
   }, [user, getAccessTokenSilently, removeRecording]);
 
   const addRecording = (recording) => {
-    setRecordings(prevRecordings => 
+    setRecordings(prevRecordings =>
       [recording, ...prevRecordings.filter(r => r.id !== recording.id)].sort((a,b) => new Date(b.date) - new Date(a.date))
     );
   };
 
+  const fetchTranscriptContent = useCallback(async (s3Key, type) => {
+    if (!s3Key) {
+      return type === 'original' ? 'Original transcript S3 path not found.' : 'Polished transcript S3 path not found.';
+    }
+    try {
+      // Ensure VITE_API_BASE_URL is correctly configured in your .env file for production
+      const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      const response = await fetch(`${apiUrl}/api/v1/s3_object_content?s3_key=${encodeURIComponent(s3Key)}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Failed to fetch ${type} transcript (${s3Key}): ${response.status} ${response.statusText}. Server: ${errorText}`);
+        return `Error fetching ${type} transcript: ${response.statusText}. Details: ${errorText}`;
+      }
+      return await response.text();
+    } catch (error) {
+      console.error(`Error fetching ${type} transcript (${s3Key}):`, error);
+      return `Could not fetch ${type} transcript: ${error.message}`;
+    }
+  }, []);
+
+  const selectRecording = useCallback((recordingId) => {
+    if (recordingId === selectedRecordingId) { // If clicking the same recording, deselect it or do nothing (currently deselects)
+        // setSelectedRecordingId(null);
+        // setOriginalTranscriptContent(null);
+        // setPolishedTranscriptContent(null);
+        // setSelectedTranscriptError(null);
+        return; // Or toggle behavior can be implemented here
+    }
+    setSelectedRecordingId(recordingId);
+    if (recordingId === null) {
+      setOriginalTranscriptContent(null);
+      setPolishedTranscriptContent(null);
+      setSelectedTranscriptError(null);
+      setIsLoadingSelectedTranscript(false);
+    }
+  }, [selectedRecordingId]);
+
+  useEffect(() => {
+    if (selectedRecordingId) {
+      const recording = recordings.find(r => r.id === selectedRecordingId);
+      if (recording) {
+        setIsLoadingSelectedTranscript(true);
+        setSelectedTranscriptError(null);
+        setOriginalTranscriptContent(null); // Clear previous content
+        setPolishedTranscriptContent(null); // Clear previous content
+
+        const fetchAllTranscripts = async () => {
+          try {
+            let originalContent = 'Original transcript not available or S3 path missing.';
+            if (recording.s3PathTranscript) {
+              originalContent = await fetchTranscriptContent(recording.s3PathTranscript, 'original');
+            }
+            setOriginalTranscriptContent(originalContent);
+
+            let polishedContentToSet;
+            // Prioritize locally edited 'polishedTranscript' if it exists on the recording object.
+            // This field is set by updateRecording when "Save Changes" is clicked in AudioRecorder.
+            if (recording && typeof recording.polishedTranscript === 'string') {
+              polishedContentToSet = recording.polishedTranscript;
+            } else if (recording && recording.s3PathPolished) {
+              // If no local edit or if we prefer S3, fetch from S3 path.
+              polishedContentToSet = await fetchTranscriptContent(recording.s3PathPolished, 'polished');
+            } else {
+              // Fallback if neither local edit nor S3 path is available.
+              polishedContentToSet = 'Polished transcript not available or S3 path missing.';
+            }
+            setPolishedTranscriptContent(polishedContentToSet);
+
+          } catch (error) {
+            console.error("Error fetching transcript contents in context:", error);
+            setSelectedTranscriptError(error.message || 'An unexpected error occurred while fetching transcripts.');
+          } finally {
+            setIsLoadingSelectedTranscript(false);
+          }
+        };
+        fetchAllTranscripts();
+      } else {
+        // Recording ID selected but not found in the list, maybe clear?
+        setSelectedTranscriptError(`Recording with ID ${selectedRecordingId} not found.`);
+        setOriginalTranscriptContent(null);
+        setPolishedTranscriptContent(null);
+        setIsLoadingSelectedTranscript(false);
+      }
+    }
+  }, [selectedRecordingId, recordings, fetchTranscriptContent]);
+
+
   return (
-    <RecordingsContext.Provider value={{ recordings, addRecording, startPendingRecording, updateRecording, removeRecording, deletePersistedRecording, fetchUserRecordings, isFetchingRecordings }}>
+    <RecordingsContext.Provider value={{
+      recordings,
+      addRecording,
+      startPendingRecording,
+      updateRecording,
+      removeRecording,
+      deletePersistedRecording,
+      fetchUserRecordings,
+      isFetchingRecordings,
+      selectedRecordingId,
+      selectRecording,
+      originalTranscriptContent,
+      polishedTranscriptContent,
+      isLoadingSelectedTranscript,
+      selectedTranscriptError
+    }}>
       {children}
     </RecordingsContext.Provider>
   );

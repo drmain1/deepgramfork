@@ -9,7 +9,7 @@ import LoginButton from './LoginButton';
 import LogoutButton from './LogoutButton';
 
 function Sidebar() {
-  const { recordings, deletePersistedRecording, isFetchingRecordings } = useRecordings();
+  const { recordings, deletePersistedRecording, isFetchingRecordings, selectRecording } = useRecordings();
   const navigate = useNavigate();
   const { isAuthenticated, isLoading, user } = useAuth0();
 
@@ -30,6 +30,7 @@ function Sidebar() {
   };
 
   const handleNewRecordingClick = () => {
+    selectRecording(null); // Clear the selected recording
     navigate('/'); // Navigate to the root path to show AudioRecorder
   };
 

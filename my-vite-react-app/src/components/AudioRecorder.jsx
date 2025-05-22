@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
-import { useRecordings } from '../contexts/RecordingsContext';
+import { useRecordings } from '../contexts/RecordingsContext'; // Already here, good.
 import { useUserSettings } from '../contexts/UserSettingsContext';
+import { generatePdfFromText } from './pdfUtils'; // Added for PDF generation
 import {
   Box,
   Button,
@@ -24,7 +25,19 @@ import {
 
 const AudioRecorder = () => {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth0();
-  const { startPendingRecording, updateRecording, removeRecording } = useRecordings();
+  // Get more from useRecordings for transcript display
+  const {
+    recordings, // Added to get selected recording's name
+    startPendingRecording,
+    updateRecording,
+    removeRecording,
+    selectedRecordingId,
+    selectRecording, // To allow closing the transcript view
+    originalTranscriptContent,
+    polishedTranscriptContent,
+    isLoadingSelectedTranscript,
+    selectedTranscriptError
+  } = useRecordings();
   const { userSettings, settingsLoading } = useUserSettings();
 
   const [currentView, setCurrentView] = useState('setup');
@@ -42,13 +55,21 @@ const AudioRecorder = () => {
   const [sessionId, setSessionId] = useState(null);
   const [isSessionSaved, setIsSessionSaved] = useState(false);
   const [saveStatusMessage, setSaveStatusMessage] = useState('');
-  const [activeTab, setActiveTab] = useState(0);
+  const [activeTab, setActiveTab] = useState(0); // This is for the recorder's internal setup/note tabs
   const [isMultilingual, setIsMultilingual] = useState(false);
+  
+  // New state for transcript display tabs
+  const [transcriptDisplayTab, setTranscriptDisplayTab] = useState(0);
+  const [editablePolishedNote, setEditablePolishedNote] = useState('');
+  const [isEditingPolishedNote, setIsEditingPolishedNote] = useState(false);
 
   const mediaRecorderRef = useRef(null);
   const webSocketRef = useRef(null);
   const audioStreamRef = useRef(null);
-
+  const prevSelectedRecordingIdRef = useRef();
+  const prevPolishedContentRef = useRef();
+  const sourcePolishedContentRef = useRef(); // Ref to track the source of editablePolishedNote
+ 
   useEffect(() => {
     setCurrentView('setup');
     setPatientDetails('');
@@ -133,6 +154,47 @@ const AudioRecorder = () => {
       }
     };
   }, []);
+
+useEffect(() => {
+    const hasIdChanged = selectedRecordingId !== prevSelectedRecordingIdRef.current;
+
+    if (hasIdChanged) {
+        // If selectedRecordingId has changed (new ID, or became null/non-null)
+        setIsEditingPolishedNote(false); // Always stop editing if ID changes
+        const newInitialContent = selectedRecordingId ? (polishedTranscriptContent || "") : "";
+        setEditablePolishedNote(newInitialContent);
+        sourcePolishedContentRef.current = newInitialContent;
+    } else {
+        // ID has NOT changed.
+        // If we are editing, user's input should be preserved. Don't sync from polishedTranscriptContent.
+        if (isEditingPolishedNote) {
+            // Do nothing to editablePolishedNote
+        } else {
+            // Not editing, and ID is the same.
+            // Sync from polishedTranscriptContent if it has changed for the current selectedRecordingId.
+            if (selectedRecordingId) { // Current ID still selected
+                const currentSourceContent = polishedTranscriptContent || "";
+                // Only update if the local editable copy differs from the source content.
+                // This check is important if editablePolishedNote was somehow stale.
+                if (editablePolishedNote !== currentSourceContent) {
+                    setEditablePolishedNote(currentSourceContent);
+                    sourcePolishedContentRef.current = currentSourceContent;
+                }
+            } else {
+                // No ID selected (and ID hasn't changed, meaning it was already null)
+                // Ensure editablePolishedNote is clear if it isn't already.
+                if (editablePolishedNote !== "") {
+                    setEditablePolishedNote("");
+                    sourcePolishedContentRef.current = undefined;
+                }
+            }
+        }
+    }
+
+    // Always update the ref for the previously selected ID for the next render.
+    prevSelectedRecordingIdRef.current = selectedRecordingId;
+
+}, [selectedRecordingId, polishedTranscriptContent, isEditingPolishedNote]);
 
   const _startRecordingProcess = async () => {
     setError(null);
@@ -520,29 +582,187 @@ const AudioRecorder = () => {
     };
   };
 
+  const handleTranscriptDisplayTabChange = (event, newValue) => {
+    setTranscriptDisplayTab(newValue);
+  };
+
+  // Define TabPanel here, before its first potential use
   const TabPanel = (props) => {
     const { children, value, index, ...other } = props;
     return (
       <div
         role="tabpanel"
-        hidden={value !== index}
         id={`simple-tabpanel-${index}`}
         aria-labelledby={`simple-tab-${index}`}
         {...other}
-        style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+        style={value === index ?
+          { flexGrow: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto', minHeight: 0 } :
+          { display: 'none' }
+        }
       >
-        {value === index && (
-          <Box sx={{ p: 0, flexGrow: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-            {children}
-          </Box>
-        )}
+        {children /* Always render children; visibility controlled by parent div's style */}
       </div>
     );
   };
+  
+  // If a recording is selected from the sidebar, show the transcript viewer UI
+  if (selectedRecordingId) {
+    const selectedRec = recordings.find(r => r.id === selectedRecordingId);
+    const title = selectedRec ? `Details: ${selectedRec.name}` : "Recording Details"; // Use recording name if available
 
-  const handleTabChange = (event, newValue) => {
+    return (
+      <Box sx={{ p: 2, height: 'calc(100vh - 16px)', display: 'flex', flexDirection: 'column', width: '100%' }}> {/* Adjust height as needed */}
+        <Box sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:1, flexShrink: 0}}>
+          <Typography variant="h5" gutterBottom sx={{mb:0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+            {title}
+          </Typography>
+          <Button onClick={() => selectRecording(null)} variant="outlined" size="small">
+            Back to Recorder
+          </Button>
+        </Box>
+
+        {isLoadingSelectedTranscript && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flexGrow: 1 }}>
+            <CircularProgress />
+            <Typography sx={{ ml: 2 }}>Loading transcripts...</Typography>
+          </Box>
+        )}
+        {!isLoadingSelectedTranscript && selectedTranscriptError && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flexGrow: 1, flexDirection: 'column', p:2 }}>
+            <Typography color="error" variant="h6" gutterBottom>Error loading transcripts:</Typography>
+            <Typography color="error" sx={{mt:1, whiteSpace: 'pre-wrap', wordBreak: 'break-word'}}>{selectedTranscriptError}</Typography>
+          </Box>
+        )}
+        {!isLoadingSelectedTranscript && !selectedTranscriptError && (
+          <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid', borderColor: 'divider', borderRadius:1, minHeight: 0 /* Flex parent fix */ }}>
+            <Box sx={{ borderBottom: 1, borderColor: 'divider', flexShrink: 0, backgroundColor: 'background.default' }}>
+              <Tabs value={transcriptDisplayTab} onChange={handleTranscriptDisplayTabChange} aria-label="transcript content tabs" variant="fullWidth">
+                <Tab label="Original Transcript" id="transcript-display-tab-0" aria-controls="transcript-display-tabpanel-0" />
+                <Tab label="Polished Note" id="transcript-display-tab-1" aria-controls="transcript-display-tabpanel-1" />
+              </Tabs>
+            </Box>
+            {/* Re-using the existing TabPanel definition but ensuring it's correctly styled for this context */}
+            <TabPanel value={transcriptDisplayTab} index={0}>
+              {/* Removed intermediate Box. The Box component="pre" is now a direct child of TabPanel's internal scrolling Box. */}
+              <Box component="pre" sx={{ p: 1.5, flexGrow: 1, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'monospace', fontSize: '1.1rem', lineHeight: 1.6, backgroundColor: 'grey.50', margin:0, color: 'text.primary' }}>
+                {originalTranscriptContent || "Original transcript not available or empty."}
+              </Box>
+            </TabPanel>
+            <TabPanel value={transcriptDisplayTab} index={1}>
+              <TextField
+                multiline
+                fullWidth
+                variant="outlined"
+                value={editablePolishedNote}
+                onChange={(e) => setEditablePolishedNote(e.target.value)}
+                InputProps={{
+                  readOnly: !isEditingPolishedNote,
+                }}
+                placeholder={
+                  (polishedTranscriptContent === null || polishedTranscriptContent === "") && editablePolishedNote === ""
+                  ? "Polished note not available or empty."
+                  : "Edit polished note..."
+                }
+                sx={{
+                  flexGrow: 1,
+                  '& .MuiOutlinedInput-root': {
+                    height: '100%',
+                    padding: 0,
+                    '& textarea.MuiOutlinedInput-input': {
+                      padding: '12px', // Approx theme.spacing(1.5)
+                      height: '100% !important',
+                      boxSizing: 'border-box',
+                      overflowY: 'auto',
+                      fontFamily: 'monospace',
+                      fontSize: '1.1rem',
+                      lineHeight: 1.6,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      color: 'text.primary',
+                      backgroundColor: 'grey.50',
+                    },
+                    '& textarea.MuiOutlinedInput-input::placeholder': {
+                      color: 'text.secondary',
+                      opacity: 1,
+                      fontFamily: 'monospace',
+                      fontSize: '1.1rem',
+                      lineHeight: 1.6,
+                    }
+                  }
+                }}
+              />
+              <Box sx={{ p: 1, mt: 1, flexShrink: 0, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+                {isEditingPolishedNote ? (
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={() => {
+                      // Call updateRecording to persist changes
+                      // This assumes updateRecording can handle a 'polishedTranscript' field.
+                      // Adjust the payload { polishedTranscript: editablePolishedNote } as needed
+                      // based on your RecordingsContext and backend implementation.
+                      if (selectedRecordingId && typeof updateRecording === 'function') {
+                        updateRecording(selectedRecordingId, { polishedTranscript: editablePolishedNote });
+                      }
+                      setIsEditingPolishedNote(false);
+                    }}
+                  >
+                    Save Changes
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outlined"
+                    onClick={() => setIsEditingPolishedNote(true)}
+                    disabled={isLoadingSelectedTranscript} // Disable if still loading
+                  >
+                    Edit Note
+                  </Button>
+                )}
+                {(polishedTranscriptContent || editablePolishedNote) && !isEditingPolishedNote && (
+                  <Button
+                    variant="contained"
+                    color="secondary"
+                    onClick={() => generatePdfFromText(editablePolishedNote, `polished-note-${selectedRecordingId || 'current'}.pdf`)}
+                    disabled={isLoadingSelectedTranscript}
+                  >
+                    Save as PDF
+                  </Button>
+                )}
+              </Box>
+            </TabPanel>
+          </Box>
+        )}
+      </Box>
+    );
+  }
+
+  // Original AudioRecorder UI starts here if no recording is selected for detailed view
+  // The TabPanel definition has been moved up.
+
+  const handleTabChange = (event, newValue) => { // This is for the recorder's internal tabs
     setActiveTab(newValue);
   };
+
+  // Authenticating / Settings Loading check
+  if (authLoading || settingsLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <CircularProgress />
+        <Typography sx={{ ml: 2 }}>Loading user data...</Typography>
+      </Box>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', p: 3, textAlign: 'center' }}>
+        <Typography variant="h5" gutterBottom>Welcome to Dictation App</Typography>
+        <Typography variant="body1" sx={{ mb: 3 }}>
+          Please log in to start recording new encounters or view your existing notes.
+        </Typography>
+      </Box>
+    );
+  }
 
   if (currentView === 'setup') {
     return (

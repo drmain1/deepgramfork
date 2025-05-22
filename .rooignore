@@ -1,0 +1,6 @@
+.node-modules 
+*-lock.json
+Lora-normal.js
+.venv
+_pycache_
+package-lock.json
