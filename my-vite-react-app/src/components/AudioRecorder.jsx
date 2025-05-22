@@ -62,6 +62,7 @@ const AudioRecorder = () => {
   const [transcriptDisplayTab, setTranscriptDisplayTab] = useState(0);
   const [editablePolishedNote, setEditablePolishedNote] = useState('');
   const [isEditingPolishedNote, setIsEditingPolishedNote] = useState(false);
+  const [lastSyncedContent, setLastSyncedContent] = useState('');
 
   const mediaRecorderRef = useRef(null);
   const webSocketRef = useRef(null);
@@ -155,46 +156,36 @@ const AudioRecorder = () => {
     };
   }, []);
 
+// Effect to handle recording ID changes
 useEffect(() => {
     const hasIdChanged = selectedRecordingId !== prevSelectedRecordingIdRef.current;
-
+    
     if (hasIdChanged) {
-        // If selectedRecordingId has changed (new ID, or became null/non-null)
-        setIsEditingPolishedNote(false); // Always stop editing if ID changes
-        const newInitialContent = selectedRecordingId ? (polishedTranscriptContent || "") : "";
-        setEditablePolishedNote(newInitialContent);
-        sourcePolishedContentRef.current = newInitialContent;
-    } else {
-        // ID has NOT changed.
-        // If we are editing, user's input should be preserved. Don't sync from polishedTranscriptContent.
-        if (isEditingPolishedNote) {
-            // Do nothing to editablePolishedNote
-        } else {
-            // Not editing, and ID is the same.
-            // Sync from polishedTranscriptContent if it has changed for the current selectedRecordingId.
-            if (selectedRecordingId) { // Current ID still selected
-                const currentSourceContent = polishedTranscriptContent || "";
-                // Only update if the local editable copy differs from the source content.
-                // This check is important if editablePolishedNote was somehow stale.
-                if (editablePolishedNote !== currentSourceContent) {
-                    setEditablePolishedNote(currentSourceContent);
-                    sourcePolishedContentRef.current = currentSourceContent;
-                }
-            } else {
-                // No ID selected (and ID hasn't changed, meaning it was already null)
-                // Ensure editablePolishedNote is clear if it isn't already.
-                if (editablePolishedNote !== "") {
-                    setEditablePolishedNote("");
-                    sourcePolishedContentRef.current = undefined;
-                }
-            }
-        }
+        // Recording selection changed - stop editing and reset content
+        setIsEditingPolishedNote(false);
+        const newContent = selectedRecordingId ? (polishedTranscriptContent || "") : "";
+        setEditablePolishedNote(newContent);
+        setLastSyncedContent(newContent);
+        sourcePolishedContentRef.current = newContent;
     }
-
-    // Always update the ref for the previously selected ID for the next render.
+    
     prevSelectedRecordingIdRef.current = selectedRecordingId;
+}, [selectedRecordingId]);
 
-}, [selectedRecordingId, polishedTranscriptContent, isEditingPolishedNote]);
+// Effect to handle content updates ONLY when not editing
+useEffect(() => {
+    // Critical: Only update if we're not currently editing AND the content has actually changed
+    if (!isEditingPolishedNote &&
+        selectedRecordingId &&
+        polishedTranscriptContent !== null &&
+        polishedTranscriptContent !== lastSyncedContent) {
+        
+        const currentContent = polishedTranscriptContent || "";
+        setEditablePolishedNote(currentContent);
+        setLastSyncedContent(currentContent);
+        sourcePolishedContentRef.current = currentContent;
+    }
+}, [polishedTranscriptContent, lastSyncedContent]);
 
   const _startRecordingProcess = async () => {
     setError(null);
@@ -658,11 +649,7 @@ useEffect(() => {
                 InputProps={{
                   readOnly: !isEditingPolishedNote,
                 }}
-                placeholder={
-                  (polishedTranscriptContent === null || polishedTranscriptContent === "") && editablePolishedNote === ""
-                  ? "Polished note not available or empty."
-                  : "Edit polished note..."
-                }
+                placeholder="Edit polished note..."
                 sx={{
                   flexGrow: 1,
                   '& .MuiOutlinedInput-root': {
@@ -697,13 +684,11 @@ useEffect(() => {
                     variant="contained"
                     color="primary"
                     onClick={() => {
-                      // Call updateRecording to persist changes
-                      // This assumes updateRecording can handle a 'polishedTranscript' field.
-                      // Adjust the payload { polishedTranscript: editablePolishedNote } as needed
-                      // based on your RecordingsContext and backend implementation.
+                      // Save the changes and update tracking
                       if (selectedRecordingId && typeof updateRecording === 'function') {
                         updateRecording(selectedRecordingId, { polishedTranscript: editablePolishedNote });
                       }
+                      setLastSyncedContent(editablePolishedNote);
                       setIsEditingPolishedNote(false);
                     }}
                   >
