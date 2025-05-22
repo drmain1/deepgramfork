@@ -191,6 +191,7 @@ export function RecordingsProvider({ children }) {
     }
   }, [selectedRecordingId]);
 
+  // Effect to handle recording selection changes (initial load)
   useEffect(() => {
     if (selectedRecordingId) {
       const recording = recordings.find(r => r.id === selectedRecordingId);
@@ -238,7 +239,18 @@ export function RecordingsProvider({ children }) {
         setIsLoadingSelectedTranscript(false);
       }
     }
-  }, [selectedRecordingId, recordings, fetchTranscriptContent]);
+  }, [selectedRecordingId, fetchTranscriptContent]); // Removed 'recordings' dependency
+
+  // Separate effect to handle polished transcript updates from recordings changes
+  useEffect(() => {
+    if (selectedRecordingId) {
+      const recording = recordings.find(r => r.id === selectedRecordingId);
+      if (recording && typeof recording.polishedTranscript === 'string') {
+        // Only update if we have a local edit and it's different from current content
+        setPolishedTranscriptContent(recording.polishedTranscript);
+      }
+    }
+  }, [selectedRecordingId, recordings]);
 
 
   return (
