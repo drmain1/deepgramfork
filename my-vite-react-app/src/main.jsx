@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
+import './index.css';
 import './styles.css';
 import { Auth0Provider, withAuthenticationRequired } from '@auth0/auth0-react';
 import AuthLoading from './components/AuthLoading.jsx'; 

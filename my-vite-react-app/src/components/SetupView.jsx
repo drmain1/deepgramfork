@@ -1,18 +1,4 @@
 import React from 'react';
-import {
-  Box,
-  Button,
-  TextField,
-  Select,
-  MenuItem,
-  Typography,
-  Stack,
-  FormControl,
-  InputLabel,
-  Grid,
-  Switch,
-  FormControlLabel
-} from '@mui/material';
 
 function SetupView({
   patientDetails,
@@ -30,125 +16,158 @@ function SetupView({
   error,
   onStartEncounter
 }) {
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!patientDetails.trim()) {
+      return;
+    }
+    onStartEncounter();
+  };
+
   return (
-    <Box sx={{ p: 3, width: '100%' }}>
-      <Typography variant="h4" component="h1" gutterBottom sx={{ textAlign: 'left', mb: 4, fontWeight: 'medium' }}>
-        Encounter
-      </Typography>
-      <Stack spacing={3} direction="column" sx={{ maxWidth: '800px', mx: 'auto' }}>
-        <Typography variant="overline" display="block" gutterBottom sx={{ color: 'text.secondary', mt: 1 }}>
-          CONTEXT
-        </Typography>
-        <FormControl fullWidth required error={!!(error && error.includes('patient details'))}>
-          <TextField
-            id="patient-details"
-            label="Patient Name / Session Title"
-            placeholder="e.g., John Doe - Annual Checkup"
-            value={patientDetails}
-            onChange={(e) => setPatientDetails(e.target.value)}
-            variant="standard"
-            fullWidth
-            required
-            error={!!error && !patientDetails.trim()}
-            helperText={!!error && !patientDetails.trim() ? 'Please enter patient details' : ''}
-          />
-        </FormControl>
+    <main className="flex-1 p-8 overflow-y-auto" style={{ backgroundColor: '#f3f4f6' }}>
+      <header className="mb-8">
+        <h1 className="text-3xl font-semibold text-gray-800">Encounter</h1>
+      </header>
+      
+      <div className="main-content p-8 rounded-lg shadow-lg max-w-2xl mx-auto">
+        <form onSubmit={handleSubmit}>
+          <div className="mb-6">
+            <label 
+              className="block text-sm font-medium label-text mb-1" 
+              htmlFor="session-title"
+            >
+              Patient Name / Session Title <span className="text-red-500">*</span>
+            </label>
+            <input
+              className="w-full px-4 py-2.5 rounded-md border input-field focus:ring-0"
+              id="session-title"
+              name="session-title"
+              placeholder="Enter patient name or session title"
+              type="text"
+              value={patientDetails}
+              onChange={(e) => setPatientDetails(e.target.value)}
+              required
+            />
+            {error && !patientDetails.trim() && (
+              <p className="text-red-500 text-sm mt-1">Please enter patient details</p>
+            )}
+          </div>
 
-        <FormControl fullWidth>
-          <TextField
-            id="patient-context"
-            placeholder="Add patient context (optional)"
-            value={patientContext}
-            onChange={(e) => setPatientContext(e.target.value)}
-            multiline
-            rows={3}
-            variant="standard"
-          />
-        </FormControl>
+          <div className="mb-6">
+            <label 
+              className="block text-sm font-medium label-text mb-1" 
+              htmlFor="patient-context"
+            >
+              Add patient context (optional)
+            </label>
+            <textarea
+              className="w-full px-4 py-2.5 rounded-md border input-field focus:ring-0 resize-none"
+              id="patient-context"
+              name="patient-context"
+              placeholder="e.g., Follow-up for hypertension, Annual check-up"
+              rows="3"
+              value={patientContext}
+              onChange={(e) => setPatientContext(e.target.value)}
+            />
+          </div>
 
-        <Typography variant="overline" display="block" gutterBottom sx={{ color: 'text.secondary', mt: 3 }}>
-          SETTINGS
-        </Typography>
-        <Grid container spacing={2}>
-          <Grid item xs={12} sm={12}>
-            <FormControl fullWidth variant="standard">
-              <InputLabel id="location-select-label">Location</InputLabel>
-              <Select
-                labelId="location-select-label"
-                id="location-select"
-                value={selectedLocation}
-                label="Location"
-                onChange={(e) => setSelectedLocation(e.target.value)}
-                disabled={settingsLoading || (!userSettings.officeInformation && !settingsLoading)}
-              >
-                <MenuItem value="">
-                  <em>None</em>
-                </MenuItem>
-                {settingsLoading && !userSettings.officeInformation ? (
-                  <MenuItem value="" disabled>Loading locations...</MenuItem>
-                ) : (
-                  userSettings.officeInformation && userSettings.officeInformation.map((loc, index) => (
-                    <MenuItem key={index} value={loc}>
-                      {loc}
-                    </MenuItem>
-                  ))
-                )}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <FormControl fullWidth variant="standard">
-              <InputLabel id="profile-select-label">Transcription Profile</InputLabel>
-              <Select
-                labelId="profile-select-label"
-                id="profile-select"
+          <div className="mb-6">
+            <label 
+              className="block text-sm font-medium label-text mb-1" 
+              htmlFor="location"
+            >
+              Location
+            </label>
+            <select
+              className="w-full px-4 py-2.5 rounded-md border input-field focus:ring-0"
+              id="location"
+              name="location"
+              value={selectedLocation}
+              onChange={(e) => setSelectedLocation(e.target.value)}
+              disabled={settingsLoading || (!userSettings.officeInformation && !settingsLoading)}
+            >
+              <option value="">Select a location...</option>
+              {settingsLoading && !userSettings.officeInformation ? (
+                <option value="" disabled>Loading locations...</option>
+              ) : (
+                userSettings.officeInformation && userSettings.officeInformation.map((loc, index) => (
+                  <option key={index} value={loc}>
+                    {loc.length > 50 ? `${loc.substring(0, 50)}...` : loc}
+                  </option>
+                ))
+              )}
+              <option value="add-new">Add New Location...</option>
+            </select>
+          </div>
+
+          <div className="mb-8">
+            <label 
+              className="block text-sm font-medium label-text mb-2" 
+              htmlFor="treatment-session"
+            >
+              Treatment Type
+            </label>
+            <div className="flex flex-col lg:flex-row lg:items-center lg:space-x-4 space-y-4 lg:space-y-0">
+              <select
+                className="flex-grow px-4 py-2.5 rounded-md border input-field focus:ring-0"
+                id="treatment-session"
+                name="treatment-session"
                 value={selectedProfileId}
-                label="Transcription Profile"
                 onChange={(e) => setSelectedProfileId(e.target.value)}
                 disabled={settingsLoading || (!userSettings.transcriptionProfiles && !settingsLoading)}
               >
                 {settingsLoading && !userSettings.transcriptionProfiles ? (
-                  <MenuItem value="" disabled>Loading profiles...</MenuItem>
+                  <option value="" disabled>Loading profiles...</option>
                 ) : (
                   userSettings.transcriptionProfiles &&
                   userSettings.transcriptionProfiles
                     .filter(profile => profile.name !== 'Default/General summary')
                     .map((profile) => (
-                      <MenuItem key={profile.id} value={profile.id}>
+                      <option key={profile.id} value={profile.id}>
                         {profile.name}
-                      </MenuItem>
+                      </option>
                     ))
                 )}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <FormControlLabel
-              control={<Switch checked={isMultilingual} onChange={(e) => setIsMultilingual(e.target.checked)} />}
-              label="Enable Multilingual Support"
-              sx={{ mt: 1, mb: 0.5, width: '100%', justifyContent: 'flex-start'}}
-            />
-          </Grid>
+              </select>
+              <div className="flex items-center">
+                <input
+                  className="h-4 w-4 checkbox-custom"
+                  id="multilingual-support"
+                  name="multilingual-support"
+                  type="checkbox"
+                  checked={isMultilingual}
+                  onChange={(e) => setIsMultilingual(e.target.checked)}
+                />
+                <label 
+                  className="ml-2 block text-sm text-gray-700" 
+                  htmlFor="multilingual-support"
+                >
+                  Enable Multilingual Support
+                </label>
+              </div>
+            </div>
+          </div>
 
-          <Grid item xs={12} sx={{ mt: 0.5, mb: 2 }}>
-          </Grid>
-        </Grid>
+          {error && (
+            <div className="mb-4 text-red-500 text-center">
+              {error}
+            </div>
+          )}
 
-        {error && <Typography color="error" sx={{ mt: 2, textAlign: 'center' }}>{error}</Typography>}
-
-        <Stack direction="row" justifyContent="center" sx={{ mt: 4 }}>
-          <Button 
-            variant="contained" 
-            color="primary" 
-            onClick={onStartEncounter} 
-            sx={{ px: 5, py: 1.5, minWidth: '200px', fontSize: '1rem' }} 
-            fullWidth
-          >
-            Start Encounter
-          </Button>
-        </Stack>
-      </Stack>
-    </Box>
+          <div className="flex justify-end">
+            <button
+              className="btn-primary font-medium py-3 px-6 rounded-lg flex items-center space-x-2 disabled:opacity-50"
+              type="submit"
+              disabled={!patientDetails.trim()}
+            >
+              <span className="material-icons">play_arrow</span>
+              <span>Start Encounter</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </main>
   );
 }
 

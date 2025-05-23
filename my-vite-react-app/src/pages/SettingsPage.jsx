@@ -1,4 +1,3 @@
-import { Tabs, Tab, Box, Typography } from '@mui/material';
 import { useState } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import SettingsTabs from '../components/SettingsTabs';
@@ -18,7 +17,7 @@ function SettingsPage() {
     updateMacroPhrases
   } = useUserSettings();
 
-  const handleTabChange = (event, newValue) => {
+  const handleTabChange = (newValue) => {
     setTabValue(newValue);
   };
 
@@ -54,45 +53,88 @@ function SettingsPage() {
     }
   };
 
+  const tabs = [
+    'Standard Templates',
+    'Narrative Templates', 
+    'Macro Phrases',
+    'Custom Vocabulary',
+    'Office Information',
+    'Transcription Profiles'
+  ];
+
   if (authLoading || settingsLoading) {
-    return <Typography>Loading settings...</Typography>;
+    return (
+      <main className="flex-1 p-8 overflow-y-auto">
+        <div className="flex justify-center items-center h-64">
+          <div className="text-gray-600">Loading settings...</div>
+        </div>
+      </main>
+    );
   }
 
   if (settingsError) {
-    return <Typography>Error loading settings: {settingsError}. Please try again later.</Typography>;
+    return (
+      <main className="flex-1 p-8 overflow-y-auto">
+        <div className="flex justify-center items-center h-64">
+          <div className="text-red-600">Error loading settings: {settingsError}. Please try again later.</div>
+        </div>
+      </main>
+    );
   }
 
   if (!isAuthenticated) {
-    return <Typography>Please log in to manage your settings.</Typography>;
+    return (
+      <main className="flex-1 p-8 overflow-y-auto">
+        <div className="flex justify-center items-center h-64">
+          <div className="text-gray-600">Please log in to manage your settings.</div>
+        </div>
+      </main>
+    );
   }
 
   return (
-    <Box>
-      <Typography variant="h4" gutterBottom>
-        Settings
-      </Typography>
-      <Tabs value={tabValue} onChange={handleTabChange} sx={{ mb: 2 }}>
-        <Tab label="Standard Templates" /> 
-        <Tab label="Narrative Templates" />
-        <Tab label="Macro Phrases" />
-        <Tab label="Custom Vocabulary" />
-        <Tab label="Office Information" /> 
-        <Tab label="Transcription Profiles" /> 
-      </Tabs>
-      <SettingsTabs 
-        tabValue={tabValue} 
-        transcriptionProfiles={userSettings.transcriptionProfiles}
-        addTranscriptionProfile={addTranscriptionProfile} 
-        deleteTranscriptionProfile={deleteTranscriptionProfile} 
-        macroPhrases={userSettings.macroPhrases}
-        saveMacroPhrases={updateMacroPhrases}
-        customVocabulary={userSettings.customVocabulary}
-        saveCustomVocabulary={updateCustomVocabulary}
-        officeInformation={userSettings.officeInformation}
-        saveOfficeInformation={updateOfficeInformation}
-        settingsLoading={settingsLoading}
-      />
-    </Box>
+    <main className="flex-1 p-8 overflow-y-auto">
+      <header className="mb-8">
+        <h1 className="text-3xl font-semibold text-gray-800">Settings</h1>
+      </header>
+      
+      <div className="main-content p-8 rounded-lg shadow-lg">
+        {/* Tab Navigation */}
+        <div className="border-b border-gray-200 mb-6">
+          <nav className="flex space-x-8" aria-label="Tabs">
+            {tabs.map((tab, index) => (
+              <button
+                key={index}
+                onClick={() => handleTabChange(index)}
+                className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${
+                  tabValue === index
+                    ? 'border-green-500 text-green-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+                aria-current={tabValue === index ? 'page' : undefined}
+              >
+                {tab}
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        {/* Tab Content */}
+        <SettingsTabs 
+          tabValue={tabValue} 
+          transcriptionProfiles={userSettings.transcriptionProfiles}
+          addTranscriptionProfile={addTranscriptionProfile} 
+          deleteTranscriptionProfile={deleteTranscriptionProfile} 
+          macroPhrases={userSettings.macroPhrases}
+          saveMacroPhrases={updateMacroPhrases}
+          customVocabulary={userSettings.customVocabulary}
+          saveCustomVocabulary={updateCustomVocabulary}
+          officeInformation={userSettings.officeInformation}
+          saveOfficeInformation={updateOfficeInformation}
+          settingsLoading={settingsLoading}
+        />
+      </div>
+    </main>
   );
 }
 

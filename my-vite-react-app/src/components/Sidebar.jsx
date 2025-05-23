@@ -1,57 +1,44 @@
-import { Drawer, Box, Button, Typography, List, Divider, ListItemText } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
-import SettingsIcon from '@mui/icons-material/Settings';
 import { useNavigate } from 'react-router-dom';
-import RecentRecordingItem from './RecentRecordingItem';
 import { useRecordings } from '../contexts/RecordingsContext';
 import { useAuth0 } from '@auth0/auth0-react';
-import LoginButton from './LoginButton';
-import LogoutButton from './LogoutButton';
 
 function Sidebar() {
-  const { recordings, deletePersistedRecording, isFetchingRecordings, selectRecording } = useRecordings();
+  const { recordings, deletePersistedRecording, isFetchingRecordings, selectRecording, selectedRecordingId } = useRecordings();
   const navigate = useNavigate();
-  const { isAuthenticated, isLoading, user } = useAuth0();
-
-  // This local handleNewRecording might be used differently or integrated elsewhere if needed.
-  // For now, the button will directly call onNewSession.
-  // const handleNewRecording = () => {
-  //   const newRecording = {
-  //     id: Date.now(),
-  //     name: `Recording ${new Date().toISOString().split('T')[0]}`,
-  //     date: new Date().toISOString().split('T')[0],
-  //     status: 'Not started - 0 min',
-  //   };
-  //   addRecording(newRecording);
-  // };
+  const { isAuthenticated, isLoading, user, logout } = useAuth0();
 
   const handleGoToSettings = () => {
     navigate('/settings');
   };
 
   const handleNewRecordingClick = () => {
-    selectRecording(null); // Clear the selected recording
-    navigate('/'); // Navigate to the root path to show AudioRecorder
+    selectRecording(null);
+    navigate('/');
   };
 
   const handleDeleteRecording = async (recordingId) => {
     if (!isAuthenticated) {
       console.error("User not authenticated. Cannot delete recording.");
-      // Optionally, show a message to the user
       return;
     }
     if (deletePersistedRecording) {
       try {
         console.log(`Attempting to delete recording via context: ${recordingId}`);
         await deletePersistedRecording(recordingId);
-        // Success message or UI update could happen here if not handled by context/item itself
       } catch (error) {
         console.error(`Failed to delete recording ${recordingId}:`, error);
-        // Optionally, show an error message to the user
       }
     } else {
       console.error('deletePersistedRecording function not available from context.');
     }
+  };
+
+  const handleLogout = () => {
+    logout({
+      logoutParams: {
+        returnTo: window.location.origin
+      }
+    });
   };
 
   // Filter out 'pending' recordings from display if they have an associated 'saved' or 'failed' recording
@@ -70,65 +57,141 @@ function Sidebar() {
 
   const sortedRecordings = processedRecordings.sort((a, b) => new Date(b.date) - new Date(a.date));
 
+  const formatDate = (isoString) => {
+    if (!isoString) return '';
+    try {
+      return new Date(isoString).toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (error) {
+      return 'Invalid date';
+    }
+  };
+
+  const formatSessionId = (sessionId) => {
+    if (!sessionId) return 'Unknown Session';
+    // Take first and last few characters for display
+    return sessionId.length > 20 ? `${sessionId.substring(0, 10)}...${sessionId.substring(sessionId.length - 3)}` : sessionId;
+  };
+
   return (
-    <Drawer variant="permanent" sx={{ width: 250, flexShrink: 0, '& .MuiDrawer-paper': { width: 250, boxSizing: 'border-box' } }}>
-      <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%' }}>
-        <Typography variant="h5" align="center" gutterBottom>
-          Dictation App
-        </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleNewRecordingClick} 
-          sx={{ mb: 2 }}
-          disabled={isLoading || !isAuthenticated} // Disable if auth is loading or not authenticated
-        >
-          New Recording
-        </Button>
-        <Typography variant="h6">Recent Recordings</Typography>
-        <List sx={{ overflowY: 'auto', flexGrow: 1 }}>
+    <aside className="sidebar w-64 flex flex-col p-6 space-y-4">
+      <div className="text-2xl font-semibold text-white mb-6">Dictation App</div>
+      
+      <button
+        className={`sidebar-link flex items-center p-3 rounded-lg space-x-3 ${
+          isLoading || !isAuthenticated ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+        }`}
+        onClick={handleNewRecordingClick}
+        disabled={isLoading || !isAuthenticated}
+      >
+        <span className="material-icons">add_circle_outline</span>
+        <span>New Recording</span>
+      </button>
+
+      <div className="mt-4 flex-1">
+        <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-2">Recent Recordings</h3>
+        <nav className="space-y-1 max-h-96 overflow-y-auto">
           {isFetchingRecordings && recordings.length === 0 && (
-            <ListItemText primary="Loading recordings..." sx={{ textAlign: 'center', color: 'text.secondary', mt: 2 }} />
+            <div className="text-center text-gray-500 mt-4">Loading recordings...</div>
           )}
           {!isFetchingRecordings && recordings.length === 0 && isAuthenticated && (
-            <ListItemText primary="No recent recordings found." sx={{ textAlign: 'center', color: 'text.secondary', mt: 2 }} />
+            <div className="text-center text-gray-500 mt-4">No recent recordings found.</div>
           )}
           {!isAuthenticated && !isLoading && (
-            <ListItemText primary="Login to see recordings." sx={{ textAlign: 'center', color: 'text.secondary', mt: 2}}/>
+            <div className="text-center text-gray-500 mt-4">Login to see recordings.</div>
           )}
           {sortedRecordings.map((recording) => (
-            <RecentRecordingItem key={recording.id} recording={recording} onDelete={handleDeleteRecording} />
+            <div key={recording.id} className="relative group">
+              <button
+                className={`sidebar-link w-full flex flex-col p-3 rounded-lg text-sm text-left ${
+                  selectedRecordingId === recording.id ? 'active' : ''
+                }`}
+                onClick={() => selectRecording(recording.id)}
+              >
+                <span className="truncate">
+                  {recording.name || `Session ${formatSessionId(recording.id)}`}
+                </span>
+                <span className="text-xs text-gray-500">
+                  {recording.date ? formatDate(recording.date) : 'No date'}
+                </span>
+              </button>
+              {isAuthenticated && (
+                <button
+                  className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1 hover:bg-gray-600 rounded"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteRecording(recording.id);
+                  }}
+                  title="Delete recording"
+                >
+                  <span className="material-icons text-xs text-gray-400 hover:text-red-400">delete</span>
+                </button>
+              )}
+            </div>
           ))}
-        </List>
-        {/* Wrapper for bottom items to ensure they are pushed to the end of the flex container */}
-        <Box sx={{ marginTop: 'auto' }}>
-          <Divider sx={{ mb: 1 }} /> 
-          {
-            isLoading ? (
-              <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', mb: 1 }}>Loading user...</Typography>
-            ) : isAuthenticated ? (
-              <Box sx={{ mb: 1, textAlign: 'center' }}>
-                {user?.email && <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>{user.email}</Typography>}
-                <LogoutButton />
-              </Box>
-            ) : (
-              <Box sx={{ mb: 1, textAlign: 'center' }}>
-                <LoginButton />
-              </Box>
-            )
-          }
-          <Button 
-            variant="contained" 
-            startIcon={<SettingsIcon />}
-            onClick={handleGoToSettings} 
-            sx={{ mb: 1, width: '100%' }} 
-            disabled={isLoading || !isAuthenticated} // Disable if auth is loading or not authenticated
+        </nav>
+      </div>
+
+      <div className="mt-auto">
+        <div className="border-t border-gray-700 pt-4">
+          {isLoading ? (
+            <div className="text-center text-gray-400 mb-4">Loading user...</div>
+          ) : isAuthenticated ? (
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-gray-500 flex items-center justify-center text-white">
+                <span className="material-icons">person</span>
+              </div>
+              <div>
+                <div className="text-sm font-medium text-white">
+                  {user?.email || 'User'}
+                </div>
+                <button className="text-xs text-gray-400 hover:text-gray-200">
+                  View Profile
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center text-gray-400 mb-4">
+              Please log in to continue
+            </div>
+          )}
+
+          <button
+            className={`sidebar-link flex items-center p-3 rounded-lg space-x-3 w-full mb-2 ${
+              isLoading || !isAuthenticated ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+            }`}
+            onClick={handleGoToSettings}
+            disabled={isLoading || !isAuthenticated}
           >
-            Settings
-          </Button>
-        </Box>
-      </Box>
-    </Drawer>
+            <span className="material-icons">settings</span>
+            <span>Settings</span>
+          </button>
+
+          {isAuthenticated ? (
+            <button
+              className="sidebar-link flex items-center p-3 rounded-lg space-x-3 w-full"
+              onClick={handleLogout}
+            >
+              <span className="material-icons">logout</span>
+              <span>Log Out</span>
+            </button>
+          ) : (
+            <button
+              className="sidebar-link flex items-center p-3 rounded-lg space-x-3 w-full"
+              onClick={() => window.location.href = '/login'}
+            >
+              <span className="material-icons">login</span>
+              <span>Log In</span>
+            </button>
+          )}
+        </div>
+      </div>
+    </aside>
   );
 }
 

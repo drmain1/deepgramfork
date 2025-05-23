@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { useRecordings } from '../contexts/RecordingsContext';
 import { useUserSettings } from '../contexts/UserSettingsContext';
-import { Box, Typography, CircularProgress } from '@mui/material';
 import TranscriptViewer from './TranscriptViewer';
 import SetupView from './SetupView';
 import RecordingView from './RecordingView';
@@ -82,21 +81,27 @@ const AudioRecorder = () => {
   // Loading and authentication checks
   if (authLoading || settingsLoading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <CircularProgress />
-        <Typography sx={{ ml: 2 }}>Loading user data...</Typography>
-      </Box>
+      <main className="flex-1 p-8 overflow-y-auto" style={{ backgroundColor: '#f3f4f6' }}>
+        <div className="flex justify-center items-center h-64">
+          <div className="flex items-center space-x-3">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
+            <span className="text-gray-600 font-medium">Loading user data...</span>
+          </div>
+        </div>
+      </main>
     );
   }
 
   if (!isAuthenticated) {
     return (
-      <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', p: 3, textAlign: 'center' }}>
-        <Typography variant="h5" gutterBottom>Welcome to Dictation App</Typography>
-        <Typography variant="body1" sx={{ mb: 3 }}>
-          Please log in to start recording new encounters or view your existing notes.
-        </Typography>
-      </Box>
+      <main className="flex-1 p-8 overflow-y-auto" style={{ backgroundColor: '#f3f4f6' }}>
+        <div className="flex flex-col justify-center items-center h-64 text-center">
+          <h2 className="text-2xl font-semibold text-gray-800 mb-4">Welcome to Dictation App</h2>
+          <p className="text-gray-600 mb-6 max-w-md">
+            Please log in to start recording new encounters or view your existing notes.
+          </p>
+        </div>
+      </main>
     );
   }
 
