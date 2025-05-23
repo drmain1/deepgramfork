@@ -13,7 +13,7 @@ function Sidebar() {
 
   const handleNewRecordingClick = () => {
     selectRecording(null);
-    navigate('/');
+    navigate('/transcription');
   };
 
   const handleDeleteRecording = async (recordingId) => {
