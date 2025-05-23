@@ -79,50 +79,80 @@ function Sidebar() {
   };
 
   return (
-    <aside className="sidebar w-64 flex flex-col p-6 space-y-4">
-      <div className="text-2xl font-semibold text-white mb-6">Dictation App</div>
+    <aside className="sidebar w-80 flex flex-col">
+      {/* Logo Section */}
+      <div className="p-6 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 bg-gradient-to-br from-primary to-secondary rounded-lg flex items-center justify-center">
+            <span className="material-icons text-white text-2xl">mic</span>
+          </div>
+          <div>
+            <h1 className="text-2xl font-semibold text-white">Dictation App</h1>
+            <p className="text-sm text-gray-400">Medical Transcription</p>
+          </div>
+        </div>
+      </div>
       
-      <button
-        className={`sidebar-link flex items-center p-3 rounded-lg space-x-3 ${
-          isLoading || !isAuthenticated ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-        }`}
-        onClick={handleNewRecordingClick}
-        disabled={isLoading || !isAuthenticated}
-      >
-        <span className="material-icons">add_circle_outline</span>
-        <span>New Recording</span>
-      </button>
+      {/* New Recording Button */}
+      <div className="px-4 pb-4">
+        <button
+          className={`w-full btn ${
+            isLoading || !isAuthenticated 
+              ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+              : 'bg-gradient-to-r from-primary to-secondary text-white hover:shadow-lg'
+          } py-3 rounded-lg font-medium transition-all text-base`}
+          onClick={handleNewRecordingClick}
+          disabled={isLoading || !isAuthenticated}
+        >
+          <span className="material-icons text-xl">add</span>
+          <span>New Encounter</span>
+        </button>
+      </div>
 
-      <div className="mt-4 flex-1">
-        <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-2">Recent Recordings</h3>
-        <nav className="space-y-1 max-h-96 overflow-y-auto">
+      {/* Recordings Section */}
+      <div className="flex-1 px-4 overflow-hidden">
+        <h3 className="section-header px-2">Recent Recordings</h3>
+        <nav className="space-y-1 overflow-y-auto max-h-[calc(100vh-400px)] pr-2">
           {isFetchingRecordings && recordings.length === 0 && (
-            <div className="text-center text-gray-500 mt-4">Loading recordings...</div>
+            <div className="text-center py-8">
+              <div className="spinner mx-auto mb-3"></div>
+              <p className="text-sm text-gray-400">Loading recordings...</p>
+            </div>
           )}
           {!isFetchingRecordings && recordings.length === 0 && isAuthenticated && (
-            <div className="text-center text-gray-500 mt-4">No recent recordings found.</div>
+            <div className="text-center py-8">
+              <span className="material-icons text-gray-600 text-4xl mb-3 block">folder_open</span>
+              <p className="text-sm text-gray-400">No recordings yet</p>
+              <p className="text-xs text-gray-500 mt-1">Start your first encounter above</p>
+            </div>
           )}
           {!isAuthenticated && !isLoading && (
-            <div className="text-center text-gray-500 mt-4">Login to see recordings.</div>
+            <div className="text-center py-8">
+              <span className="material-icons text-gray-600 text-4xl mb-3 block">lock</span>
+              <p className="text-sm text-gray-400">Login to see recordings</p>
+            </div>
           )}
           {sortedRecordings.map((recording) => (
             <div key={recording.id} className="relative group">
               <button
-                className={`sidebar-link w-full flex flex-col p-3 rounded-lg text-sm text-left ${
+                className={`sidebar-link w-full flex flex-col p-4 rounded-lg text-left ${
                   selectedRecordingId === recording.id ? 'active' : ''
                 }`}
                 onClick={() => selectRecording(recording.id)}
               >
-                <span className="truncate">
-                  {recording.name || `Session ${formatSessionId(recording.id)}`}
-                </span>
-                <span className="text-xs text-gray-500">
+                <div className="flex items-start justify-between">
+                  <span className="truncate flex-1 font-medium text-base">
+                    {recording.name || `Session ${formatSessionId(recording.id)}`}
+                  </span>
+                  <span className={`status-indicator ${recording.status || 'pending'} ml-2 mt-1.5`}></span>
+                </div>
+                <span className="text-sm text-gray-500 mt-1">
                   {recording.date ? formatDate(recording.date) : 'No date'}
                 </span>
               </button>
               {isAuthenticated && (
                 <button
-                  className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1 hover:bg-gray-600 rounded"
+                  className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1.5 hover:bg-gray-700 rounded"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleDeleteRecording(recording.id);
@@ -137,57 +167,59 @@ function Sidebar() {
         </nav>
       </div>
 
-      <div className="mt-auto">
-        <div className="border-t border-gray-700 pt-4">
+      {/* User Section */}
+      <div className="mt-auto border-t border-gray-700">
+        <div className="p-4">
           {isLoading ? (
-            <div className="text-center text-gray-400 mb-4">Loading user...</div>
+            <div className="text-center py-4">
+              <div className="spinner mx-auto"></div>
+            </div>
           ) : isAuthenticated ? (
-            <div className="flex items-center space-x-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-gray-500 flex items-center justify-center text-white">
-                <span className="material-icons">person</span>
-              </div>
-              <div>
-                <div className="text-sm font-medium text-white">
-                  {user?.email || 'User'}
+            <>
+              <div className="flex items-center gap-3 mb-4 p-3 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-medium">
+                  {user?.name ? user.name.charAt(0).toUpperCase() : user?.email?.charAt(0).toUpperCase() || 'U'}
                 </div>
-                <button className="text-xs text-gray-400 hover:text-gray-200">
-                  View Profile
+                <div className="flex-1 min-w-0">
+                  <div className="text-base font-medium text-white truncate">
+                    {user?.name || user?.email?.split('@')[0] || 'User'}
+                  </div>
+                  <div className="text-sm text-gray-400 truncate">
+                    {user?.email || 'No email'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <button
+                  className="sidebar-link flex items-center gap-3 p-3 rounded-lg w-full text-base"
+                  onClick={handleGoToSettings}
+                  disabled={isLoading || !isAuthenticated}
+                >
+                  <span className="material-icons text-xl">settings</span>
+                  <span>Settings</span>
+                </button>
+
+                <button
+                  className="sidebar-link flex items-center gap-3 p-3 rounded-lg w-full text-base text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                  onClick={handleLogout}
+                >
+                  <span className="material-icons text-xl">logout</span>
+                  <span>Log Out</span>
                 </button>
               </div>
-            </div>
+            </>
           ) : (
-            <div className="text-center text-gray-400 mb-4">
-              Please log in to continue
+            <div className="text-center py-4">
+              <p className="text-sm text-gray-400 mb-3">Sign in to get started</p>
+              <button
+                className="btn btn-primary w-full"
+                onClick={() => window.location.href = '/login'}
+              >
+                <span className="material-icons">login</span>
+                <span>Log In</span>
+              </button>
             </div>
-          )}
-
-          <button
-            className={`sidebar-link flex items-center p-3 rounded-lg space-x-3 w-full mb-2 ${
-              isLoading || !isAuthenticated ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-            }`}
-            onClick={handleGoToSettings}
-            disabled={isLoading || !isAuthenticated}
-          >
-            <span className="material-icons">settings</span>
-            <span>Settings</span>
-          </button>
-
-          {isAuthenticated ? (
-            <button
-              className="sidebar-link flex items-center p-3 rounded-lg space-x-3 w-full"
-              onClick={handleLogout}
-            >
-              <span className="material-icons">logout</span>
-              <span>Log Out</span>
-            </button>
-          ) : (
-            <button
-              className="sidebar-link flex items-center p-3 rounded-lg space-x-3 w-full"
-              onClick={() => window.location.href = '/login'}
-            >
-              <span className="material-icons">login</span>
-              <span>Log In</span>
-            </button>
           )}
         </div>
       </div>

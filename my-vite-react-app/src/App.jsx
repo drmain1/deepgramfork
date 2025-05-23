@@ -10,7 +10,7 @@ function App() {
     <RecordingsProvider>
       <TemplateProvider>
         <Router>
-          <div className="flex h-screen bg-gray-100 overflow-hidden">
+          <div className="flex h-screen bg-gray-50 overflow-hidden">
             <Sidebar />
             <div className="flex-1 overflow-hidden">
               <Routes>

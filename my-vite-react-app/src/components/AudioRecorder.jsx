@@ -81,11 +81,11 @@ const AudioRecorder = () => {
   // Loading and authentication checks
   if (authLoading || settingsLoading) {
     return (
-      <main className="flex-1 p-8 overflow-y-auto" style={{ backgroundColor: '#f3f4f6' }}>
-        <div className="flex justify-center items-center h-64">
-          <div className="flex items-center space-x-3">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
-            <span className="text-gray-600 font-medium">Loading user data...</span>
+      <main className="flex-1 overflow-y-auto bg-gray-50">
+        <div className="flex justify-center items-center min-h-screen">
+          <div className="text-center">
+            <div className="spinner mx-auto mb-4"></div>
+            <p className="text-gray-600 font-medium">Loading user data...</p>
           </div>
         </div>
       </main>
@@ -94,12 +94,24 @@ const AudioRecorder = () => {
 
   if (!isAuthenticated) {
     return (
-      <main className="flex-1 p-8 overflow-y-auto" style={{ backgroundColor: '#f3f4f6' }}>
-        <div className="flex flex-col justify-center items-center h-64 text-center">
-          <h2 className="text-2xl font-semibold text-gray-800 mb-4">Welcome to Dictation App</h2>
-          <p className="text-gray-600 mb-6 max-w-md">
-            Please log in to start recording new encounters or view your existing notes.
-          </p>
+      <main className="flex-1 overflow-y-auto bg-gray-50">
+        <div className="flex flex-col justify-center items-center min-h-screen px-8">
+          <div className="card max-w-md w-full text-center">
+            <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-primary to-secondary rounded-full flex items-center justify-center">
+              <span className="material-icons text-white text-4xl">mic</span>
+            </div>
+            <h2 className="text-2xl font-semibold text-gray-900 mb-3">Welcome to Dictation App</h2>
+            <p className="text-gray-600 mb-8">
+              Please log in to start recording new encounters or view your existing notes.
+            </p>
+            <button
+              className="btn btn-primary w-full"
+              onClick={() => window.location.href = '/login'}
+            >
+              <span className="material-icons">login</span>
+              <span>Log In to Continue</span>
+            </button>
+          </div>
         </div>
       </main>
     );
