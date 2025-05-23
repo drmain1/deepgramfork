@@ -32,6 +32,9 @@ const AudioRecorder = () => {
 
   // Handle settings initialization
   useEffect(() => {
+    console.log("AudioRecorder - userSettings.officeInformation:", userSettings.officeInformation);
+    console.log("AudioRecorder - selectedLocation current state:", selectedLocation);
+    
     if (!settingsLoading && userSettings.transcriptionProfiles) {
       const filteredProfiles = userSettings.transcriptionProfiles.filter(
         profile => profile.name !== 'Default/General summary'
@@ -52,9 +55,11 @@ const AudioRecorder = () => {
 
     if (!settingsLoading && userSettings.officeInformation && userSettings.officeInformation.length > 0) {
       if (selectedLocation === '' && !userSettings.officeInformation.includes(selectedLocation) && userSettings.officeInformation[0]) {
+        console.log("AudioRecorder - Setting selectedLocation to:", userSettings.officeInformation[0]);
         setSelectedLocation(userSettings.officeInformation[0]);
       }
     } else if (!settingsLoading && (!userSettings.officeInformation || userSettings.officeInformation.length === 0)){
+      console.log("AudioRecorder - No office information found, clearing selectedLocation");
       setSelectedLocation('');
     }
   }, [userSettings, settingsLoading]);

@@ -9,8 +9,15 @@ function EditableNote({
   location,
   recordingId,
   isEditingExternal,
-  onEditingChange 
+  onEditingChange,
+  isSigned = false,
+  doctorName = "",
+  doctorSignature = ""
 }) {
+  // Debug logging for location
+  console.log("EditableNote - location prop:", location);
+  console.log("EditableNote - recordingId:", recordingId);
+  console.log("EditableNote - isSigned:", isSigned);
   const [editableContent, setEditableContent] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [lastSyncedContent, setLastSyncedContent] = useState('');
@@ -54,6 +61,20 @@ function EditableNote({
 
   const handleContentChange = (e) => {
     setEditableContent(e.target.value);
+  };
+
+  const handleGeneratePdf = () => {
+    const pdfOptions = {
+      doctorName,
+      doctorSignature,
+      isSigned
+    };
+    generatePdfFromText(
+      editableContent, 
+      `polished-note-${recordingId || 'current'}.pdf`, 
+      location,
+      pdfOptions
+    );
   };
 
   return (
@@ -118,7 +139,7 @@ function EditableNote({
           <Button
             variant="contained"
             color="secondary"
-            onClick={() => generatePdfFromText(editableContent, `polished-note-${recordingId || 'current'}.pdf`, location)}
+            onClick={handleGeneratePdf}
             disabled={isLoading}
           >
             Save as PDF

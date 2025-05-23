@@ -54,6 +54,11 @@ function RecordingView({
   const webSocketRef = useRef(null);
   const audioStreamRef = useRef(null);
 
+  // Debug logging for location
+  console.log("RecordingView - selectedLocation prop:", selectedLocation);
+  console.log("RecordingView - patientDetails:", patientDetails);
+  console.log("RecordingView - patientContext:", patientContext);
+
   useEffect(() => {
     setCombinedTranscript(finalTranscript + currentInterimTranscript);
   }, [finalTranscript, currentInterimTranscript]);
@@ -316,6 +321,14 @@ function RecordingView({
 
     try {
       const url = '/api/v1/save_session_data';
+      
+      // Embed location data in the transcript content itself as a backup
+      let transcriptWithLocation = combinedTranscript;
+      if (selectedLocation && selectedLocation.trim()) {
+        const locationHeader = `CLINIC LOCATION:\n${selectedLocation.trim()}\n\n---\n\n`;
+        transcriptWithLocation = locationHeader + combinedTranscript;
+      }
+      
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -323,7 +336,7 @@ function RecordingView({
         },
         body: JSON.stringify({
           session_id: sessionId,
-          final_transcript_text: combinedTranscript,
+          final_transcript_text: transcriptWithLocation,
           patient_context: patientContext,
           location: selectedLocation,
           user_id: user.sub

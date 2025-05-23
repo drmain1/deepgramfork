@@ -48,17 +48,57 @@ export function RecordingsProvider({ children }) {
       }
       const fetchedRecordings = await response.json();
       console.log("Fetched recordings from S3:", fetchedRecordings);
+      console.log("Raw API Response - First recording full object:", JSON.stringify(fetchedRecordings[0], null, 2));
+      
+      // Debug: Check if location exists in fetched recordings
+      fetchedRecordings.forEach((recording, index) => {
+        console.log(`Recording ${index} from S3:`, {
+          id: recording.id,
+          name: recording.name,
+          location: recording.location,
+          hasLocation: recording.hasOwnProperty('location')
+        });
+      });
 
       setRecordings(prevRecordings => {
         const localNonSaved = prevRecordings.filter(r => r.status !== 'saved');
         const s3Map = new Map(fetchedRecordings.map(r => [r.id, { ...r, date: r.date }])); 
 
+        // Debug: Check what's in the s3Map
+        console.log("S3 Map entries:");
+        s3Map.forEach((recording, id) => {
+          console.log(`${id}:`, {
+            name: recording.name,
+            location: recording.location,
+            hasLocation: recording.hasOwnProperty('location')
+          });
+        });
+
         const merged = [...localNonSaved];
         s3Map.forEach((s3Rec, id) => {
           if (!merged.find(localRec => localRec.id === id)) {
+            // Check if we have location data in localStorage for this recording
+            const localRecWithLocation = prevRecordings.find(localRec => localRec.id === id);
+            if (localRecWithLocation && localRecWithLocation.location && !s3Rec.location) {
+              console.log(`Preserving location from localStorage for recording ${id}:`, localRecWithLocation.location);
+              s3Rec.location = localRecWithLocation.location;
+            }
             merged.push(s3Rec);
           }
         });
+        
+        // Debug: Check final merged recordings
+        console.log("Final merged recordings:");
+        merged.forEach((recording, index) => {
+          console.log(`Recording ${index}:`, {
+            id: recording.id,
+            name: recording.name,
+            location: recording.location,
+            status: recording.status,
+            hasLocation: recording.hasOwnProperty('location')
+          });
+        });
+        
         return merged.sort((a, b) => new Date(b.date) - new Date(a.date));
       });
 

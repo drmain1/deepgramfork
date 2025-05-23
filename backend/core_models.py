@@ -18,6 +18,8 @@ class UserSettingsData(BaseModel):
     customVocabulary: List[Dict[str, Any]] = Field(default_factory=list)
     officeInformation: List[str] = Field(default_factory=list)
     transcriptionProfiles: List[TranscriptionProfileItem] = Field(default_factory=list)
+    doctorName: Optional[str] = Field(default="", description="Doctor's name for signatures")
+    doctorSignature: Optional[str] = Field(default=None, description="Base64 encoded doctor's signature image")
 
 # Default user settings structure
 DEFAULT_USER_SETTINGS = UserSettingsData(

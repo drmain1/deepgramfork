@@ -12,6 +12,8 @@ export const UserSettingsProvider = ({ children }) => {
     customVocabulary: [],
     officeInformation: [],
     transcriptionProfiles: [],
+    doctorName: '',
+    doctorSignature: null,
   });
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [settingsError, setSettingsError] = useState(null);
@@ -52,6 +54,8 @@ export const UserSettingsProvider = ({ children }) => {
           customVocabulary: data.customVocabulary || [],
           officeInformation: data.officeInformation || [],
           transcriptionProfiles: data.transcriptionProfiles || [],
+          doctorName: data.doctorName || '',
+          doctorSignature: data.doctorSignature || null,
         });
       }
     } catch (error) {
@@ -67,10 +71,12 @@ export const UserSettingsProvider = ({ children }) => {
     if (!isAuthenticated || !user || !user.sub) {
       throw new Error('User not authenticated. Cannot save settings.');
     }
+    console.log('UserSettingsContext - Attempting to save settings:', newSettings);
     setSettingsLoading(true); // Indicate saving process
     setSettingsError(null);
     try {
       const accessToken = await getAccessTokenSilently();
+      console.log('UserSettingsContext - Got access token, making API call...');
       const response = await fetch(`${API_BASE_URL}/api/v1/user_settings`,
         {
           method: 'POST',
@@ -81,10 +87,14 @@ export const UserSettingsProvider = ({ children }) => {
           body: JSON.stringify({ user_id: user.sub, settings: newSettings }),
         }
       );
+      console.log('UserSettingsContext - API response status:', response.status);
       if (!response.ok) {
-        throw new Error(`Failed to save user settings: ${response.statusText} (Status: ${response.status})`);
+        const errorText = await response.text();
+        console.error('UserSettingsContext - API error response:', errorText);
+        throw new Error(`Failed to save user settings: ${response.statusText} (Status: ${response.status}). Details: ${errorText}`);
       }
       const savedData = await response.json();
+      console.log('UserSettingsContext - Settings saved successfully:', savedData);
       setUserSettings(savedData); 
       return savedData;
     } catch (error) {
@@ -124,6 +134,12 @@ export const UserSettingsProvider = ({ children }) => {
     },
     updateMacroPhrases: (newMacros) => {
         const updatedSettings = { ...userSettings, macroPhrases: newMacros };
+        return saveUserSettings(updatedSettings);
+    },
+    updateDoctorInformation: (doctorName, doctorSignature) => {
+        console.log('updateDoctorInformation called with:', { doctorName, doctorSignature: doctorSignature ? 'present' : 'null' });
+        const updatedSettings = { ...userSettings, doctorName, doctorSignature };
+        console.log('updateDoctorInformation - Updated settings:', updatedSettings);
         return saveUserSettings(updatedSettings);
     },
   };

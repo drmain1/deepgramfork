@@ -6,6 +6,7 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import CloudSyncIcon from '@mui/icons-material/CloudSync';
 import DeleteIcon from '@mui/icons-material/Delete';
+import { useNavigate } from 'react-router-dom';
 import { useRecordings } from '../contexts/RecordingsContext'; // Import useRecordings
 
 // This wrapper will be the direct child of Tooltip
@@ -18,9 +19,11 @@ TooltipCompatibleWrapper.displayName = 'TooltipCompatibleWrapper';
 
 function RecentRecordingItem({ recording, onDelete }) {
   const { selectRecording, selectedRecordingId } = useRecordings(); // Get context values
+  const navigate = useNavigate();
 
   const handleClick = () => {
     selectRecording(recording.id);
+    navigate('/'); // Navigate to root route where AudioRecorder component is rendered
   };
 
   const handleDelete = (e) => {

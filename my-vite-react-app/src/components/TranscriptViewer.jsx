@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { Box, Typography, Button, Tabs, Tab, CircularProgress } from '@mui/material';
+import { Box, Typography, Button, Tabs, Tab, CircularProgress, Paper, Chip } from '@mui/material';
+import { CheckCircle, Edit } from '@mui/icons-material';
 import { useRecordings } from '../contexts/RecordingsContext';
+import { useUserSettings } from '../contexts/UserSettingsContext';
 import EditableNote from './EditableNote';
 
 const TabPanel = ({ children, value, index, ...other }) => {
@@ -32,10 +34,17 @@ function TranscriptViewer() {
     updateRecording
   } = useRecordings();
 
+  const { userSettings } = useUserSettings();
   const [transcriptDisplayTab, setTranscriptDisplayTab] = useState(0);
 
+  // Track signature state for the current recording
   const selectedRec = recordings.find(r => r.id === selectedRecordingId);
   const title = selectedRec ? `Details: ${selectedRec.name}` : "Recording Details";
+  const isSigned = selectedRec?.isSigned || false;
+  
+  // Debug logging for location
+  console.log("TranscriptViewer - selectedRec:", selectedRec);
+  console.log("TranscriptViewer - location:", selectedRec?.location);
 
   const handleTabChange = (event, newValue) => {
     setTranscriptDisplayTab(newValue);
@@ -46,6 +55,28 @@ function TranscriptViewer() {
       updateRecording(selectedRecordingId, { polishedTranscript: content });
     }
   };
+
+  const handleSignNote = () => {
+    if (selectedRecordingId && typeof updateRecording === 'function') {
+      updateRecording(selectedRecordingId, { 
+        isSigned: true,
+        signedBy: userSettings.doctorName || 'Doctor',
+        signedAt: new Date().toISOString()
+      });
+    }
+  };
+
+  const handleUnsignNote = () => {
+    if (selectedRecordingId && typeof updateRecording === 'function') {
+      updateRecording(selectedRecordingId, { 
+        isSigned: false,
+        signedBy: null,
+        signedAt: null
+      });
+    }
+  };
+
+  const canSign = userSettings.doctorName && userSettings.doctorSignature && polishedTranscriptContent;
 
   if (isLoadingSelectedTranscript) {
     return (
@@ -96,6 +127,60 @@ function TranscriptViewer() {
         </Button>
       </Box>
 
+      {/* Signature Status Section */}
+      <Paper elevation={1} sx={{ p: 2, mb: 2, flexShrink: 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+              Note Review & Signature
+            </Typography>
+            {isSigned && (
+              <Chip 
+                icon={<CheckCircle />} 
+                label={`Signed by ${selectedRec.signedBy}`}
+                color="success"
+                size="small"
+              />
+            )}
+          </Box>
+          
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            {!isSigned ? (
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={handleSignNote}
+                disabled={!canSign}
+                startIcon={<Edit />}
+                size="small"
+              >
+                Note Reviewed and Sign
+              </Button>
+            ) : (
+              <Button
+                variant="outlined"
+                onClick={handleUnsignNote}
+                size="small"
+              >
+                Remove Signature
+              </Button>
+            )}
+          </Box>
+        </Box>
+        
+        {!canSign && !isSigned && (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Complete doctor information in Settings to enable signing
+          </Typography>
+        )}
+        
+        {isSigned && selectedRec.signedAt && (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Signed on {new Date(selectedRec.signedAt).toLocaleString()}
+          </Typography>
+        )}
+      </Paper>
+
       <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid', borderColor: 'divider', borderRadius:1, minHeight: 0 }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider', flexShrink: 0, backgroundColor: 'background.default' }}>
           <Tabs value={transcriptDisplayTab} onChange={handleTabChange} aria-label="transcript content tabs" variant="fullWidth">
@@ -128,6 +213,9 @@ function TranscriptViewer() {
             isLoading={isLoadingSelectedTranscript}
             location={selectedRec?.location}
             recordingId={selectedRecordingId}
+            isSigned={isSigned}
+            doctorName={userSettings.doctorName}
+            doctorSignature={userSettings.doctorSignature}
           />
         </TabPanel>
       </Box>
