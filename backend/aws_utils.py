@@ -7,7 +7,12 @@ async def polish_transcript_with_bedrock(transcript: str, bedrock_client, custom
         print("Bedrock runtime client not provided to utility function. Skipping polishing.")
         return transcript
 
-    model_id = 'anthropic.claude-3-haiku-20240307-v1:0'
+    # Using Claude 3.5 Sonnet v2 via cross-region inference (fallback while getting Claude Sonnet 4 access)
+    # This model ID leverages cross-region inference for better throughput and availability
+    # The 'us.' prefix indicates this will route across US regions (us-east-1, us-east-2, us-west-2)
+    # TODO: Switch back to Claude Sonnet 4 once model access is approved: 'us.anthropic.claude-sonnet-4-20250514-v1:0'
+    # Alternative if cross-region fails: 'anthropic.claude-3-5-sonnet-20241022-v2:0' (direct model access)
+    model_id = 'anthropic.claude-3-7-sonnet-20250219-v1:0'
     
     # Define the default prompt if no custom instructions are provided
     if custom_instructions:
@@ -27,12 +32,12 @@ Transcript to process:
 {transcript}
 ```
 
-Assistant:"""
+A:"""
 
     try:
         request_body = json.dumps({
             "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 4096, 
+            "max_tokens": 8096, 
             "messages": [
                 {
                     "role": "user",
@@ -60,18 +65,18 @@ Assistant:"""
         if response_body.get("content") and isinstance(response_body["content"], list) and len(response_body["content"]) > 0:
             polished_text = response_body["content"][0].get("text", "")
             if polished_text:
-                print(f"Transcript processed by Bedrock Claude Haiku. Custom instructions used: {'Yes' if custom_instructions else 'No (default medical)'}.")
+                print(f"Transcript processed by Bedrock Claude 3.5 Sonnet v2 (cross-region). Custom instructions used: {'Yes' if custom_instructions else 'No (default medical)'}.")
                 return polished_text.strip()
             else:
                 print("Bedrock response was empty or malformed (no text content) (via aws_utils).")
         else:
-            print(f"Bedrock Claude Haiku response structure not as expected (via aws_utils): {response_body}")
+            print(f"Bedrock Claude 3.5 Sonnet v2 response structure not as expected (via aws_utils): {response_body}")
         
         print("Failed to get processed transcript from Bedrock (via aws_utils), returning original.")
         return transcript
         
     except Exception as e:
-        print(f"Error invoking Bedrock Claude Haiku (via aws_utils): {e}")
+        print(f"Error invoking Bedrock Claude 3.5 Sonnet v2 (via aws_utils): {e}")
         return transcript
 
 async def save_text_to_s3(s3_client, aws_s3_bucket_name: str, tenant_id: str, session_id: str, content: str, folder: str = "notes"):
