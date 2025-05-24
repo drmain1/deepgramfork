@@ -340,10 +340,11 @@ function RecordingView({
       });
       
       // Embed location data in the transcript content itself as a backup
-      let transcriptWithLocation = combinedTranscript;
+      const finalTranscriptContent = combinedTranscript;
+      let transcriptWithLocation = finalTranscriptContent;
       if (selectedLocation && selectedLocation.trim()) {
         const locationHeader = `CLINIC LOCATION:\n${selectedLocation.trim()}\n\n---\n\n`;
-        transcriptWithLocation = locationHeader + combinedTranscript;
+        transcriptWithLocation = locationHeader + finalTranscriptContent;
       }
       
       const response = await fetch(url, {

@@ -292,7 +292,6 @@ export function RecordingsProvider({ children }) {
     }
   }, [selectedRecordingId, recordings]);
 
-
   return (
     <RecordingsContext.Provider value={{
       recordings,

@@ -7,12 +7,11 @@ async def polish_transcript_with_bedrock(transcript: str, bedrock_client, custom
         print("Bedrock runtime client not provided to utility function. Skipping polishing.")
         return transcript
 
-    # Using Claude 3.5 Sonnet v2 via cross-region inference (fallback while getting Claude Sonnet 4 access)
+    # Using Claude Sonnet 4 via cross-region inference - Latest and most advanced model
     # This model ID leverages cross-region inference for better throughput and availability
     # The 'us.' prefix indicates this will route across US regions (us-east-1, us-east-2, us-west-2)
-    # TODO: Switch back to Claude Sonnet 4 once model access is approved: 'us.anthropic.claude-sonnet-4-20250514-v1:0'
-    # Alternative if cross-region fails: 'anthropic.claude-3-5-sonnet-20241022-v2:0' (direct model access)
-    model_id = 'anthropic.claude-3-7-sonnet-20250219-v1:0'
+    # Fallback option if needed: 'anthropic.claude-sonnet-4-20250514-v1:0' (direct model access)
+    model_id = 'us.anthropic.claude-sonnet-4-20250514-v1:0'
     
     # Define the default prompt if no custom instructions are provided
     if custom_instructions:
@@ -37,7 +36,7 @@ A:"""
     try:
         request_body = json.dumps({
             "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 8096, 
+            "max_tokens": 1000, 
             "messages": [
                 {
                     "role": "user",
@@ -65,18 +64,48 @@ A:"""
         if response_body.get("content") and isinstance(response_body["content"], list) and len(response_body["content"]) > 0:
             polished_text = response_body["content"][0].get("text", "")
             if polished_text:
-                print(f"Transcript processed by Bedrock Claude 3.5 Sonnet v2 (cross-region). Custom instructions used: {'Yes' if custom_instructions else 'No (default medical)'}.")
+                print(f"Transcript processed by Bedrock Claude Sonnet 4 (cross-region). Custom instructions used: {'Yes' if custom_instructions else 'No (default medical)'}.")
                 return polished_text.strip()
             else:
                 print("Bedrock response was empty or malformed (no text content) (via aws_utils).")
         else:
-            print(f"Bedrock Claude 3.5 Sonnet v2 response structure not as expected (via aws_utils): {response_body}")
+            print(f"Bedrock Claude Sonnet 4 response structure not as expected (via aws_utils): {response_body}")
         
         print("Failed to get processed transcript from Bedrock (via aws_utils), returning original.")
         return transcript
         
     except Exception as e:
-        print(f"Error invoking Bedrock Claude 3.5 Sonnet v2 (via aws_utils): {e}")
+        # Enhanced error logging for debugging
+        error_details = {
+            'error_type': type(e).__name__,
+            'error_message': str(e),
+            'model_id': model_id,
+            'transcript_length': len(transcript) if transcript else 0,
+            'custom_instructions_used': bool(custom_instructions),
+            'max_tokens_requested': 8096
+        }
+        
+        # Check if it's a specific AWS/Bedrock error
+        if hasattr(e, 'response'):
+            error_details['aws_error_code'] = e.response.get('Error', {}).get('Code', 'Unknown')
+            error_details['aws_error_message'] = e.response.get('Error', {}).get('Message', 'Unknown')
+            error_details['http_status_code'] = e.response.get('ResponseMetadata', {}).get('HTTPStatusCode', 'Unknown')
+            error_details['request_id'] = e.response.get('ResponseMetadata', {}).get('RequestId', 'Unknown')
+        
+        print(f"DETAILED ERROR - Bedrock Claude Sonnet 4 invocation failed:")
+        print(f"  Error Type: {error_details['error_type']}")
+        print(f"  Error Message: {error_details['error_message']}")
+        print(f"  Model ID: {error_details['model_id']}")
+        print(f"  Transcript Length: {error_details['transcript_length']} characters")
+        print(f"  Custom Instructions: {error_details['custom_instructions_used']}")
+        print(f"  Max Tokens Requested: {error_details['max_tokens_requested']}")
+        
+        if hasattr(e, 'response'):
+            print(f"  AWS Error Code: {error_details['aws_error_code']}")
+            print(f"  AWS Error Message: {error_details['aws_error_message']}")
+            print(f"  HTTP Status: {error_details['http_status_code']}")
+            print(f"  Request ID: {error_details['request_id']}")
+        
         return transcript
 
 async def save_text_to_s3(s3_client, aws_s3_bucket_name: str, tenant_id: str, session_id: str, content: str, folder: str = "notes"):
