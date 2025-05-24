@@ -187,13 +187,16 @@ async def websocket_stream_endpoint(websocket: WebSocket):
 class TranscriptionProfileItem(BaseModel):
     id: str = Field(..., description="Unique identifier for the profile")
     name: str = Field(..., description="User-defined name for the profile")
-    llmPrompt: Optional[str] = Field(default=None, description="Custom LLM prompt/template for this profile")
+    llmInstructions: Optional[str] = Field(default=None, description="Custom LLM instructions/template for this profile")
+    llmPrompt: Optional[str] = Field(default=None, description="Custom LLM prompt/template for this profile (deprecated, use llmInstructions)")
     isDefault: Optional[bool] = Field(default=False, description="Whether this is the default profile")
     # Deepgram specific options
     smart_format: Optional[bool] = Field(default=True, description="Enable Deepgram Smart Formatting")
     diarize: Optional[bool] = Field(default=False, description="Enable Deepgram Speaker Diarization")
     num_speakers: Optional[int] = Field(default=None, ge=1, description="Suggested number of speakers if diarization is enabled") # ge=1 means greater than or equal to 1 if set
     utterances: Optional[bool] = Field(default=False, description="Enable Deepgram Word-Level Timestamps (utterances)")
+    specialty: Optional[str] = Field(default=None, description="Medical specialty category")
+    originalTemplateId: Optional[str] = Field(default=None, description="Original template ID from templateConfig")
 
 class UserSettingsData(BaseModel):
     macroPhrases: List[Dict[str, Any]] = Field(default_factory=list)
@@ -277,7 +280,8 @@ class SaveSessionRequest(BaseModel):
     user_id: str  
     patient_context: Optional[str] = None 
     encounter_type: Optional[str] = None  
-    llm_template: Optional[str] = None    
+    llm_template: Optional[str] = None
+    llm_template_id: Optional[str] = None    
 
 @app.post("/api/v1/save_session_data") 
 async def save_session_data_endpoint(request_data: SaveSessionRequest):
@@ -286,9 +290,45 @@ async def save_session_data_endpoint(request_data: SaveSessionRequest):
     user_id = request_data.user_id 
     patient_context = request_data.patient_context 
     encounter_type = request_data.encounter_type   
-    llm_template = request_data.llm_template     
+    llm_template = request_data.llm_template  
+    llm_template_id = request_data.llm_template_id   
 
-    custom_instructions = f"Patient Context: {patient_context}\nEncounter Type: {encounter_type}\nTemplate: {llm_template}" 
+    # Get user settings to retrieve the actual LLM instructions from the profile
+    custom_instructions = None
+    try:
+        user_settings = await get_user_settings(user_id)
+        if user_settings and user_settings.transcriptionProfiles:
+            # First try to find by ID (more reliable), then fallback to name
+            selected_profile = None
+            if llm_template_id:
+                selected_profile = next((p for p in user_settings.transcriptionProfiles if p.id == llm_template_id), None)
+            if not selected_profile and llm_template:
+                selected_profile = next((p for p in user_settings.transcriptionProfiles if p.name == llm_template), None)
+            if selected_profile:
+                print(f"Found profile '{selected_profile.name}' (ID: {selected_profile.id}) for session {session_id}")
+                print(f"Profile has llmInstructions: {bool(selected_profile.llmInstructions)}")
+                print(f"Profile has llmPrompt: {bool(selected_profile.llmPrompt)}")
+                if selected_profile.llmInstructions:
+                    custom_instructions = selected_profile.llmInstructions
+                    print(f"Using LLM instructions from profile '{selected_profile.name}' (length: {len(custom_instructions)}) for session {session_id}")
+                elif selected_profile.llmPrompt:
+                    # Fallback to deprecated llmPrompt field
+                    custom_instructions = selected_profile.llmPrompt
+                    print(f"Using legacy LLM prompt from profile '{selected_profile.name}' for session {session_id}")
+                else:
+                    print(f"Profile '{selected_profile.name}' has no LLM instructions or prompt")
+            else:
+                print(f"No profile found for template_id: {llm_template_id}, template_name: {llm_template}")
+    except Exception as e:
+        print(f"Error retrieving user settings for LLM instructions: {e}")
+    
+    # Fallback to basic custom instructions if no profile instructions found
+    if not custom_instructions:
+        custom_instructions = f"Patient Context: {patient_context}\nEncounter Type: {encounter_type}\nTemplate: {llm_template}"
+        print(f"Using fallback LLM instructions for session {session_id}")
+    else:
+        # Append context information to the profile instructions
+        custom_instructions += f"\n\nAdditional Context:\nPatient Context: {patient_context}\nEncounter Type: {encounter_type}" 
 
     print(f"Received save request for session: {session_id}, user: {user_id}")
 

@@ -23,7 +23,7 @@ function RecentRecordingItem({ recording, onDelete }) {
 
   const handleClick = () => {
     selectRecording(recording.id);
-    navigate('/'); // Navigate to root route where AudioRecorder component is rendered
+    navigate('/transcription'); // Navigate to transcription route where TranscriptViewer logic is implemented
   };
 
   const handleDelete = (e) => {

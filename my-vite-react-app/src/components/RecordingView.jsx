@@ -322,6 +322,23 @@ function RecordingView({
     try {
       const url = '/api/v1/save_session_data';
       
+      // Get the active transcription profile and its LLM instructions
+      const activeProfile = userSettings.transcriptionProfiles?.find(p => p.id === selectedProfileId);
+      const llmTemplate = activeProfile ? activeProfile.name : 'General Summary';
+      const llmTemplateId = activeProfile ? activeProfile.id : null;
+      const llmInstructions = activeProfile ? (activeProfile.llmInstructions || activeProfile.llmPrompt) : null;
+      const encounterType = activeProfile ? activeProfile.name : patientContext || 'General';
+      
+      // Debug logging
+      console.log('Save Session Debug:', {
+        selectedProfileId,
+        activeProfile: activeProfile ? { id: activeProfile.id, name: activeProfile.name, hasInstructions: !!llmInstructions } : null,
+        llmTemplate,
+        llmTemplateId,
+        hasInstructions: !!llmInstructions,
+        instructionsLength: llmInstructions ? llmInstructions.length : 0
+      });
+      
       // Embed location data in the transcript content itself as a backup
       let transcriptWithLocation = combinedTranscript;
       if (selectedLocation && selectedLocation.trim()) {
@@ -338,6 +355,9 @@ function RecordingView({
           session_id: sessionId,
           final_transcript_text: transcriptWithLocation,
           patient_context: patientContext,
+          encounter_type: encounterType,
+          llm_template: llmTemplate,
+          llm_template_id: llmTemplateId,
           location: selectedLocation,
           user_id: user.sub
         }),
@@ -368,6 +388,7 @@ function RecordingView({
           s3PathPolished: result.notes_s3_path,
           patientContext: patientContext,
           location: selectedLocation,
+          llmTemplate: llmTemplate,
           error: null
         });
       } else {

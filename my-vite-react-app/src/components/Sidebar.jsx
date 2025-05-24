@@ -138,7 +138,10 @@ function Sidebar() {
                 className={`sidebar-link w-full flex flex-col p-4 rounded-lg text-left ${
                   selectedRecordingId === recording.id ? 'active' : ''
                 }`}
-                onClick={() => selectRecording(recording.id)}
+                onClick={() => {
+                  selectRecording(recording.id);
+                  navigate('/transcription'); // Navigate to transcription route where TranscriptViewer logic is implemented
+                }}
               >
                 <div className="flex items-start justify-between">
                   <span className="truncate flex-1 font-medium text-base">

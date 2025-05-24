@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { TextField, Button, Box } from '@mui/material';
 import { generatePdfFromText } from './pdfUtils';
+import PdfPreviewModal from './PdfPreviewModal';
 
 function EditableNote({ 
   content, 
@@ -21,6 +22,7 @@ function EditableNote({
   const [editableContent, setEditableContent] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [lastSyncedContent, setLastSyncedContent] = useState('');
+  const [showPdfModal, setShowPdfModal] = useState(false);
   const isInitialMount = useRef(true);
 
   // Initialize content when it changes from outside (only if not editing)
@@ -64,10 +66,15 @@ function EditableNote({
   };
 
   const handleGeneratePdf = () => {
+    setShowPdfModal(true);
+  };
+
+  const handleQuickPdf = () => {
     const pdfOptions = {
       doctorName,
       doctorSignature,
-      isSigned
+      isSigned,
+      useProfessionalFormat: false // Use simple format for quick PDF
     };
     generatePdfFromText(
       editableContent, 
@@ -136,16 +143,38 @@ function EditableNote({
           </Button>
         )}
         {(content || editableContent) && !isEditing && (
-          <Button
-            variant="contained"
-            color="secondary"
-            onClick={handleGeneratePdf}
-            disabled={isLoading}
-          >
-            Save as PDF
-          </Button>
+          <>
+            <Button
+              variant="outlined"
+              color="secondary"
+              onClick={handleQuickPdf}
+              disabled={isLoading}
+              size="small"
+            >
+              Quick PDF
+            </Button>
+            <Button
+              variant="contained"
+              color="secondary"
+              onClick={handleGeneratePdf}
+              disabled={isLoading}
+            >
+              Professional PDF
+            </Button>
+          </>
         )}
       </Box>
+      
+      <PdfPreviewModal
+        open={showPdfModal}
+        onClose={() => setShowPdfModal(false)}
+        content={editableContent}
+        location={location}
+        recordingId={recordingId}
+        doctorName={doctorName}
+        doctorSignature={doctorSignature}
+        isSigned={isSigned}
+      />
     </>
   );
 }

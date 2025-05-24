@@ -64,7 +64,7 @@ function SettingsPage() {
 
   if (authLoading || settingsLoading) {
     return (
-      <main className="flex-1 p-8 overflow-y-auto">
+      <main className="flex-1 p-8">
         <div className="flex justify-center items-center h-64">
           <div className="text-gray-600">Loading settings...</div>
         </div>
@@ -74,7 +74,7 @@ function SettingsPage() {
 
   if (settingsError) {
     return (
-      <main className="flex-1 p-8 overflow-y-auto">
+      <main className="flex-1 p-8">
         <div className="flex justify-center items-center h-64">
           <div className="text-red-600">Error loading settings: {settingsError}. Please try again later.</div>
         </div>
@@ -84,7 +84,7 @@ function SettingsPage() {
 
   if (!isAuthenticated) {
     return (
-      <main className="flex-1 p-8 overflow-y-auto">
+      <main className="flex-1 p-8">
         <div className="flex justify-center items-center h-64">
           <div className="text-gray-600">Please log in to manage your settings.</div>
         </div>
@@ -93,7 +93,7 @@ function SettingsPage() {
   }
 
   return (
-    <main className="flex-1 p-8 overflow-y-auto">
+    <main className="flex-1 p-8">
       <header className="mb-8">
         <h1 className="text-3xl font-semibold text-gray-800">Settings</h1>
       </header>
