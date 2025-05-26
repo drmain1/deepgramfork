@@ -4,6 +4,7 @@ import { CheckCircle, Edit } from '@mui/icons-material';
 import { useRecordings } from '../contexts/RecordingsContext';
 import { useUserSettings } from '../contexts/UserSettingsContext';
 import EditableNote from './EditableNote';
+import FormattedMedicalText from './FormattedMedicalText';
 
 const TabPanel = ({ children, value, index, ...other }) => {
   return (
@@ -13,7 +14,14 @@ const TabPanel = ({ children, value, index, ...other }) => {
       aria-labelledby={`transcript-tab-${index}`}
       {...other}
       style={value === index ?
-        { flexGrow: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto', minHeight: 0 } :
+        { 
+          flexGrow: 1, 
+          display: 'flex', 
+          flexDirection: 'column', 
+          overflowY: 'auto', 
+          minHeight: 0,
+          height: '100%' // Ensure explicit height
+        } :
         { display: 'none' }
       }
     >
@@ -190,33 +198,39 @@ function TranscriptViewer() {
         </Box>
         
         <TabPanel value={transcriptDisplayTab} index={0}>
-          <Box component="pre" sx={{ 
-            p: 1.5, 
-            flexGrow: 1, 
-            whiteSpace: 'pre-wrap', 
-            wordBreak: 'break-word', 
-            fontFamily: 'monospace', 
-            fontSize: '1.1rem', 
-            lineHeight: 1.6, 
-            backgroundColor: 'grey.50', 
-            margin: 0, 
-            color: 'text.primary' 
-          }}>
-            {originalTranscriptContent || "Original transcript not available or empty."}
-          </Box>
+          <FormattedMedicalText
+            content={originalTranscriptContent || "Original transcript not available or empty."}
+            sx={{ 
+              p: 1.5, 
+              flexGrow: 1, 
+              backgroundColor: 'grey.50', 
+              margin: 0,
+              overflowY: 'auto',
+              maxHeight: '100%',
+              minHeight: 0
+            }}
+          />
         </TabPanel>
         
         <TabPanel value={transcriptDisplayTab} index={1}>
-          <EditableNote
-            content={polishedTranscriptContent}
-            onSave={handleSaveNote}
-            isLoading={isLoadingSelectedTranscript}
-            location={selectedRec?.location}
-            recordingId={selectedRecordingId}
-            isSigned={isSigned}
-            doctorName={userSettings.doctorName}
-            doctorSignature={userSettings.doctorSignature}
-          />
+          <Box sx={{ 
+            flexGrow: 1, 
+            display: 'flex', 
+            flexDirection: 'column', 
+            minHeight: 0,
+            height: '100%'
+          }}>
+            <EditableNote
+              content={polishedTranscriptContent}
+              onSave={handleSaveNote}
+              isLoading={isLoadingSelectedTranscript}
+              location={selectedRec?.location}
+              recordingId={selectedRecordingId}
+              isSigned={isSigned}
+              doctorName={userSettings.doctorName}
+              doctorSignature={userSettings.doctorSignature}
+            />
+          </Box>
         </TabPanel>
       </Box>
     </Box>

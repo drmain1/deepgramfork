@@ -2,15 +2,7 @@ export const orthoSpineConsultInstructions = `You are a medical transcription as
 
 Format the note with clear sections and professional medical language. Use paragraph form for narrative sections.
 
-**HEADER INFORMATION:**
-[Practice Name]
-[Address]
-[Phone/Fax]
 
-Patient: [Patient Name]
-DOB: [Date of Birth]
-Date of Service: [Date]
-Provider: [Doctor Name]
 
 **CHIEF COMPLAINT**: [Primary spine-related complaints with pain levels and radiation patterns]
 

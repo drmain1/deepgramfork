@@ -312,46 +312,15 @@ export const createMedicalDocumentTemplate = (content, metadata = {}, options = 
 };
 
 /**
- * Formats section content with proper medical formatting
+ * Formats section content with proper medical formatting including tables
  * @param {string} content - Raw section content
  * @returns {string} - Formatted HTML content
  */
 const formatSectionContent = (content) => {
   if (!content) return '';
 
-  // Split into lines and process each
-  const lines = content.split('\n');
-  let formattedLines = [];
-
-  lines.forEach(line => {
-    const trimmedLine = line.trim();
-    if (!trimmedLine) return;
-
-    // Check if line is a numbered list item
-    if (/^\d+\.\s+/.test(trimmedLine)) {
-      formattedLines.push(`<p style="margin: 8px 0; font-weight: 500;">${trimmedLine}</p>`);
-    }
-    // Check if line is a bullet point
-    else if (/^[-•]\s+/.test(trimmedLine)) {
-      formattedLines.push(`<p style="margin: 5px 0 5px 15px; position: relative;">
-        <span style="position: absolute; left: -15px;">•</span>
-        ${trimmedLine.replace(/^[-•]\s+/, '')}
-      </p>`);
-    }
-    // Check if line appears to be a sub-item
-    else if (/^\s+[-•]\s+/.test(line)) {
-      formattedLines.push(`<p style="margin: 3px 0 3px 30px; position: relative; font-size: 10px;">
-        <span style="position: absolute; left: -15px;">◦</span>
-        ${trimmedLine.replace(/^[-•]\s+/, '')}
-      </p>`);
-    }
-    // Regular paragraph
-    else {
-      formattedLines.push(`<p style="margin: 8px 0;">${trimmedLine}</p>`);
-    }
-  });
-
-  return formattedLines.join('');
+  // Use the new formatted text to HTML converter
+  return convertFormattedTextToHtml(content);
 };
 
 /**
@@ -414,13 +383,19 @@ export const generateProfessionalMedicalPdf = async (textContent, fileName = "me
       left: -9999px;
       width: 794px;
       background: white;
+      padding: 20px;
+      box-sizing: border-box;
     `;
     container.innerHTML = htmlTemplate;
     document.body.appendChild(container);
 
-    console.log("Generating professional medical PDF...");
+    // Wait for content to render and get actual height
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const actualHeight = Math.max(container.scrollHeight, container.offsetHeight, 1123);
 
-    // Generate canvas from HTML
+    console.log("Generating professional medical PDF...", { actualHeight });
+
+    // Generate canvas from HTML with proper height
     const canvas = await html2canvas(container, {
       scale: 2,
       useCORS: true,
@@ -428,7 +403,7 @@ export const generateProfessionalMedicalPdf = async (textContent, fileName = "me
       backgroundColor: '#ffffff',
       logging: false,
       width: 794,
-      height: Math.max(1123, container.scrollHeight)
+      height: actualHeight
     });
 
     // Create PDF with proper dimensions
@@ -595,7 +570,6 @@ export const generatePdfFromText = async (textContent, fileName = "document.pdf"
     background: white;
     padding: ${margins.top}mm ${margins.right}mm ${margins.bottom}mm ${margins.left}mm;
     width: 794px;
-    min-height: 1123px;
     box-sizing: border-box;
     position: absolute;
     top: -9999px;
@@ -617,13 +591,12 @@ export const generatePdfFromText = async (textContent, fileName = "document.pdf"
   
   // Add main content (cleaned of location header if it was extracted)
   content += `<div style="
-    white-space: pre-wrap;
     word-wrap: break-word;
     font-family: ${fontFamily};
     font-size: ${fontSize}px;
     line-height: ${lineHeight};
     margin-bottom: 40px;
-  ">${finalContent}</div>`;
+  ">${convertFormattedTextToHtml(finalContent)}</div>`;
   
   // Add signature section if signed
   if (isSigned && doctorName) {
@@ -664,7 +637,17 @@ export const generatePdfFromText = async (textContent, fileName = "document.pdf"
   try {
     console.log("Generating PDF with html2canvas + jsPDF...");
 
-    // Generate canvas from HTML
+    // Wait for content to render and get actual height
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const actualHeight = Math.max(container.scrollHeight, container.offsetHeight, 1123);
+
+    console.log("Container dimensions:", { 
+      scrollHeight: container.scrollHeight, 
+      offsetHeight: container.offsetHeight, 
+      actualHeight 
+    });
+
+    // Generate canvas from HTML with proper height
     const canvas = await html2canvas(container, {
       scale: 2,
       useCORS: true,
@@ -672,7 +655,7 @@ export const generatePdfFromText = async (textContent, fileName = "document.pdf"
       backgroundColor: '#ffffff',
       logging: false,
       width: 794,
-      height: 1123
+      height: actualHeight
     });
 
     // Create PDF
@@ -686,20 +669,27 @@ export const generatePdfFromText = async (textContent, fileName = "document.pdf"
     const imgWidth = 210; // A4 width in mm
     const pageHeight = 297; // A4 height in mm
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
-    let heightLeft = imgHeight;
+    
+    console.log("PDF dimensions:", { imgWidth, imgHeight, pageHeight });
 
-    let position = 0;
+    let yPosition = 0;
 
-    // Add first page
-    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-    heightLeft -= pageHeight;
+    // Add pages as needed
+    while (yPosition < imgHeight) {
+      if (yPosition > 0) {
+        pdf.addPage();
+      }
 
-    // Add additional pages if needed
-    while (heightLeft >= 0) {
-      position = heightLeft - imgHeight;
-      pdf.addPage();
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
+      pdf.addImage(
+        imgData,
+        'PNG',
+        0,
+        -yPosition,
+        imgWidth,
+        imgHeight
+      );
+
+      yPosition += pageHeight;
     }
 
     // Save the PDF
@@ -713,5 +703,198 @@ export const generatePdfFromText = async (textContent, fileName = "document.pdf"
     // Clean up
     document.body.removeChild(container);
   }
+};
+
+/**
+ * Converts formatted medical text to HTML with tables and styling for PDF generation
+ * @param {string} content - The medical transcript content with markdown formatting
+ * @returns {string} - HTML formatted content with tables and styling
+ */
+export const convertFormattedTextToHtml = (content) => {
+  if (!content) return '';
+
+  const lines = content.split('\n');
+  let htmlContent = '';
+  let i = 0;
+
+  // Function to detect if a group of lines forms a table
+  const detectTable = (startIndex) => {
+    const tableLines = [];
+    let currentIndex = startIndex;
+    
+    // Look for lines that contain | characters (potential table rows)
+    while (currentIndex < lines.length) {
+      const line = lines[currentIndex].trim();
+      
+      // Skip empty lines at the start
+      if (line === '' && tableLines.length === 0) {
+        currentIndex++;
+        continue;
+      }
+      
+      // If we hit an empty line after finding table content, end the table
+      if (line === '' && tableLines.length > 0) {
+        break;
+      }
+      
+      // Check if line looks like a table row (contains |)
+      if (line.includes('|')) {
+        tableLines.push(line);
+        currentIndex++;
+      } else {
+        // If we have table content and hit a non-table line, end the table
+        if (tableLines.length > 0) {
+          break;
+        } else {
+          // Not a table, return null
+          return null;
+        }
+      }
+    }
+    
+    // Need at least 2 lines to make a table (header + data or separator + data)
+    if (tableLines.length < 2) {
+      return null;
+    }
+    
+    return {
+      lines: tableLines,
+      endIndex: currentIndex - 1
+    };
+  };
+
+  // Function to parse table lines into HTML
+  const parseTableToHtml = (tableLines) => {
+    let headerRow = null;
+    const rows = [];
+    
+    tableLines.forEach((line, index) => {
+      // Skip separator lines (lines with mostly dashes and |)
+      if (/^[\s\-|]+$/.test(line)) {
+        return;
+      }
+      
+      // Split by | and clean up cells
+      const cells = line.split('|').map(cell => cell.trim()).filter(cell => cell !== '');
+      
+      if (cells.length > 0) {
+        if (headerRow === null && index < tableLines.length / 2) {
+          // First non-separator row is likely the header
+          headerRow = cells;
+        } else {
+          rows.push(cells);
+        }
+      }
+    });
+    
+    let tableHtml = `
+      <table style="
+        width: 100%;
+        border-collapse: collapse;
+        margin: 15px 0;
+        font-family: monospace;
+        font-size: 10px;
+        border: 1px solid #ddd;
+      ">
+    `;
+    
+    // Add header if exists
+    if (headerRow) {
+      tableHtml += '<thead><tr>';
+      headerRow.forEach(cell => {
+        tableHtml += `
+          <th style="
+            border: 1px solid #ddd;
+            padding: 8px 6px;
+            background-color: #f5f5f5;
+            font-weight: bold;
+            text-align: left;
+            font-size: 9px;
+          ">${cell}</th>
+        `;
+      });
+      tableHtml += '</tr></thead>';
+    }
+    
+    // Add body rows
+    tableHtml += '<tbody>';
+    rows.forEach(row => {
+      tableHtml += '<tr>';
+      row.forEach(cell => {
+        tableHtml += `
+          <td style="
+            border: 1px solid #ddd;
+            padding: 6px;
+            font-size: 9px;
+            vertical-align: top;
+          ">${cell}</td>
+        `;
+      });
+      tableHtml += '</tr>';
+    });
+    tableHtml += '</tbody></table>';
+    
+    return tableHtml;
+  };
+
+  // Function to parse inline markdown formatting
+  const parseInlineFormatting = (text) => {
+    // Convert **text** to <strong>text</strong>
+    return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  };
+
+  while (i < lines.length) {
+    const line = lines[i];
+    
+    // Check for table at current position
+    const tableResult = detectTable(i);
+    if (tableResult) {
+      htmlContent += parseTableToHtml(tableResult.lines);
+      i = tableResult.endIndex + 1;
+      continue;
+    }
+
+    // Regular line processing
+    // Check for markdown-style headers (**HEADER:**)
+    const markdownHeaderPattern = /^\*\*([A-Z][A-Z\s&,()/-]*:)\*\*\s*(.*)/;
+    // Check if line is a medical header (all caps ending with colon)
+    const headerPattern = /^([A-Z][A-Z\s&,()/-]*:)\s*(.*)/;
+    // Check for numbered lists (1., 2., etc.)
+    const numberedListPattern = /^(\s*)(\d+\.\s+)(.*)/;
+    // Check for bullet points (-, •, *, etc.)
+    const bulletPattern = /^(\s*)([-•*]\s+)(.*)/;
+    
+    const markdownMatch = line.match(markdownHeaderPattern);
+    const headerMatch = line.match(headerPattern);
+    const numberedMatch = line.match(numberedListPattern);
+    const bulletMatch = line.match(bulletPattern);
+
+    if (markdownMatch || headerMatch) {
+      const match = markdownMatch || headerMatch;
+      const [, header, content] = match;
+      htmlContent += `<p style="margin: 15px 0 8px 0;"><strong>${header}</strong>`;
+      if (content) {
+        htmlContent += ` ${parseInlineFormatting(content)}`;
+      }
+      htmlContent += '</p>';
+    } else if (numberedMatch) {
+      const [, indent, number, content] = numberedMatch;
+      const marginLeft = indent ? indent.length * 10 : 0;
+      htmlContent += `<p style="margin: 5px 0 5px ${marginLeft}px;"><strong>${number}</strong>${parseInlineFormatting(content)}</p>`;
+    } else if (bulletMatch) {
+      const [, indent, bullet, content] = bulletMatch;
+      const marginLeft = indent ? indent.length * 10 : 0;
+      htmlContent += `<p style="margin: 5px 0 5px ${marginLeft}px;"><strong>${bullet}</strong>${parseInlineFormatting(content)}</p>`;
+    } else if (line.trim() === '') {
+      htmlContent += '<br>';
+    } else {
+      // Regular content line
+      htmlContent += `<p style="margin: 5px 0;">${parseInlineFormatting(line)}</p>`;
+    }
+    
+    i++;
+  }
+
+  return htmlContent;
 };
 

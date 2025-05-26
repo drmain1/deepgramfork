@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { TextField, Button, Box } from '@mui/material';
 import { generatePdfFromText } from './pdfUtils';
 import PdfPreviewModal from './PdfPreviewModal';
+import FormattedMedicalText from './FormattedMedicalText';
 
 function EditableNote({ 
   content, 
@@ -85,45 +86,75 @@ function EditableNote({
   };
 
   return (
-    <>
-      <TextField
-        multiline
-        fullWidth
-        variant="outlined"
-        value={editableContent}
-        onChange={handleContentChange}
-        InputProps={{
-          readOnly: !isEditing,
-        }}
-        placeholder="Edit polished note..."
-        sx={{
-          flexGrow: 1,
-          '& .MuiOutlinedInput-root': {
+    <Box sx={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      height: '100%',
+      minHeight: 0 
+    }}>
+      {isEditing ? (
+        <TextField
+          multiline
+          fullWidth
+          variant="outlined"
+          value={editableContent}
+          onChange={handleContentChange}
+          InputProps={{
+            readOnly: false,
+          }}
+          placeholder="Edit polished note..."
+          sx={{
+            flexGrow: 1,
             height: '100%',
-            padding: 0,
-            '& textarea.MuiOutlinedInput-input': {
-              padding: '12px',
-              height: '100% !important',
-              boxSizing: 'border-box',
-              overflowY: 'auto',
-              fontFamily: 'monospace',
-              fontSize: '1.1rem',
-              lineHeight: 1.6,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              color: 'text.primary',
-              backgroundColor: 'grey.50',
-            },
-            '& textarea.MuiOutlinedInput-input::placeholder': {
-              color: 'text.secondary',
-              opacity: 1,
-              fontFamily: 'monospace',
-              fontSize: '1.1rem',
-              lineHeight: 1.6,
+            minHeight: 0,
+            '& .MuiOutlinedInput-root': {
+              height: '100%',
+              padding: 0,
+              display: 'flex',
+              '& textarea.MuiOutlinedInput-input': {
+                padding: '12px',
+                height: '100% !important',
+                boxSizing: 'border-box',
+                overflowY: 'auto !important',
+                fontFamily: 'monospace',
+                fontSize: '1.1rem',
+                lineHeight: 1.6,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                color: 'text.primary',
+                backgroundColor: 'grey.50',
+                resize: 'none',
+                minHeight: 0,
+                flex: 1
+              },
+              '& textarea.MuiOutlinedInput-input::placeholder': {
+                color: 'text.secondary',
+                opacity: 1,
+                fontFamily: 'monospace',
+                fontSize: '1.1rem',
+                lineHeight: 1.6,
+              }
             }
-          }
-        }}
-      />
+          }}
+        />
+      ) : (
+        <FormattedMedicalText
+          content={editableContent || "Edit polished note..."}
+          sx={{
+            flexGrow: 1,
+            height: '100%',
+            minHeight: 0,
+            padding: '12px',
+            backgroundColor: 'grey.50',
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: 1,
+            overflowY: 'auto',
+            cursor: 'pointer'
+          }}
+          onClick={handleEdit}
+        />
+      )}
       <Box sx={{ p: 1, mt: 1, flexShrink: 0, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
         {isEditing ? (
           <Button
@@ -175,7 +206,7 @@ function EditableNote({
         doctorSignature={doctorSignature}
         isSigned={isSigned}
       />
-    </>
+    </Box>
   );
 }
 
