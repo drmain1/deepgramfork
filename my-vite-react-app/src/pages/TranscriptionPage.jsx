@@ -38,8 +38,9 @@ function TranscriptionPage() {
     if (!viewParam) {
       setPatientDetails('');
       setPatientContext('');
-      setSelectedLocation('');
-      setSelectedProfileId('');
+      // Don't reset selectedLocation and selectedProfileId - these should persist between sessions
+      // setSelectedLocation('');
+      // setSelectedProfileId('');
       setError(null);
     }
   }, [location]);
@@ -48,24 +49,34 @@ function TranscriptionPage() {
   useEffect(() => {
     console.log("TranscriptionPage - userSettings.officeInformation:", userSettings.officeInformation);
     console.log("TranscriptionPage - selectedLocation current state:", selectedLocation);
+    console.log("=== PROFILE SELECTION DEBUG ===");
+    console.log("settingsLoading:", settingsLoading);
+    console.log("userSettings.transcriptionProfiles:", userSettings.transcriptionProfiles);
+    console.log("selectedProfileId current state:", selectedProfileId);
     
     if (!settingsLoading && userSettings.transcriptionProfiles) {
       const filteredProfiles = userSettings.transcriptionProfiles.filter(
         profile => profile.name !== 'Default/General summary'
       );
+      console.log("filteredProfiles:", filteredProfiles);
 
       if (filteredProfiles.length > 0) {
         const currentProfileStillExistsInFiltered = filteredProfiles.some(p => p.id === selectedProfileId);
+        console.log("currentProfileStillExistsInFiltered:", currentProfileStillExistsInFiltered);
         if (!selectedProfileId || !currentProfileStillExistsInFiltered) {
           const defaultProfile = filteredProfiles.find(p => p.isDefault) || filteredProfiles[0];
+          console.log("Setting defaultProfile:", defaultProfile);
           if (defaultProfile) {
             setSelectedProfileId(defaultProfile.id);
+            console.log("Set selectedProfileId to:", defaultProfile.id);
           }
         }
       } else {
+        console.log("No filtered profiles found, clearing selectedProfileId");
         setSelectedProfileId('');
       }
     }
+    console.log("================================");
 
     if (!settingsLoading && userSettings.officeInformation && userSettings.officeInformation.length > 0) {
       if (selectedLocation === '' && !userSettings.officeInformation.includes(selectedLocation) && userSettings.officeInformation[0]) {

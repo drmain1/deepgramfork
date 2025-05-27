@@ -36,7 +36,7 @@ A:"""
     try:
         request_body = json.dumps({
             "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 1000, 
+            "max_tokens": 1200, 
             "messages": [
                 {
                     "role": "user",
@@ -82,7 +82,7 @@ A:"""
             'model_id': model_id,
             'transcript_length': len(transcript) if transcript else 0,
             'custom_instructions_used': bool(custom_instructions),
-            'max_tokens_requested': 8096
+            'max_tokens_requested': 1200
         }
         
         # Check if it's a specific AWS/Bedrock error

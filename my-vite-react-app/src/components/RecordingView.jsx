@@ -329,15 +329,27 @@ function RecordingView({
       const llmInstructions = activeProfile ? (activeProfile.llmInstructions || activeProfile.llmPrompt) : null;
       const encounterType = activeProfile ? activeProfile.name : patientContext || 'General';
       
-      // Debug logging
-      console.log('Save Session Debug:', {
-        selectedProfileId,
-        activeProfile: activeProfile ? { id: activeProfile.id, name: activeProfile.name, hasInstructions: !!llmInstructions } : null,
-        llmTemplate,
-        llmTemplateId,
-        hasInstructions: !!llmInstructions,
-        instructionsLength: llmInstructions ? llmInstructions.length : 0
-      });
+      // Comprehensive debug logging
+      console.log('=== SAVE SESSION DEBUG ===');
+      console.log('selectedProfileId:', selectedProfileId);
+      console.log('userSettings.transcriptionProfiles:', userSettings.transcriptionProfiles);
+      console.log('activeProfile found:', activeProfile);
+      if (activeProfile) {
+        console.log('activeProfile details:', {
+          id: activeProfile.id,
+          name: activeProfile.name,
+          llmInstructions: activeProfile.llmInstructions ? `${activeProfile.llmInstructions.substring(0, 100)}...` : null,
+          llmPrompt: activeProfile.llmPrompt ? `${activeProfile.llmPrompt.substring(0, 100)}...` : null,
+          hasInstructions: !!activeProfile.llmInstructions,
+          hasPrompt: !!activeProfile.llmPrompt
+        });
+      }
+      console.log('Final values being sent:');
+      console.log('- llmTemplate:', llmTemplate);
+      console.log('- llmTemplateId:', llmTemplateId);
+      console.log('- encounterType:', encounterType);
+      console.log('- hasInstructions:', !!llmInstructions);
+      console.log('==========================')
       
       // Embed location data in the transcript content itself as a backup
       const finalTranscriptContent = combinedTranscript;
