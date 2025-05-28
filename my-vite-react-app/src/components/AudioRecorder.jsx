@@ -18,6 +18,7 @@ const AudioRecorder = () => {
   const [selectedLocation, setSelectedLocation] = useState('');
   const [selectedProfileId, setSelectedProfileId] = useState('');
   const [isMultilingual, setIsMultilingual] = useState(false);
+  const [targetLanguage, setTargetLanguage] = useState('');
  
   // Initialize component state
   useEffect(() => {
@@ -26,6 +27,8 @@ const AudioRecorder = () => {
     setPatientContext('');
     setSelectedLocation('');
     setSelectedProfileId('');
+    setIsMultilingual(false);
+    setTargetLanguage('');
     setError(null);
   }, []);
 
@@ -131,6 +134,8 @@ const AudioRecorder = () => {
         setSelectedProfileId={setSelectedProfileId}
         isMultilingual={isMultilingual}
         setIsMultilingual={setIsMultilingual}
+        targetLanguage={targetLanguage}
+        setTargetLanguage={setTargetLanguage}
         userSettings={userSettings}
         settingsLoading={settingsLoading}
         error={error}
@@ -144,6 +149,8 @@ const AudioRecorder = () => {
         patientContext={patientContext}
         selectedLocation={selectedLocation}
         selectedProfileId={selectedProfileId}
+        isMultilingual={isMultilingual}
+        targetLanguage={targetLanguage}
         userSettings={userSettings}
         onClose={handleCloseRecording}
       />

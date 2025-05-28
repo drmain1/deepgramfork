@@ -59,10 +59,12 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
 
     session_id = datetime.now().strftime("%Y%m%d%H%M%S%f")
     
-    # Start with default settings - can be updated later via configuration messages
-    dg_smart_format = True
-    dg_diarize = False
-    user_profile_utterances = False
+    # Initialize Deepgram settings
+    dg_smart_format = True  # Default value
+    dg_diarize = False  # Default value
+    user_profile_utterances = False  # Default value
+    multilingual_enabled = False  # Default value
+    target_language = None  # Default value for specific language targeting
     deepgram_started = False
 
     # Send session init immediately with default settings
@@ -125,9 +127,31 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
             dg_connection.on(LiveTranscriptionEvents.Warning, on_warning_handler)
             dg_connection.on(LiveTranscriptionEvents.Close, on_close_handler)
             
+            # Choose model and language based on multilingual setting
+            if multilingual_enabled:
+                if target_language == "es" or target_language == "spanish":
+                    # For pure Spanish content, use Nova-2 which has better Spanish support
+                    model_name = "nova-2-general"
+                    language_setting = "es"
+                    logger.info("Multilingual mode with Spanish target - using nova-2-general with language=es for pure Spanish content")
+                elif target_language and target_language != "multi":
+                    # For other specific languages, try Nova-2 first
+                    model_name = "nova-2-general"
+                    language_setting = target_language
+                    logger.info(f"Multilingual mode with {target_language} target - using nova-2-general with language={target_language}")
+                else:
+                    # For general multilingual/code-switching, use Nova-3
+                    model_name = "nova-3-general"
+                    language_setting = "multi"
+                    logger.info("Multilingual mode enabled - using nova-3-general with language=multi for code-switching")
+                    logger.info("Note: For pure single-language content, consider specifying target_language in the request")
+            else:
+                model_name = "nova-3-medical"
+                language_setting = "en-US"
+                logger.info("Monolingual mode - using nova-3-medical with en-US language")
+            
             options_dict = {
-                "model": "nova-3-medical",
-                "language": "en-US",
+                "model": model_name,
                 "smart_format": dg_smart_format,
                 "diarize": dg_diarize,
                 "encoding": "linear16",
@@ -136,6 +160,7 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
                 "interim_results": True,
                 "utterance_end_ms": "1000",
                 "vad_events": True,
+                "language": language_setting,
             }
 
             live_options = LiveOptions(**options_dict)
@@ -172,11 +197,20 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
 
     async def handle_configuration_message(config_data):
         """Handle configuration messages from client"""
-        nonlocal dg_smart_format, dg_diarize, user_profile_utterances
+        nonlocal dg_smart_format, dg_diarize, user_profile_utterances, multilingual_enabled, target_language
         
         try:
             user_id_from_client = config_data.get("user_id")
             selected_profile_id_from_client = config_data.get("profile_id")
+            is_multilingual_from_client = config_data.get("is_multilingual", False)
+            target_language_from_client = config_data.get("target_language", None)  # New: specific language target
+            
+            # Update multilingual setting from client
+            multilingual_enabled = is_multilingual_from_client
+            target_language = target_language_from_client
+            logger.info(f"Multilingual setting from client: {multilingual_enabled}")
+            if target_language:
+                logger.info(f"Target language specified: {target_language}")
 
             if user_id_from_client and selected_profile_id_from_client:
                 logger.info(f"Updating settings for user: {user_id_from_client}, profile: {selected_profile_id_from_client}")
@@ -189,7 +223,7 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
                             dg_smart_format = selected_profile.smart_format
                             dg_diarize = selected_profile.diarize
                             user_profile_utterances = selected_profile.utterances
-                            logger.info(f"Updated settings: smart_format={dg_smart_format}, diarize={dg_diarize}, utterances={user_profile_utterances}")
+                            logger.info(f"Updated settings: smart_format={dg_smart_format}, diarize={dg_diarize}, utterances={user_profile_utterances}, multilingual_enabled={multilingual_enabled}")
                         else:
                             logger.warning(f"Profile ID {selected_profile_id_from_client} not found.")
                     else:

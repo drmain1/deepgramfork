@@ -33,6 +33,8 @@ function RecordingView({
   patientContext,
   selectedLocation,
   selectedProfileId,
+  isMultilingual,
+  targetLanguage,
   userSettings,
   onClose
 }) {
@@ -123,7 +125,9 @@ function RecordingView({
           const initialMetadata = {
             type: 'initial_metadata',
             user_id: user.sub,
-            profile_id: selectedProfileId
+            profile_id: selectedProfileId,
+            is_multilingual: isMultilingual,
+            target_language: targetLanguage
           };
           webSocketRef.current.send(JSON.stringify(initialMetadata));
           console.log('[WebSocket] Sent initial_metadata:', initialMetadata);
@@ -390,61 +394,49 @@ function RecordingView({
         setSaveStatusMessage(`Notes generated and saved!\nNotes: ${result.notes_s3_path || 'N/A'}\nAudio: ${result.audio_s3_path || 'N/A'}`);
         setIsSessionSaved(true);
         const savedName = patientDetails
-          ? `Note: ${patientDetails.substring(0,20)}${patientDetails.length > 20 ? '...' : ''} (${new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0, 10)})`
-          : `Note ${new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0, 16).replace('T', ' ')}`;
+          ? `${patientDetails} - ${new Date().toLocaleDateString()}`
+          : `Session ${sessionId} - ${new Date().toLocaleDateString()}`;
+        
         updateRecording(sessionId, {
           status: 'saved',
           name: savedName,
           date: new Date().toISOString(),
-          s3PathAudio: result.audio_s3_path,
-          s3PathTranscript: result.original_transcript_s3_path,
-          s3PathPolished: result.notes_s3_path,
-          patientContext: patientContext,
+          originalTranscriptS3Path: result.original_transcript_s3_path,
+          polishedTranscriptS3Path: result.polished_transcript_s3_path,
+          audioS3Path: result.audio_s3_path,
+          context: patientContext,
           location: selectedLocation,
-          llmTemplate: llmTemplate,
-          error: null
+          encounterType: encounterType
         });
       } else {
-        const errorDetail = (result && result.detail) || response.statusText || 'Unknown server error';
-        setSaveStatusMessage(`Error saving session: ${errorDetail}`);
-        setError(`Error saving session: ${errorDetail}`);
-        setIsSessionSaved(false);
-        updateRecording(sessionId, { status: 'failed', name: `Failed: ${patientDetails || 'New Note'}`, error: errorDetail });
+        const errorText = result.error || result.detail || `HTTP ${response.status}: ${response.statusText}`;
+        console.error('Server responded with error:', errorText);
+        setSaveStatusMessage(`Error saving notes: ${errorText}`);
+        updateRecording(sessionId, { 
+          status: 'failed', 
+          name: `Failed: ${patientDetails || 'New Note'}`,
+          error: errorText 
+        });
       }
-    } catch (err) {
-      console.error('Failed to save session:', err);
-      const errorMessage = err.message || 'Failed to process save request.';
-      setSaveStatusMessage(`Failed to save session: ${errorMessage}`);
-      setError(`Failed to save session: ${errorMessage}`);
-      setIsSessionSaved(false);
-      updateRecording(sessionId, { status: 'failed', name: `Failed: ${patientDetails || 'New Note'}`, error: errorMessage });
+    } catch (error) {
+      console.error('Error saving session:', error);
+      setSaveStatusMessage(`Error saving notes: ${error.message}`);
+      updateRecording(sessionId, { 
+        status: 'failed', 
+        name: `Failed: ${patientDetails || 'New Note'}`,
+        error: error.message 
+      });
     }
   };
 
-  const handleClose = () => {
-    if (webSocketRef.current) {
-      webSocketRef.current.close();
-      webSocketRef.current = null;
+  const handleCloseSession = () => {
+    if (isRecording) {
+      stopRecording();
     }
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current = null;
-    }
-    if (audioStreamRef.current) {
-      audioStreamRef.current.getTracks().forEach(track => track.stop());
-      audioStreamRef.current = null;
-    }
-    setIsRecording(false);
-
     if (sessionId && !isSessionSaved) {
       removeRecording(sessionId);
     }
-
     onClose();
-  };
-
-  const handleTabChange = (event, newValue) => {
-    setActiveTab(newValue);
   };
 
   const a11yProps = (index) => {
@@ -454,107 +446,143 @@ function RecordingView({
     };
   };
 
+  const handleTabChange = (event, newValue) => {
+    setActiveTab(newValue);
+  };
+
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        width: '100%',
-        bgcolor: 'background.paper',
-        borderRadius: 2,
-        boxShadow: 3,
-        overflow: 'hidden'
-      }}
-    >
-      <Box sx={{ p: 2, borderBottom: 0, borderColor: 'divider', flexShrink: 0 }}>
-        <Grid container justifyContent="space-between" alignItems="center">
-          <Grid item>
-            <Typography variant="h6">Encounter: {patientDetails || 'N/A'}</Typography>
-          </Grid>
-        </Grid>
-      </Box>
-
-      <Box sx={{ borderBottom: 0, borderColor: 'divider', flexShrink: 0 }}>
-        <Tabs value={activeTab} onChange={handleTabChange} aria-label="encounter content tabs" centered>
-          <Tab label="Transcript" {...a11yProps(0)} />
-          <Tab label="Note" {...a11yProps(1)} />
-        </Tabs>
-      </Box>
-
-      <Stack spacing={1} sx={{ p: 2, borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="center">
-          {!isRecording && !hasStreamedOnce && (
-            <Button variant="contained" color="primary" onClick={startRecordingProcess} sx={{ flexGrow: 1 }}>
-              Start Streaming
-            </Button>
-          )}
-          {isRecording && (
-            <Button variant="contained" color="warning" onClick={stopRecording} sx={{ flexGrow: 1 }}>
-              Pause Streaming
-            </Button>
-          )}
-          {!isRecording && hasStreamedOnce && (
-            <Button variant="contained" color="primary" onClick={startRecordingProcess} sx={{ flexGrow: 1 }}>
-              Resume Streaming
-            </Button>
-          )}
-        </Stack>
-
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="center">
+    <main className="flex-1 overflow-y-auto bg-gray-50">
+      {/* Header Section */}
+      <div className="bg-white border-b border-gray-200 px-8 py-6">
+        <div className="max-w-7xl mx-auto flex justify-between items-center">
+          <div>
+            <h1 className="text-4xl font-semibold text-gray-900">Recording Session</h1>
+            <p className="text-lg text-gray-500 mt-2">
+              {patientDetails || 'New Session'} {sessionId && `(${sessionId})`}
+            </p>
+          </div>
           <Button
-            variant="contained"
-            color="secondary"
-            onClick={handleSaveSession}
-            disabled={isRecording || !sessionId || !combinedTranscript.trim() || isSessionSaved || saveStatusMessage.includes('Generating...')}
-            sx={{ flexGrow: 1 }}
+            variant="outlined"
+            onClick={handleCloseSession}
+            sx={{ minWidth: '120px' }}
           >
-            {isSessionSaved ? 'Notes Generated' : (saveStatusMessage.includes('Generating...') ? 'Generating Notes...' : 'Generate Note & Save')}
-          </Button>
-
-          <Button variant="outlined" onClick={handleClose} sx={{ flexGrow: 1 }}>
             Close Session
           </Button>
-        </Stack>
-      </Stack>
+        </div>
+      </div>
 
-      {error && !error.toLowerCase().includes('saving') && (
-        <Typography color="error" sx={{ mt: 1, mb: 1, textAlign: 'center', flexShrink: 0 }}>
-          {error}
-        </Typography>
-      )}
+      {/* Main Content */}
+      <div className="px-8 py-8">
+        <div className="max-w-7xl mx-auto">
+          <Grid container spacing={3}>
+            {/* Left Column - Controls */}
+            <Grid item xs={12} md={4}>
+              <Box className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                <Typography variant="h6" className="mb-4">Recording Controls</Typography>
+                
+                <Stack spacing={2}>
+                  {!isRecording ? (
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      onClick={startRecordingProcess}
+                      disabled={!patientDetails.trim()}
+                      size="large"
+                      fullWidth
+                    >
+                      {hasStreamedOnce ? 'Resume Recording' : 'Start Recording'}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="contained"
+                      color="secondary"
+                      onClick={stopRecording}
+                      size="large"
+                      fullWidth
+                    >
+                      Pause Recording
+                    </Button>
+                  )}
 
-      <TabPanel value={activeTab} index={0} sx={{ flexGrow: 1, overflowY: 'auto', p: 0 }}>
-        <Box sx={{ p: 2, minHeight: '150px', '& p': { m: 0 } }}>
-          <Typography variant="body1" component="div" style={{ whiteSpace: 'pre-wrap' }}>
-            {combinedTranscript || (isRecording ? 'Listening...' : 'Start speaking or resume to see transcript...')}
-          </Typography>
-        </Box>
-      </TabPanel>
+                  <Button
+                    variant="outlined"
+                    onClick={handleSaveSession}
+                    disabled={isRecording || !combinedTranscript.trim() || isSessionSaved}
+                    size="large"
+                    fullWidth
+                  >
+                    {isSessionSaved ? 'Notes Saved' : 'Generate & Save Notes'}
+                  </Button>
+                </Stack>
 
-      <TabPanel value={activeTab} index={1} sx={{ flexGrow: 1, overflowY: 'auto', p: 0 }}>
-        <Box
-          sx={{
-            p: 2,
-            minHeight: '150px',
-            '& p': { m: 0 }
-          }}
-        >
-          <Typography variant="body1" color="text.secondary">
-            {isSessionSaved && saveStatusMessage.startsWith('Notes generated')
-              ? saveStatusMessage
-              : 'Polished note will appear here once generated after saving the session.'}
-          </Typography>
-        </Box>
-      </TabPanel>
+                {error && (
+                  <Box className="mt-4 p-3 bg-red-50 border border-red-200 rounded">
+                    <Typography color="error" variant="body2">
+                      {error}
+                    </Typography>
+                  </Box>
+                )}
 
-      {saveStatusMessage && (
-        <Typography sx={{ p: 1, fontStyle: 'italic', color: (error && (saveStatusMessage.toLowerCase().includes('error') || saveStatusMessage.toLowerCase().includes('failed'))) ? 'error.main' : 'text.secondary', whiteSpace: 'pre-line', textAlign: 'center', flexShrink: 0 }}>
-          {saveStatusMessage}
-        </Typography>
-      )}
-    </Box>
+                {saveStatusMessage && (
+                  <Box className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded">
+                    <Typography variant="body2" style={{ whiteSpace: 'pre-line' }}>
+                      {saveStatusMessage}
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+            </Grid>
+
+            {/* Right Column - Transcript */}
+            <Grid item xs={12} md={8}>
+              <Box className="bg-white rounded-lg shadow-sm border border-gray-200" sx={{ height: '600px', display: 'flex', flexDirection: 'column' }}>
+                <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+                  <Tabs value={activeTab} onChange={handleTabChange} aria-label="recording tabs">
+                    <Tab label="Live Transcript" {...a11yProps(0)} />
+                    <Tab label="Notes" {...a11yProps(1)} disabled />
+                  </Tabs>
+                </Box>
+                
+                <TabPanel value={activeTab} index={0}>
+                  <Box sx={{ p: 3, flexGrow: 1, overflowY: 'auto' }}>
+                    <Typography variant="h6" className="mb-3">
+                      Live Transcript {isRecording && <span className="text-red-500">● Recording</span>}
+                    </Typography>
+                    
+                    <Box 
+                      sx={{ 
+                        minHeight: '400px',
+                        p: 2,
+                        border: '1px solid #e0e0e0',
+                        borderRadius: 1,
+                        backgroundColor: '#fafafa',
+                        fontFamily: 'monospace',
+                        fontSize: '14px',
+                        lineHeight: 1.5,
+                        whiteSpace: 'pre-wrap',
+                        overflowY: 'auto'
+                      }}
+                    >
+                      {combinedTranscript || 'Transcript will appear here as you speak...'}
+                    </Box>
+                  </Box>
+                </TabPanel>
+
+                <TabPanel value={activeTab} index={1}>
+                  <Box sx={{ p: 3, flexGrow: 1, overflowY: 'auto' }}>
+                    <Typography variant="h6" className="mb-3">Generated Notes</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Notes will be available after generating and saving the session.
+                    </Typography>
+                  </Box>
+                </TabPanel>
+              </Box>
+            </Grid>
+          </Grid>
+        </div>
+      </div>
+    </main>
   );
 }
 
-export default RecordingView; 
+export default RecordingView;

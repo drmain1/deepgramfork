@@ -21,6 +21,7 @@ function TranscriptionPage() {
   const [selectedLocation, setSelectedLocation] = useState('');
   const [selectedProfileId, setSelectedProfileId] = useState('');
   const [isMultilingual, setIsMultilingual] = useState(false);
+  const [targetLanguage, setTargetLanguage] = useState('');
 
   // Initialize component state
   useEffect(() => {
@@ -161,6 +162,8 @@ function TranscriptionPage() {
         setSelectedProfileId={setSelectedProfileId}
         isMultilingual={isMultilingual}
         setIsMultilingual={setIsMultilingual}
+        targetLanguage={targetLanguage}
+        setTargetLanguage={setTargetLanguage}
         userSettings={userSettings}
         settingsLoading={settingsLoading}
         error={error}
@@ -174,6 +177,8 @@ function TranscriptionPage() {
         patientContext={patientContext}
         selectedLocation={selectedLocation}
         selectedProfileId={selectedProfileId}
+        isMultilingual={isMultilingual}
+        targetLanguage={targetLanguage}
         userSettings={userSettings}
         onClose={handleCloseRecording}
       />

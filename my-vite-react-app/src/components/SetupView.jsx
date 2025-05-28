@@ -11,11 +11,21 @@ function SetupView({
   setSelectedProfileId,
   isMultilingual,
   setIsMultilingual,
+  targetLanguage,
+  setTargetLanguage,
   userSettings,
   settingsLoading,
   error,
   onStartEncounter
 }) {
+  // Debug logging
+  console.log('SetupView props debug:', {
+    targetLanguage,
+    setTargetLanguage: typeof setTargetLanguage,
+    isMultilingual,
+    setIsMultilingual: typeof setIsMultilingual
+  });
+
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
   const [micStatus, setMicStatus] = useState('checking'); // 'checking', 'active', 'error', 'denied'
@@ -322,6 +332,69 @@ function SetupView({
                         </span>
                       </span>
                     </label>
+                    
+                    {isMultilingual && (
+                      <div className="mt-6 p-6 bg-white rounded-lg border border-gray-200">
+                        <label className="block text-lg font-medium text-gray-700 mb-3">
+                          Target Language (Optional)
+                        </label>
+                        <div className="relative">
+                          <select
+                            className="w-full p-4 text-lg border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                            style={{
+                              position: 'relative',
+                              zIndex: 10,
+                              pointerEvents: 'auto',
+                              cursor: 'pointer',
+                              appearance: 'menulist',
+                              WebkitAppearance: 'menulist',
+                              MozAppearance: 'menulist'
+                            }}
+                            value={targetLanguage || ''}
+                            onChange={(e) => {
+                              console.log('Target language changed:', e.target.value);
+                              setTargetLanguage(e.target.value);
+                            }}
+                            onClick={(e) => {
+                              console.log('Select clicked:', e.target);
+                              e.stopPropagation();
+                            }}
+                            onFocus={(e) => {
+                              console.log('Select focused:', e.target);
+                            }}
+                          >
+                            <option value="">Auto-detect (Code-switching)</option>
+                            <option value="es">Spanish</option>
+                            <option value="fr">French</option>
+                            <option value="de">German</option>
+                            <option value="hi">Hindi</option>
+                            <option value="ru">Russian</option>
+                            <option value="pt">Portuguese</option>
+                            <option value="ja">Japanese</option>
+                            <option value="it">Italian</option>
+                            <option value="nl">Dutch</option>
+                          </select>
+                        </div>
+                        <p className="text-sm text-gray-500 mt-2">
+                          Select a specific language for pure single-language content, or leave as "Auto-detect" for conversations that switch between languages.
+                        </p>
+                        {/* Debug info */}
+                        <div className="mt-2 text-xs text-gray-400">
+                          Current value: "{targetLanguage || 'empty'}"
+                        </div>
+                        {/* Test button */}
+                        <button
+                          type="button"
+                          className="mt-2 px-3 py-1 text-xs bg-gray-200 rounded"
+                          onClick={() => {
+                            console.log('Test button clicked, current targetLanguage:', targetLanguage);
+                            setTargetLanguage(targetLanguage === 'es' ? 'fr' : 'es');
+                          }}
+                        >
+                          Test Toggle (ES/FR)
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
