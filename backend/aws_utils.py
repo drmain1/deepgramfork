@@ -1,6 +1,5 @@
 import asyncio
 import json
-import os # Though os.getenv for AWS_S3_BUCKET_NAME is removed from functions
 
 async def polish_transcript_with_bedrock(transcript: str, bedrock_client, custom_instructions: str = None) -> str:
     if not bedrock_client:
@@ -123,29 +122,6 @@ async def save_text_to_s3(s3_client, aws_s3_bucket_name: str, tenant_id: str, se
         )
         print(f"Successfully uploaded {s3_key} to S3 bucket {aws_s3_bucket_name} (via aws_utils).")
         return f"s3://{aws_s3_bucket_name}/{s3_key}"
-    except Exception as e:
-        print(f"Error uploading {s3_key} to S3 (via aws_utils): {e}")
-        return None
-
-async def save_audio_file_to_s3(s3_client, aws_s3_bucket_name: str, tenant_id: str, session_id: str, local_file_path: str, folder: str = "audio", content_type: str = "audio/wav"):
-    if not s3_client or not aws_s3_bucket_name:
-        print(f"S3 client or bucket name not provided to utility function. Skipping S3 upload for {folder}/{session_id}.wav.")
-        return None
-    
-    s3_key = f"{tenant_id}/{folder}/{session_id}.wav"
-    try:
-        with open(local_file_path, 'rb') as f:
-            # For run_in_executor with s3_client.put_object as it's a blocking call
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None,
-                lambda: s3_client.put_object(Bucket=aws_s3_bucket_name, Key=s3_key, Body=f, ContentType=content_type)
-            )
-        print(f"Successfully uploaded {s3_key} to S3 bucket {aws_s3_bucket_name} (via aws_utils).")
-        return f"s3://{aws_s3_bucket_name}/{s3_key}"
-    except FileNotFoundError:
-        print(f"Error: Local audio file {local_file_path} not found for S3 upload (via aws_utils).")
-        return None
     except Exception as e:
         print(f"Error uploading {s3_key} to S3 (via aws_utils): {e}")
         return None

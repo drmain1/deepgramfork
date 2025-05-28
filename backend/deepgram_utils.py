@@ -2,7 +2,6 @@ import asyncio
 import logging
 import os
 import json
-import tempfile
 from datetime import datetime
 from dotenv import load_dotenv
 from fastapi import WebSocket, WebSocketDisconnect
@@ -23,35 +22,6 @@ DEEPGRAM_API_KEY = os.getenv("deepgram_api_key")
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Directory for temporary audio files specific to deepgram_utils
-DG_TEMP_AUDIO_DIR = os.path.join(tempfile.gettempdir(), "trans10_dg_audio_temp")
-os.makedirs(DG_TEMP_AUDIO_DIR, exist_ok=True)
-logger.info(f"Deepgram temporary audio files will be stored in: {DG_TEMP_AUDIO_DIR}")
-
-async def convert_raw_pcm_to_wav(input_pcm_path: str, output_wav_path: str) -> bool:
-    ffmpeg_cmd = [
-        'ffmpeg',
-        '-f', 's16le', 
-        '-ar', '16000',
-        '-ac', '1',
-        '-i', input_pcm_path,
-        '-y',
-        output_wav_path
-    ]
-    logger.info(f"Converting PCM to WAV: {' '.join(ffmpeg_cmd)}")
-    process = await asyncio.create_subprocess_exec(
-        *ffmpeg_cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
-    )
-    stdout, stderr = await process.communicate()
-    if process.returncode == 0:
-        logger.info(f"Successfully converted {input_pcm_path} to {output_wav_path}")
-        return True
-    else:
-        logger.error(f"Error converting PCM to WAV. FFMPEG stderr: {stderr.decode().strip()}")
-        return False
 
 async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func: callable):
     await websocket.accept()
@@ -77,9 +47,6 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
 
     dg_connection = None
     ffmpeg_proc = None
-    raw_pcm_file_fd, raw_pcm_file_path = tempfile.mkstemp(suffix='.pcm', dir=DG_TEMP_AUDIO_DIR)
-    os.close(raw_pcm_file_fd)
-    logger.info(f"Temporary raw PCM file: {raw_pcm_file_path}")
 
     final_transcript_accumulator = []
 
@@ -247,14 +214,11 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
                     if not data: 
                         logger.info("FFMPEG stdout EOF.")
                         break
-                    if dg_connection and dg_connection.is_connected: 
+                    if dg_connection and dg_connection.is_connected:
                         await dg_connection.send(data)
-                    else: 
+                    else:
                         logger.warning("DG conn closed/unavailable. Breaking stdout read.")
                         break
-                    if raw_pcm_file_path: 
-                        with open(raw_pcm_file_path, 'ab') as f: 
-                            f.write(data)
             except Exception as e: 
                 logger.error(f"read_ffmpeg_stdout error: {e}", exc_info=True)
             finally: 
@@ -392,31 +356,12 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
                 logger.error(f"Error terminating FFMPEG: {e_ffmpeg_term}")
             logger.info(f"FFMPEG exited with {ffmpeg_proc.returncode}.")
 
-        target_wav_filename = f"{session_id}.wav"
-        target_wav_path = os.path.join(DG_TEMP_AUDIO_DIR, target_wav_filename)
         final_payload = {
-            "type": "session_end", "session_id": session_id,
+            "type": "session_end",
+            "session_id": session_id,
             "full_transcript": " ".join(final_transcript_accumulator),
-            "temp_wav_path": None, "temp_wav_filename": None, # Will be set if conversion succeeds
-            "message": "Session processing ended."
+            "message": "Session ended. Transcript processing complete."
         }
-
-        if os.path.exists(raw_pcm_file_path) and os.path.getsize(raw_pcm_file_path) > 0:
-            if await convert_raw_pcm_to_wav(raw_pcm_file_path, target_wav_path):
-                logger.info(f"Audio for {session_id} converted to {target_wav_path}")
-                final_payload["temp_wav_path"] = target_wav_path
-                final_payload["temp_wav_filename"] = target_wav_filename
-                final_payload["message"] = "Session ended. Full transcript and audio processing complete."
-            else:
-                logger.error(f"Failed to convert audio for {session_id}.")
-                final_payload["error"] = "Audio conversion failed."
-        else:
-            logger.warning(f"PCM file {raw_pcm_file_path} empty or not found. No WAV conversion.")
-            final_payload["message"] = "Session ended. Audio data was empty or missing."
-            if not os.path.exists(raw_pcm_file_path): 
-                final_payload["error"] = "Audio data not found."
-            else: 
-                final_payload["error"] = "Audio data was empty."
 
         # Only try to send final payload if WebSocket is still connected
         try: 
@@ -428,11 +373,4 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
         except Exception as e_send_final: 
             logger.error(f"Failed to send session_end: {e_send_final}")
 
-        if os.path.exists(raw_pcm_file_path):
-            try: 
-                os.remove(raw_pcm_file_path)
-                logger.info(f"Removed temp PCM: {raw_pcm_file_path}")
-            except OSError as e: 
-                logger.error(f"Error removing {raw_pcm_file_path}: {e}")
-        
         logger.info(f"Finished cleanup for WebSocket session_id: {session_id}")

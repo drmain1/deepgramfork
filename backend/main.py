@@ -7,7 +7,6 @@ import os
 from dotenv import load_dotenv
 from deepgram import AsyncLiveClient, DeepgramClientOptions, LiveOptions, LiveTranscriptionEvents
 from deepgram.clients.listen.v1.websocket.response import CloseResponse
-import ffmpeg
 import logging
 import boto3
 from datetime import datetime
@@ -21,7 +20,7 @@ from botocore.exceptions import ClientError
 from datetime import datetime, timedelta, timezone
 
 # Import the refactored Deepgram handler
-from .deepgram_utils import handle_deepgram_websocket
+from deepgram_utils import handle_deepgram_websocket
 
 # Ensure the .env file is in the root of the trans10 directory or adjust path
 # Example: load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
@@ -57,11 +56,6 @@ app.add_middleware(
 # Global placeholders for clients, to be initialized in startup event
 s3_client = None
 bedrock_runtime_client = None
-
-# Directory for temporary audio files (WAVs before manual S3 upload)
-TEMP_AUDIO_DIR = os.path.join(tempfile.gettempdir(), "trans10_audio_temp")
-os.makedirs(TEMP_AUDIO_DIR, exist_ok=True)
-print(f"Temporary audio files will be stored in: {TEMP_AUDIO_DIR}")
 
 @app.on_event("startup")
 async def startup_event():
@@ -108,70 +102,7 @@ deepgram_client = AsyncLiveClient(config)
 import tempfile
 
 # Import the new AWS utility functions
-from .aws_utils import polish_transcript_with_bedrock, save_text_to_s3, save_audio_file_to_s3, delete_s3_object
-
-html = """
-<!DOCTYPE html>
-<html>
-    <head>
-        <title>Chat</title>
-    </head>
-    <body>
-        <h1>WebSocket Chat Test</h1>
-        <p>This page tests a different WebSocket endpoint (/ws_test) for basic connectivity.</p>
-        <p>Your main application should connect to <strong>ws://localhost:8000/stream</strong>.</p>
-        <form action="" onsubmit="sendMessage(event)">
-            <input type="text" id="messageText" autocomplete="off"/>
-            <button>Send to /ws_test</button>
-        </form>
-        <ul id='messages'>
-        </ul>
-        <script>
-            var ws = new WebSocket("ws://localhost:8000/ws_test");
-            ws.onopen = function(event) {
-                console.log("Connected to /ws_test");
-            };
-            ws.onmessage = function(event) {
-                var messages = document.getElementById('messages')
-                var message = document.createElement('li')
-                var content = document.createTextNode(event.data)
-                message.appendChild(content)
-                messages.appendChild(message)
-            };
-            function sendMessage(event) {
-                var input = document.getElementById("messageText")
-                ws.send(input.value)
-                input.value = ''
-                event.preventDefault()
-            }
-            ws.onerror = function(event) {
-                console.error("WebSocket error on /ws_test: ", event);
-            };
-            ws.onclose = function(event) {
-                console.log("Disconnected from /ws_test");
-            };
-        </script>
-    </body>
-</html>
-"""
-
-@app.get("/")
-async def get_test_page():
-    return HTMLResponse(html) 
-
-@app.websocket("/ws_test") # A separate endpoint for the HTML test page
-async def websocket_test_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    print("Client connected to /ws_test")
-    try:
-        while True:
-            data = await websocket.receive_text()
-            await websocket.send_text(f"Test echo: {data}")
-    except WebSocketDisconnect:
-        print("Client disconnected from /ws_test")
-    except Exception as e:
-        print(f"Error in /ws_test: {e}")
-        await websocket.close(code=1011)
+from aws_utils import polish_transcript_with_bedrock, save_text_to_s3, delete_s3_object
 
 @app.websocket("/stream")
 async def websocket_stream_endpoint(websocket: WebSocket):
@@ -345,8 +276,6 @@ async def save_session_data_endpoint(request_data: SaveSessionRequest):
     s3_paths = {}
     errors = []
 
-    local_wav_file_path = os.path.join(TEMP_AUDIO_DIR, f"{session_id}.wav")
-
     if s3_client:
         print(f"Attempting to save original transcript for session_id: {session_id}, user_id: {user_id}")
         try:
@@ -371,41 +300,7 @@ async def save_session_data_endpoint(request_data: SaveSessionRequest):
         print(message)
         errors.append(message)
 
-    if s3_client and os.path.exists(local_wav_file_path):
-        print(f"Attempting to save audio file for session_id: {session_id}, user_id: {user_id}")
-        try:
-            s3_audio_path = await save_audio_file_to_s3(
-                s3_client=s3_client,
-                aws_s3_bucket_name=AWS_S3_BUCKET_NAME,
-                tenant_id=user_id,  
-                session_id=session_id,
-                local_file_path=local_wav_file_path,
-                folder="audio"
-            )
-            if s3_audio_path:
-                s3_paths["audio"] = s3_audio_path
-                print(f"Audio file saved to: {s3_audio_path}")
-                try:
-                    os.remove(local_wav_file_path)
-                    print(f"Successfully removed temporary local WAV file: {local_wav_file_path}")
-                except OSError as e_remove:
-                    print(f"Error removing temporary local WAV file {local_wav_file_path}: {e_remove}")
-                    # Not adding to main 'errors' as S3 upload succeeded, but good to log
-            else:
-                errors.append("Failed to save audio file to S3.")
-        except Exception as e:
-            print(f"Error saving audio file for {session_id}: {e}")
-            errors.append(f"Error saving audio file: {str(e)}")
-    elif s3_client and not os.path.exists(local_wav_file_path):
-        message = f"Local audio file not found at {local_wav_file_path}. Skipping audio S3 upload."
-        print(message)
-        errors.append(message)
-    elif not s3_client:
-        message = "S3 client not configured. Skipping audio S3 upload."
-        print(message)
-        errors.append(message)
-
-    if bedrock_runtime_client and s3_client: 
+    if bedrock_runtime_client and s3_client:
         print(f"Attempting to polish transcript for session_id: {session_id}, user_id: {user_id}")
         try:
             polished_result = await polish_transcript_with_bedrock(
@@ -470,13 +365,6 @@ async def delete_session_recording(
 
     original_transcript_key = f"{user_id}/transcripts/original/{session_id}.txt"
     polished_transcript_key = f"{user_id}/transcripts/polished/{session_id}.txt"
-    audio_key = f"{user_id}/audio/{session_id}.wav" # Also attempt to delete audio file
-    # Attempt to delete the old metadata file path as well, if it exists
-    # This path might be `sessions/{user_id}/{session_id}/session_metadata.json`
-    # or `user_recordings/{user_id}/{some_subfolder}/{session_id}.session_metadata.json`
-    # For now, let's try the `sessions/...` pattern as it was in the previous version of this delete function.
-    metadata_s3_key_old_pattern = f"sessions/{user_id}/{session_id}/session_metadata.json"
-
 
     deleted_count = 0
     error_messages = [] # To collect any specific error messages if needed later
@@ -500,29 +388,10 @@ async def delete_session_recording(
     else:
         print(f"  Failed to delete or polished transcript not found: {polished_transcript_key}")
 
-    # --- Delete Audio File (Optional but good for cleanup) ---
-    print(f"  Attempting to delete audio file: {audio_key}")
-    audio_deleted = await delete_s3_object(s3_client, AWS_S3_BUCKET_NAME, audio_key)
-    if audio_deleted:
-        deleted_count += 1
-        print(f"  Successfully deleted audio file: {audio_key}")
-    else:
-        print(f"  Failed to delete or audio file not found: {audio_key}")
-        
-    # --- Delete old pattern metadata file (Optional but good for cleanup) ---
-    print(f"  Attempting to delete old pattern metadata file: {metadata_s3_key_old_pattern}")
-    metadata_old_deleted = await delete_s3_object(s3_client, AWS_S3_BUCKET_NAME, metadata_s3_key_old_pattern)
-    if metadata_old_deleted:
-        deleted_count += 1
-        print(f"  Successfully deleted old pattern metadata file: {metadata_s3_key_old_pattern}")
-    else:
-        print(f"  Failed to delete or old pattern metadata file not found: {metadata_s3_key_old_pattern}")
-
-
     if deleted_count > 0:
         return {"message": f"Successfully deleted {deleted_count} associated file(s) for session {session_id}."}
     else:
-        # This implies none of the targeted files (original, polished, audio, old metadata) were found or deleted.
+        # This implies none of the targeted files (original, polished) were found or deleted.
         return {"message": f"No files found to delete for session {session_id}. They may have already been deleted or never existed at the expected paths."}
 
 
@@ -531,7 +400,6 @@ class RecordingInfo(BaseModel):
     name: str # Derived name, e.g., from patient context or session title
     date: datetime # Last modified date of the metadata file or a date from metadata
     status: str = "saved" # This endpoint returns saved recordings
-    s3PathAudio: Optional[str] = None
     s3PathTranscript: Optional[str] = None
     s3PathPolished: Optional[str] = None
     s3PathMetadata: Optional[str] = None # S3 key for the session_metadata.json file itself, now optional
@@ -607,7 +475,6 @@ async def get_user_recordings(user_id: str = Path(..., description="User's uniqu
                             id=session_id,
                             name=rec_name, # Use session_id or formatted timestamp as the name
                             date=record_date,
-                            s3PathAudio=None, # Audio files are not used for this listing
                             s3PathTranscript=s3_path_transcript_original,
                             s3PathPolished=s3_path_transcript_polished,
                             s3PathMetadata=None, # Metadata files are not the source of this list
