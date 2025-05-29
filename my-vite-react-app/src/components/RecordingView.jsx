@@ -387,6 +387,7 @@ function RecordingView({
           session_id: sessionId,
           final_transcript_text: transcriptWithLocation,
           patient_context: patientContext,
+          patient_name: patientDetails,
           encounter_type: encounterType,
           llm_template: llmTemplate,
           llm_template_id: llmTemplateId,
@@ -408,9 +409,9 @@ function RecordingView({
       if (response.ok) {
         setSaveStatusMessage(`Notes generated and saved!\nNotes: ${result.notes_s3_path || 'N/A'}\nAudio: ${result.audio_s3_path || 'N/A'}`);
         setIsSessionSaved(true);
-        const savedName = patientDetails
-          ? `${patientDetails} - ${new Date().toLocaleDateString()}`
-          : `Session ${sessionId} - ${new Date().toLocaleDateString()}`;
+        
+        // Keep the original patient name if provided, otherwise use a fallback
+        const savedName = patientDetails || `Session ${sessionId}`;
         
         updateRecording(sessionId, {
           status: 'saved',
