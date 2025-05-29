@@ -532,4 +532,4 @@ if __name__ == "__main__":
         print("deepgram_api_key not found. Ensure .env is in the /Users/davidmain/Desktop/trans10 directory and contains the key 'deepgram_api_key'.")
     else:
         print(f"deepgram_api_key found: {deepgram_api_key[:5]}...")
-    uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True, ws_ping_interval=20, ws_ping_timeout=20)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True, ws_ping_interval=20, ws_ping_timeout=20)
