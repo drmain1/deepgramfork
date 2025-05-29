@@ -374,3 +374,49 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
             logger.error(f"Failed to send session_end: {e_send_final}")
 
         logger.info(f"Finished cleanup for WebSocket session_id: {session_id}")
+
+async def handle_deepgram_websocket_with_initial_message(websocket: WebSocket, initial_message: dict, get_user_settings_func: callable):
+    """
+    Modified version of handle_deepgram_websocket that processes a pre-received initial message.
+    This is used when the WebSocket router has already received and parsed the initial configuration.
+    """
+    logger.info(f"Deepgram WebSocket handler started with pre-received initial message")
+
+    session_id = datetime.now().strftime("%Y%m%d%H%M%S%f")
+    
+    # Initialize Deepgram settings
+    dg_smart_format = True  # Default value
+    dg_diarize = False  # Default value
+    user_profile_utterances = False  # Default value
+    multilingual_enabled = False  # Default value
+    target_language = None  # Default value for specific language targeting
+    deepgram_started = False
+
+    # Send session init immediately with default settings
+    try:
+        await websocket.send_text(json.dumps({"type": "session_init", "session_id": session_id}))
+        logger.info(f"Sent session_init with session_id: {session_id} to client.")
+    except Exception as e:
+        logger.error(f"Error sending session_id to client: {e}")
+        return
+
+    dg_connection = None
+    ffmpeg_proc = None
+    final_transcript_accumulator = []
+
+    # Process the initial message immediately
+    if "text" in initial_message:
+        try:
+            config_data = json.loads(initial_message["text"])
+            await handle_configuration_message(config_data)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse initial configuration message: {e}")
+        except Exception as e:
+            logger.error(f"Error processing initial configuration: {e}")
+
+    # ... (rest of the function implementation will be similar to the original handle_deepgram_websocket)
+    # For now, I'll delegate to the original function but note that we need to modify it
+    # to handle the fact that the first message has already been consumed
+    
+    # Call the original handler but indicate initial message was processed
+    await handle_deepgram_websocket_internal(websocket, get_user_settings_func, initial_message_processed=True)

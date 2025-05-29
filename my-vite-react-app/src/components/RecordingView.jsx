@@ -113,8 +113,13 @@ function RecordingView({
         webSocketRef.current = null;
       }
 
-      console.log("[WebSocket] Attempting to connect to ws://localhost:8000/stream for resume/start...");
-      webSocketRef.current = new WebSocket('ws://localhost:8000/stream');
+      // Choose the correct WebSocket endpoint based on multilingual setting
+      const wsEndpoint = isMultilingual 
+        ? 'ws://localhost:8000/stream/multilingual'  // Speechmatics for multilingual
+        : 'ws://localhost:8000/stream';              // Deepgram for monolingual medical
+
+      console.log(`[WebSocket] Attempting to connect to ${wsEndpoint} for ${isMultilingual ? 'multilingual (Speechmatics)' : 'monolingual medical (Deepgram)'} transcription...`);
+      webSocketRef.current = new WebSocket(wsEndpoint);
 
       webSocketRef.current.onopen = () => {
         console.log('[WebSocket] Connection OPENED successfully.');
@@ -192,6 +197,16 @@ function RecordingView({
                 setCurrentInterimTranscript('');
               } else {
                 setCurrentInterimTranscript(parsedMessage.text);
+              }
+            } else if (parsedMessage.type === 'translation') {
+              // Handle translation messages from Speechmatics
+              console.log('Received translation message:', parsedMessage);
+              const translationText = `[${parsedMessage.language?.toUpperCase() || 'TRANSLATION'}] ${parsedMessage.text}`;
+              if (parsedMessage.is_final) {
+                setFinalTranscript(prev => (prev ? prev + '\n' : '') + translationText);
+                setCurrentInterimTranscript('');
+              } else {
+                setCurrentInterimTranscript(translationText);
               }
             } else if (parsedMessage.type === 'error') {
               console.error('Received error from server (JSON):', parsedMessage.message);

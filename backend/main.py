@@ -20,7 +20,13 @@ from botocore.exceptions import ClientError
 from datetime import datetime, timedelta, timezone
 
 # Import the refactored Deepgram handler
-from deepgram_utils import handle_deepgram_websocket
+from .deepgram_utils import handle_deepgram_websocket
+
+# Import the new Speechmatics handler for multilingual support
+from .speechmatics_utils import handle_speechmatics_websocket
+
+# Import the new AWS utility functions
+from .aws_utils import polish_transcript_with_bedrock, save_text_to_s3, delete_s3_object
 
 # Ensure the .env file is in the root of the trans10 directory or adjust path
 # Example: load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
@@ -101,19 +107,26 @@ deepgram_client = AsyncLiveClient(config)
 
 import tempfile
 
-# Import the new AWS utility functions
-from aws_utils import polish_transcript_with_bedrock, save_text_to_s3, delete_s3_object
-
 @app.websocket("/stream")
 async def websocket_stream_endpoint(websocket: WebSocket):
     """
     Handles the primary WebSocket streaming connection for Deepgram transcription.
-    This endpoint now delegates the complex streaming logic to handle_deepgram_websocket
-    from the deepgram_utils module.
+    This endpoint delegates to handle_deepgram_websocket for monolingual medical transcription.
+    For multilingual support, clients should use the /stream/multilingual endpoint.
     """
     # The get_user_settings function from this file is passed as a callable
     # to handle_deepgram_websocket, allowing it to fetch user-specific settings.
     await handle_deepgram_websocket(websocket, get_user_settings)
+
+@app.websocket("/stream/multilingual")
+async def websocket_multilingual_stream_endpoint(websocket: WebSocket):
+    """
+    Handles WebSocket streaming connection for Speechmatics multilingual transcription.
+    This endpoint provides Spanish/English code-switching and translation capabilities.
+    """
+    # The get_user_settings function from this file is passed as a callable
+    # to handle_speechmatics_websocket, allowing it to fetch user-specific settings.
+    await handle_speechmatics_websocket(websocket, get_user_settings)
 
 class TranscriptionProfileItem(BaseModel):
     id: str = Field(..., description="Unique identifier for the profile")
@@ -527,9 +540,10 @@ async def get_s3_object_content(s3_key: str):
     except Exception as e:
         print(f"Unexpected error fetching S3 object {s3_key}: {e}")
         raise HTTPException(status_code=500, detail=f"Unexpected error fetching S3 object: {str(e)}")
+        
 if __name__ == "__main__":
     if not deepgram_api_key:
         print("deepgram_api_key not found. Ensure .env is in the /Users/davidmain/Desktop/trans10 directory and contains the key 'deepgram_api_key'.")
     else:
         print(f"deepgram_api_key found: {deepgram_api_key[:5]}...")
-    uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True, ws_ping_interval=20, ws_ping_timeout=20)
+    uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True, ws_ping_interval=20, ws_ping_timeout=20) 
