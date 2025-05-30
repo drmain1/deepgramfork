@@ -1,32 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { useRecordings } from '../contexts/RecordingsContext';
-import {
-  Box,
-  Button,
-  Typography,
-  Stack,
-  Grid,
-  Tabs,
-  Tab
-} from '@mui/material';
 
-const TabPanel = ({ children, value, index, ...other }) => {
-  return (
-    <div
-      role="tabpanel"
-      id={`recording-tabpanel-${index}`}
-      aria-labelledby={`recording-tab-${index}`}
-      {...other}
-      style={value === index ?
-        { flexGrow: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto', minHeight: 0 } :
-        { display: 'none' }
-      }
-    >
-      {children}
-    </div>
-  );
-};
 
 function RecordingView({
   patientDetails,
@@ -520,16 +495,6 @@ function RecordingView({
     onClose();
   };
 
-  const a11yProps = (index) => {
-    return {
-      id: `recording-tab-${index}`,
-      'aria-controls': `recording-tabpanel-${index}`,
-    };
-  };
-
-  const handleTabChange = (event, newValue) => {
-    setActiveTab(newValue);
-  };
 
   return (
     <main className="flex-1 overflow-y-auto bg-gray-50">
@@ -537,129 +502,128 @@ function RecordingView({
       <div className="bg-white border-b border-gray-200 px-8 py-6">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div>
-            <h1 className="text-4xl font-semibold text-gray-900">Recording Session</h1>
-            <p className="text-lg text-gray-500 mt-2">
-              {patientDetails || 'New Session'} {sessionId && `(${sessionId})`}
+            <h1 className="text-2xl font-semibold text-gray-900">Recording Session</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              {patientDetails || 'david'} {sessionId && `(${sessionId})`}
             </p>
           </div>
-          <Button
-            variant="outlined"
+          <button
             onClick={handleCloseSession}
-            sx={{ minWidth: '120px' }}
+            className="btn btn-secondary px-6 py-2 text-sm font-medium"
           >
-            Close Session
-          </Button>
+            CLOSE SESSION
+          </button>
         </div>
       </div>
 
       {/* Main Content */}
       <div className="px-8 py-8">
         <div className="max-w-7xl mx-auto">
-          <Grid container spacing={3}>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Left Column - Controls */}
-            <Grid item xs={12} md={4}>
-              <Box className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                <Typography variant="h6" className="mb-4">Recording Controls</Typography>
+            <div className="lg:col-span-1">
+              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                <h3 className="text-lg font-medium text-gray-900 mb-6">Recording Controls</h3>
                 
-                <Stack spacing={2}>
+                <div className="space-y-4">
                   {!isRecording ? (
-                    <Button
-                      variant="contained"
-                      color="primary"
+                    <button
                       onClick={startRecordingProcess}
-                      disabled={!patientDetails.trim()}
-                      size="large"
-                      fullWidth
+                      disabled={!patientDetails.trim() || isSessionSaved}
+                      className="w-full btn btn-primary py-3 text-base font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {hasStreamedOnce ? 'Resume Recording' : 'Start Recording'}
-                    </Button>
+                      {hasStreamedOnce && !isSessionSaved ? 'RESUME RECORDING' : 'START RECORDING'}
+                    </button>
                   ) : (
-                    <Button
-                      variant="contained"
-                      color="secondary"
+                    <button
                       onClick={stopRecording}
-                      size="large"
-                      fullWidth
+                      className="w-full btn bg-red-600 hover:bg-red-700 text-white py-3 text-base font-medium"
                     >
-                      Pause Recording
-                    </Button>
+                      PAUSE RECORDING
+                    </button>
                   )}
 
-                  <Button
-                    variant="outlined"
+                  <button
                     onClick={handleSaveSession}
                     disabled={isRecording || !combinedTranscript.trim() || isSessionSaved}
-                    size="large"
-                    fullWidth
+                    className="w-full btn btn-secondary py-3 text-base font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {isSessionSaved ? 'Notes Saved' : 'Generate & Save Notes'}
-                  </Button>
-                </Stack>
+                    {isSessionSaved ? 'NOTES SAVED' : 'GENERATE & SAVE NOTES'}
+                  </button>
+                </div>
 
                 {error && (
-                  <Box className="mt-4 p-3 bg-red-50 border border-red-200 rounded">
-                    <Typography color="error" variant="body2">
-                      {error}
-                    </Typography>
-                  </Box>
+                  <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm text-red-700">{error}</p>
+                  </div>
                 )}
 
                 {saveStatusMessage && (
-                  <Box className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded">
-                    <Typography variant="body2" style={{ whiteSpace: 'pre-line' }}>
-                      {saveStatusMessage}
-                    </Typography>
-                  </Box>
+                  <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-sm text-blue-700 whitespace-pre-line">{saveStatusMessage}</p>
+                  </div>
                 )}
-              </Box>
-            </Grid>
+              </div>
+            </div>
 
             {/* Right Column - Transcript */}
-            <Grid item xs={12} md={8}>
-              <Box className="bg-white rounded-lg shadow-sm border border-gray-200" sx={{ height: '600px', display: 'flex', flexDirection: 'column' }}>
-                <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-                  <Tabs value={activeTab} onChange={handleTabChange} aria-label="recording tabs">
-                    <Tab label="Live Transcript" {...a11yProps(0)} />
-                    <Tab label="Notes" {...a11yProps(1)} disabled />
-                  </Tabs>
-                </Box>
-                
-                <TabPanel value={activeTab} index={0}>
-                  <Box sx={{ p: 3, flexGrow: 1, overflowY: 'auto' }}>
-                    <Typography variant="h6" className="mb-3">
-                      Live Transcript {isRecording && <span className="text-red-500">● Recording</span>}
-                    </Typography>
-                    
-                    <Box 
-                      sx={{ 
-                        minHeight: '400px',
-                        p: 2,
-                        border: '1px solid #e0e0e0',
-                        borderRadius: 1,
-                        backgroundColor: '#fafafa',
-                        fontFamily: 'monospace',
-                        fontSize: '14px',
-                        lineHeight: 1.5,
-                        whiteSpace: 'pre-wrap',
-                        overflowY: 'auto'
-                      }}
+            <div className="lg:col-span-2">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                {/* Tab Headers */}
+                <div className="border-b border-gray-200">
+                  <nav className="-mb-px flex">
+                    <button
+                      onClick={() => setActiveTab(0)}
+                      className={`py-4 px-6 text-sm font-medium border-b-2 ${
+                        activeTab === 0
+                          ? 'border-blue-500 text-blue-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
                     >
-                      {combinedTranscript || 'Transcript will appear here as you speak...'}
-                    </Box>
-                  </Box>
-                </TabPanel>
+                      LIVE TRANSCRIPT
+                    </button>
+                    <button
+                      onClick={() => setActiveTab(1)}
+                      disabled
+                      className="py-4 px-6 text-sm font-medium border-b-2 border-transparent text-gray-300 cursor-not-allowed"
+                    >
+                      NOTES
+                    </button>
+                  </nav>
+                </div>
+                
+                {/* Tab Content */}
+                <div className="p-6">
+                  {activeTab === 0 && (
+                    <div>
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-medium text-gray-900">Live Transcript</h3>
+                        {isRecording && (
+                          <div className="flex items-center">
+                            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse mr-2"></div>
+                            <span className="text-sm text-red-600 font-medium">Recording</span>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="min-h-[400px] p-4 border border-gray-300 rounded-lg bg-gray-50 font-mono text-sm leading-relaxed whitespace-pre-wrap overflow-y-auto">
+                        {combinedTranscript || 'Transcript will appear here as you speak...'}
+                      </div>
+                    </div>
+                  )}
 
-                <TabPanel value={activeTab} index={1}>
-                  <Box sx={{ p: 3, flexGrow: 1, overflowY: 'auto' }}>
-                    <Typography variant="h6" className="mb-3">Generated Notes</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Notes will be available after generating and saving the session.
-                    </Typography>
-                  </Box>
-                </TabPanel>
-              </Box>
-            </Grid>
-          </Grid>
+                  {activeTab === 1 && (
+                    <div>
+                      <h3 className="text-lg font-medium text-gray-900 mb-4">Generated Notes</h3>
+                      <p className="text-gray-500">
+                        Notes will be available after generating and saving the session.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </main>

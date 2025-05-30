@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRecordings } from '../contexts/RecordingsContext';
 import { useAuth0 } from '@auth0/auth0-react';
@@ -6,6 +7,7 @@ function Sidebar() {
   const { recordings, deletePersistedRecording, isFetchingRecordings, selectRecording, selectedRecordingId } = useRecordings();
   const navigate = useNavigate();
   const { isAuthenticated, isLoading, user, logout } = useAuth0();
+  const [deleteConfirmation, setDeleteConfirmation] = useState({ show: false, recordingId: null, recordingName: null });
 
   const handleGoToSettings = () => {
     navigate('/settings');
@@ -16,7 +18,16 @@ function Sidebar() {
     navigate('/transcription');
   };
 
-  const handleDeleteRecording = async (recordingId) => {
+  const handleDeleteClick = (recordingId, recordingName) => {
+    setDeleteConfirmation({ 
+      show: true, 
+      recordingId, 
+      recordingName: recordingName || 'Untitled Encounter' 
+    });
+  };
+
+  const handleDeleteConfirm = async () => {
+    const { recordingId } = deleteConfirmation;
     if (!isAuthenticated) {
       console.error("User not authenticated. Cannot delete recording.");
       return;
@@ -25,12 +36,17 @@ function Sidebar() {
       try {
         console.log(`Attempting to delete recording via context: ${recordingId}`);
         await deletePersistedRecording(recordingId);
+        setDeleteConfirmation({ show: false, recordingId: null, recordingName: null });
       } catch (error) {
         console.error(`Failed to delete recording ${recordingId}:`, error);
       }
     } else {
       console.error('deletePersistedRecording function not available from context.');
     }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmation({ show: false, recordingId: null, recordingName: null });
   };
 
   const handleLogout = () => {
@@ -56,6 +72,58 @@ function Sidebar() {
   }, []);
 
   const sortedRecordings = processedRecordings.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  // Group recordings by date
+  const groupRecordingsByDate = (recordings) => {
+    const groups = {};
+    
+    recordings.forEach(recording => {
+      if (!recording.date) return;
+      
+      try {
+        const date = new Date(recording.date);
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        
+        let groupKey;
+        if (date.toDateString() === today.toDateString()) {
+          groupKey = 'Today';
+        } else if (date.toDateString() === yesterday.toDateString()) {
+          groupKey = 'Yesterday';
+        } else {
+          groupKey = date.toLocaleDateString(undefined, {
+            month: 'numeric',
+            day: 'numeric',
+            year: 'numeric'
+          });
+        }
+        
+        if (!groups[groupKey]) {
+          groups[groupKey] = [];
+        }
+        groups[groupKey].push(recording);
+      } catch (error) {
+        console.error('Error grouping recording by date:', error);
+      }
+    });
+    
+    return groups;
+  };
+
+  const groupedRecordings = groupRecordingsByDate(sortedRecordings);
+
+  const formatTime = (isoString) => {
+    if (!isoString) return '';
+    try {
+      return new Date(isoString).toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (error) {
+      return 'Invalid time';
+    }
+  };
 
   const formatDate = (isoString) => {
     if (!isoString) return '';
@@ -111,8 +179,11 @@ function Sidebar() {
 
       {/* Recordings Section */}
       <div className="flex-1 px-4 overflow-hidden">
-        <h3 className="section-header px-2">Recent Recordings</h3>
-        <nav className="space-y-1 overflow-y-auto max-h-[calc(100vh-400px)] pr-2">
+        <div className="px-2 mb-4">
+          <h3 className="text-sm font-medium text-gray-300">Encounter</h3>
+        </div>
+        
+        <div className="overflow-y-auto max-h-[calc(100vh-400px)] pr-2">
           {isFetchingRecordings && recordings.length === 0 && (
             <div className="text-center py-8">
               <div className="spinner mx-auto mb-3"></div>
@@ -132,42 +203,91 @@ function Sidebar() {
               <p className="text-sm text-gray-400">Login to see recordings</p>
             </div>
           )}
-          {sortedRecordings.map((recording) => (
-            <div key={recording.id} className="relative group">
-              <button
-                className={`sidebar-link w-full flex flex-col p-4 rounded-lg text-left ${
-                  selectedRecordingId === recording.id ? 'active' : ''
-                }`}
-                onClick={() => {
-                  selectRecording(recording.id);
-                  navigate('/transcription'); // Navigate to transcription route where TranscriptViewer logic is implemented
-                }}
-              >
-                <div className="flex items-start justify-between">
-                  <span className="truncate flex-1 font-medium text-base">
-                    {recording.name || `Session ${formatSessionId(recording.id)}`}
-                  </span>
-                  <span className={`status-indicator ${recording.status || 'pending'} ml-2 mt-1.5`}></span>
-                </div>
-                <span className="text-sm text-gray-500 mt-1">
-                  {recording.date ? formatDate(recording.date) : 'No date'}
-                </span>
-              </button>
-              {isAuthenticated && (
-                <button
-                  className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1.5 hover:bg-gray-700 rounded"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteRecording(recording.id);
-                  }}
-                  title="Delete recording"
-                >
-                  <span className="material-icons text-xs text-gray-400 hover:text-red-400">delete</span>
-                </button>
-              )}
+          
+          {Object.entries(groupedRecordings).map(([dateGroup, recordings]) => (
+            <div key={dateGroup} className="mb-6">
+              {/* Date Group Header */}
+              <div className="text-xs font-medium text-gray-400 mb-3 px-2">
+                {dateGroup}
+              </div>
+              
+              {/* Recordings in this date group */}
+              <div className="space-y-1">
+                {recordings.map((recording) => (
+                  <div key={recording.id} className="relative group">
+                    <button
+                      className={`w-full flex items-center justify-between p-3 rounded-lg text-left transition-all duration-200 ${
+                        selectedRecordingId === recording.id 
+                          ? 'bg-blue-600/20 border-l-2 border-blue-500' 
+                          : 'hover:bg-gray-800/50'
+                      }`}
+                      onClick={() => {
+                        selectRecording(recording.id);
+                        navigate('/transcription');
+                      }}
+                      disabled={recording.status === 'pending' || recording.status === 'saving'}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-white text-sm truncate">
+                          Encounter
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs text-gray-400">
+                            {formatTime(recording.date)} • {recording.name || 'Untitled'}
+                          </span>
+                          {recording.status === 'saving' && (
+                            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {recording.status === 'pending' && 'Not started • 0 min'}
+                          {recording.status === 'saving' && 'Processing...'}
+                          {recording.status === 'saved' && `1 min`}
+                          {recording.status === 'failed' && 'Failed'}
+                          {recording.status === 'saved' && (
+                            <span className="ml-2 text-gray-400">
+                              • Deletion in 15 days
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Status indicator dot */}
+                      <div className="flex items-center gap-2">
+                        {recording.status === 'saved' && (
+                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        )}
+                        {recording.status === 'pending' && (
+                          <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                        )}
+                        {recording.status === 'failed' && (
+                          <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                        )}
+                        {recording.status === 'saving' && (
+                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                        )}
+                      </div>
+                    </button>
+                    
+                    {/* Delete button */}
+                    {isAuthenticated && recording.status === 'saved' && (
+                      <button
+                        className="absolute top-2 right-8 opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-2 hover:bg-red-600/20 rounded-lg"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteClick(recording.id, recording.name);
+                        }}
+                        title="Delete recording"
+                      >
+                        <span className="material-icons text-lg text-gray-400 hover:text-red-400">delete</span>
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
-        </nav>
+        </div>
       </div>
 
       {/* User Section */}
@@ -226,6 +346,52 @@ function Sidebar() {
           )}
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmation.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 border border-gray-700">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                <span className="material-icons text-red-600">warning</span>
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-white">Delete Recording</h3>
+                <p className="text-sm text-gray-400">This action cannot be undone</p>
+              </div>
+            </div>
+            
+            <div className="mb-6">
+              <p className="text-gray-300 mb-2">
+                Are you sure you want to delete this recording?
+              </p>
+              <div className="bg-gray-700 rounded p-3">
+                <p className="font-medium text-white text-sm">
+                  {deleteConfirmation.recordingName}
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Recording ID: {deleteConfirmation.recordingId}
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex gap-3 justify-end">
+              <button
+                className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+                onClick={handleDeleteCancel}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors"
+                onClick={handleDeleteConfirm}
+              >
+                Delete Recording
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }
