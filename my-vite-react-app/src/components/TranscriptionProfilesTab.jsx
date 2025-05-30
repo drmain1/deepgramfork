@@ -33,7 +33,10 @@ function TranscriptionProfilesTab({ transcriptionProfiles, deleteTranscriptionPr
               </IconButton>
               <ListItemText 
                 primary={profile.name} 
-                secondary={`LLM Instructions: ${profile.llmInstructions}`}
+                secondary={profile.llmInstructions ? 
+                  'Custom LLM instructions configured' : 
+                  'No custom instructions'
+                }
               />
             </Paper>
           ))}

@@ -39,7 +39,7 @@ function RecordingView({
   onClose
 }) {
   const { user } = useAuth0();
-  const { startPendingRecording, updateRecording, removeRecording } = useRecordings();
+  const { startPendingRecording, updateRecording, removeRecording, fetchUserRecordings } = useRecordings();
 
   const [isRecording, setIsRecording] = useState(false);
   const [hasStreamedOnce, setHasStreamedOnce] = useState(false);
@@ -48,6 +48,7 @@ function RecordingView({
   const [currentInterimTranscript, setCurrentInterimTranscript] = useState('');
   const [combinedTranscript, setCombinedTranscript] = useState('');
   const [sessionId, setSessionId] = useState(null);
+  const [frontendGeneratedId, setFrontendGeneratedId] = useState(null);
   const [isSessionSaved, setIsSessionSaved] = useState(false);
   const [saveStatusMessage, setSaveStatusMessage] = useState('');
   const [activeTab, setActiveTab] = useState(0);
@@ -94,7 +95,23 @@ function RecordingView({
       setIsSessionSaved(false);
       setSaveStatusMessage('');
 
-      let newSessionId = Date.now().toString();
+      // Generate session ID in same format as backend: YYYYMMDDHHMMSSSSSS
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
+      const microseconds = String(Math.floor(Math.random() * 1000)).padStart(3, '0'); // Approximate microseconds
+      
+      let newSessionId = `${year}${month}${day}${hours}${minutes}${seconds}${milliseconds}${microseconds}`;
+      console.log('=== STARTING NEW RECORDING ===');
+      console.log('Generated frontend sessionId:', newSessionId);
+      console.log('Backend format expected');
+      console.log('==============================');
+      setFrontendGeneratedId(newSessionId);
       setSessionId(newSessionId);
       startPendingRecording(newSessionId, patientDetails || 'New Session');
     }
@@ -184,6 +201,25 @@ function RecordingView({
             const parsedMessage = JSON.parse(message);
             if (parsedMessage.type === 'session_init') {
               console.log('Received session_init (JSON):', parsedMessage);
+              console.log('=== UPDATING SESSION ID ===');
+              console.log('Frontend generated ID:', frontendGeneratedId);
+              console.log('Current sessionId:', sessionId);
+              console.log('New sessionId from backend:', parsedMessage.session_id);
+              console.log('============================');
+              
+              // Always remove the old recording and replace with backend ID
+              // Use sessionId if available, otherwise find any pending recording
+              if (sessionId && sessionId !== parsedMessage.session_id) {
+                console.log('Removing old recording with ID:', sessionId);
+                removeRecording(sessionId);
+              } else {
+                // If sessionId is null/undefined, remove any pending recordings
+                console.log('Cleaning up any pending recordings before adding backend recording');
+              }
+              
+              console.log('Adding new recording with backend ID:', parsedMessage.session_id);
+              startPendingRecording(parsedMessage.session_id, patientDetails || 'New Session');
+              
               setSessionId(parsedMessage.session_id);
               setError('');
             } else if (parsedMessage.type === 'transcript') {
@@ -391,23 +427,68 @@ function RecordingView({
       }
 
       if (response.ok) {
+        console.log('=== SAVE RESPONSE DEBUG ===');
+        console.log('Full server response:', result);
+        console.log('Frontend sessionId:', sessionId);
+        console.log('Backend session_id:', result.session_id);
+        console.log('IDs match:', sessionId === result.session_id);
+        console.log('saved_paths:', result.saved_paths);
+        console.log('original_transcript path:', result.saved_paths?.original_transcript);
+        console.log('polished_transcript path:', result.saved_paths?.polished_transcript);
+        console.log('============================');
+        
         setSaveStatusMessage(`Notes generated and saved!\nNotes: ${result.notes_s3_path || 'N/A'}\nAudio: ${result.audio_s3_path || 'N/A'}`);
         setIsSessionSaved(true);
         const savedName = patientDetails
           ? `${patientDetails} - ${new Date().toLocaleDateString()}`
           : `Session ${sessionId} - ${new Date().toLocaleDateString()}`;
         
-        updateRecording(sessionId, {
+        // Extract S3 key from full S3 path (remove s3://bucket/ prefix)
+        const extractS3Key = (s3Path) => {
+          if (!s3Path) return null;
+          if (s3Path.startsWith('s3://')) {
+            // Remove s3://bucketname/ prefix to get just the key
+            const extracted = s3Path.split('/').slice(3).join('/');
+            console.log(`Extracted S3 key: ${s3Path} -> ${extracted}`);
+            return extracted;
+          }
+          console.log(`S3 path already in key format: ${s3Path}`);
+          return s3Path;
+        };
+        
+        const extractedOriginal = extractS3Key(result.saved_paths?.original_transcript);
+        const extractedPolished = extractS3Key(result.saved_paths?.polished_transcript);
+        
+        console.log('=== S3 PATH EXTRACTION ===');
+        console.log('Original from server:', result.saved_paths?.original_transcript);
+        console.log('Extracted original:', extractedOriginal);
+        console.log('Polished from server:', result.saved_paths?.polished_transcript);
+        console.log('Extracted polished:', extractedPolished);
+        console.log('==========================');
+        
+        const updatedRecording = {
           status: 'saved',
           name: savedName,
           date: new Date().toISOString(),
-          originalTranscriptS3Path: result.original_transcript_s3_path,
-          polishedTranscriptS3Path: result.polished_transcript_s3_path,
+          s3PathTranscript: extractedOriginal,
+          s3PathPolished: extractedPolished,
           audioS3Path: result.audio_s3_path,
           context: patientContext,
           location: selectedLocation,
           encounterType: encounterType
-        });
+        };
+        
+        console.log('=== UPDATING RECORDING ===');
+        console.log('sessionId:', sessionId);
+        console.log('updatedRecording:', updatedRecording);
+        console.log('==========================');
+        
+        updateRecording(sessionId, updatedRecording);
+        
+        // Force refresh of recordings to ensure proper state sync
+        console.log('Recording updated in local state with S3 paths');
+        console.log('Triggering fetchUserRecordings to refresh state...');
+        await fetchUserRecordings();
       } else {
         const errorText = result.error || result.detail || `HTTP ${response.status}: ${response.statusText}`;
         console.error('Server responded with error:', errorText);

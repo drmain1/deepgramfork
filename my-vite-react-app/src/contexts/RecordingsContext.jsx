@@ -61,42 +61,26 @@ export function RecordingsProvider({ children }) {
       });
 
       setRecordings(prevRecordings => {
-        const localNonSaved = prevRecordings.filter(r => r.status !== 'saved');
         const s3Map = new Map(fetchedRecordings.map(r => [r.id, { ...r, date: r.date }])); 
 
-        // Debug: Check what's in the s3Map
-        console.log("S3 Map entries:");
-        s3Map.forEach((recording, id) => {
-          console.log(`${id}:`, {
-            name: recording.name,
-            location: recording.location,
-            hasLocation: recording.hasOwnProperty('location')
-          });
-        });
-
-        const merged = [...localNonSaved];
-        s3Map.forEach((s3Rec, id) => {
-          if (!merged.find(localRec => localRec.id === id)) {
-            // Check if we have location data in localStorage for this recording
-            const localRecWithLocation = prevRecordings.find(localRec => localRec.id === id);
-            if (localRecWithLocation && localRecWithLocation.location && !s3Rec.location) {
-              console.log(`Preserving location from localStorage for recording ${id}:`, localRecWithLocation.location);
-              s3Rec.location = localRecWithLocation.location;
-            }
-            merged.push(s3Rec);
-          }
-        });
+        // Filter out any pending recordings that might be duplicates
+        // Keep only 'saving', 'saved', or 'failed' local recordings that don't exist in S3
+        const localNonSaved = prevRecordings.filter(r => 
+          !s3Map.has(r.id) && 
+          (r.status === 'saving' || r.status === 'failed') // Remove old 'pending' recordings
+        );
         
-        // Debug: Check final merged recordings
-        console.log("Final merged recordings:");
-        merged.forEach((recording, index) => {
-          console.log(`Recording ${index}:`, {
-            id: recording.id,
-            name: recording.name,
-            location: recording.location,
-            status: recording.status,
-            hasLocation: recording.hasOwnProperty('location')
-          });
+        const merged = [...localNonSaved];
+        
+        // Add all S3 recordings, preserving local data where appropriate
+        s3Map.forEach((s3Rec, id) => {
+          // Check if we have location data in localStorage for this recording
+          const localRecWithLocation = prevRecordings.find(localRec => localRec.id === id);
+          if (localRecWithLocation && localRecWithLocation.location && !s3Rec.location) {
+            console.log(`Preserving location from localStorage for recording ${id}:`, localRecWithLocation.location);
+            s3Rec.location = localRecWithLocation.location;
+          }
+          merged.push(s3Rec);
         });
         
         return merged.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -149,12 +133,44 @@ export function RecordingsProvider({ children }) {
     );
   }, []);
 
+  const migrateRecordingId = useCallback((oldId, newId) => {
+    console.log('=== migrateRecordingId called ===');
+    console.log('oldId:', oldId);
+    console.log('newId:', newId);
+    console.log('==============================');
+    
+    setRecordings(prevRecordings => {
+      const oldRecording = prevRecordings.find(rec => rec.id === oldId);
+      if (!oldRecording) {
+        console.log('Old recording not found, creating new one');
+        return prevRecordings;
+      }
+      
+      console.log('=== MIGRATING RECORDING ID ===');
+      console.log('Old recording:', oldRecording);
+      console.log('Changing ID from:', oldId, 'to:', newId);
+      console.log('===============================');
+      
+      // Remove old recording and add updated one with new ID
+      return prevRecordings
+        .filter(rec => rec.id !== oldId)
+        .concat({
+          ...oldRecording,
+          id: newId
+        });
+    });
+  }, []);
+
   const updateRecording = useCallback((sessionId, updates) => {
-    setRecordings(prevRecordings =>
-      prevRecordings.map(rec =>
-        rec.id === sessionId ? { ...rec, ...updates, date: rec.date, lastUpdated: new Date().toISOString() } : rec 
-      )
-    );
+    setRecordings(prevRecordings => {
+      return prevRecordings.map(rec => {
+        if (rec.id === sessionId) {
+          const updated = { ...rec, ...updates, date: rec.date, lastUpdated: new Date().toISOString() };
+          return updated;
+        }
+        return rec;
+      });
+    });
   }, []);
 
   const removeRecording = useCallback((sessionId) => {
@@ -198,10 +214,17 @@ export function RecordingsProvider({ children }) {
     if (!s3Key) {
       return type === 'original' ? 'Original transcript S3 path not found.' : 'Polished transcript S3 path not found.';
     }
+    if (!isAuthenticated || !user) {
+      return `Authentication required to fetch ${type} transcript.`;
+    }
     try {
-      // Ensure VITE_API_BASE_URL is correctly configured in your .env file for production
+      const accessToken = await getAccessTokenSilently();
       const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-      const response = await fetch(`${apiUrl}/api/v1/s3_object_content?s3_key=${encodeURIComponent(s3Key)}`);
+      const response = await fetch(`${apiUrl}/api/v1/s3_object_content?s3_key=${encodeURIComponent(s3Key)}`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        },
+      });
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`Failed to fetch ${type} transcript (${s3Key}): ${response.status} ${response.statusText}. Server: ${errorText}`);
@@ -212,7 +235,7 @@ export function RecordingsProvider({ children }) {
       console.error(`Error fetching ${type} transcript (${s3Key}):`, error);
       return `Could not fetch ${type} transcript: ${error.message}`;
     }
-  }, []);
+  }, [isAuthenticated, user, getAccessTokenSilently]);
 
   const selectRecording = useCallback((recordingId) => {
     if (recordingId === selectedRecordingId) { // If clicking the same recording, deselect it or do nothing (currently deselects)
@@ -231,7 +254,7 @@ export function RecordingsProvider({ children }) {
     }
   }, [selectedRecordingId]);
 
-  // Effect to handle recording selection changes (initial load)
+  // Effect to handle recording selection changes and S3 path updates
   useEffect(() => {
     if (selectedRecordingId) {
       const recording = recordings.find(r => r.id === selectedRecordingId);
@@ -279,7 +302,7 @@ export function RecordingsProvider({ children }) {
         setIsLoadingSelectedTranscript(false);
       }
     }
-  }, [selectedRecordingId, fetchTranscriptContent]); // Removed 'recordings' dependency
+  }, [selectedRecordingId, fetchTranscriptContent, recordings]); // Re-added recordings dependency to detect S3 path updates
 
   // Separate effect to handle polished transcript updates from recordings changes
   useEffect(() => {
