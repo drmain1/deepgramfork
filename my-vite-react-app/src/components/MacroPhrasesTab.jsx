@@ -165,10 +165,11 @@ function MacroPhrasesTab({ macroPhrases: initialMacroPhrases, saveMacroPhrases, 
                 fullWidth
                 margin="dense"
                 variant="outlined"
+                helperText="Shorthand trigger for quick expansion"
               />
               <TextField
                 name="phrase"
-                label="Full Phrase (the text this trigger expands to)"
+                label="Full Phrase (multiple words for better recognition)"
                 value={editForm.phrase}
                 onChange={handleInputChange}
                 fullWidth
@@ -177,6 +178,7 @@ function MacroPhrasesTab({ macroPhrases: initialMacroPhrases, saveMacroPhrases, 
                 margin="dense"
                 variant="outlined"
                 sx={{ mt: 2}}
+                helperText="This phrase will be boosted in Deepgram recognition (e.g., 'artificial intelligence', 'machine learning model')"
               />
               <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Button

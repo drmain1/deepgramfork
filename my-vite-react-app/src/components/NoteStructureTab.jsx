@@ -55,8 +55,8 @@ function NoteStructureTab({ addTranscriptionProfile, settingsLoading }) {
       customInstructions,
       macroPhrases,
       customVocabulary,
-      showDiagnoses,
-      outputFormat,
+      showDiagnoses: showDiagnoses,  // Map to expected parameter name
+      outputFormat: outputFormat,    // Map to expected parameter name
     };
     
     const llmInstructions = generateLLMInstructions(template);

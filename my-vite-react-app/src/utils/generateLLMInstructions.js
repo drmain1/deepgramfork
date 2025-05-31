@@ -42,7 +42,7 @@ Plan: Outline the plan for future sessions or follow-up.`;
 
   // Add diagnosis display instructions
   if (template.showDiagnoses) {
-    basePrompt += `\nIf applicable, include diagnostic suggestions or confirmed diagnoses clearly.`;
+    basePrompt += `\n please include relevent icd10 diagnosis codes for this patient`;
   }
 
   let finalInstructions = basePrompt;

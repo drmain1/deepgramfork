@@ -13,18 +13,32 @@ function CustomVocabularyTab({ customVocabulary: initialCustomVocabulary, saveCu
     // Ensure data from props is correctly formatted or convert if necessary
     // This handles updates if settings are reloaded or props change.
     const formattedInitialVocabulary = (initialCustomVocabulary || []).map(item => 
-      typeof item === 'string' ? { term: item } : item
+      typeof item === 'string' ? { term: item, intensifier: 1 } : { ...item, intensifier: item.intensifier || 1 }
     );
     setVocabulary(formattedInitialVocabulary);
   }, [initialCustomVocabulary]);
 
   const handleAddWord = () => {
-    const word = prompt('Enter custom word or phrase:', '');
+    const word = prompt('Enter custom word (single words only, not phrases):', '');
     if (word && word.trim()) {
       const trimmedWord = word.trim();
+      
+      // Check if it contains spaces (phrases not allowed for Keywords)
+      if (trimmedWord.includes(' ')) {
+        alert('Custom Vocabulary only supports single words. For phrases, use Macro Phrases instead.');
+        return;
+      }
+      
       // Check if term already exists
       if (!vocabulary.find(item => item.term === trimmedWord)) {
-        const newItem = { term: trimmedWord };
+        // Ask for intensifier (optional)
+        const intensifierStr = prompt('Enter intensifier value (1-3 recommended, leave empty for default 1):', '1');
+        const intensifier = intensifierStr && !isNaN(intensifierStr) ? parseFloat(intensifierStr) : 1;
+        
+        const newItem = { 
+          term: trimmedWord,
+          intensifier: intensifier
+        };
         const updatedVocabulary = [...vocabulary, newItem];
         setVocabulary(updatedVocabulary);
         saveCustomVocabulary(updatedVocabulary);
@@ -54,7 +68,7 @@ function CustomVocabularyTab({ customVocabulary: initialCustomVocabulary, saveCu
     <Card>
       <CardContent>
         <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddWord} sx={{ mb: 2 }}>
-          New Word/Phrase
+          New Word (Single Words Only)
         </Button>
         {vocabulary.length > 0 ? (
           <List sx={{ maxHeight: 300, overflowY: 'auto' }}>
@@ -68,12 +82,15 @@ function CustomVocabularyTab({ customVocabulary: initialCustomVocabulary, saveCu
                   </IconButton>
                 }
               >
-                <ListItemText primary={item.term} />
+                <ListItemText 
+                  primary={item.term} 
+                  secondary={`Intensifier: ${item.intensifier || 1}`}
+                />
               </ListItem>
             ))}
           </List>
         ) : (
-          <Typography sx={{mt: 2}}>No custom vocabulary defined yet. Click 'New Word/Phrase' to add items.</Typography>
+          <Typography sx={{mt: 2}}>No custom vocabulary defined yet. Click 'New Word (Single Words Only)' to add items.</Typography>
         )}
       </CardContent>
     </Card>

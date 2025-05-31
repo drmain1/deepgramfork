@@ -129,7 +129,52 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
                 "vad_events": True,
                 "language": language_setting,
             }
+            
+            # Prepare keyterms and keywords for URL parameters
+            keyterms_list = []
+            keywords_list = []
+            
+            # Add Keyterm Prompting for macro phrases (Nova-3 only)
+            if model_name == "nova-3-medical" and user_macro_phrases:
+                for macro in user_macro_phrases:
+                    if isinstance(macro, dict) and 'phrase' in macro and macro['phrase'].strip():
+                        # Use the full phrase for keyterm prompting
+                        keyterms_list.append(macro['phrase'].strip())
+                    elif isinstance(macro, str) and macro.strip():
+                        # Handle string format
+                        keyterms_list.append(macro.strip())
+                
+                # Limit to 100 keyterms per Deepgram's limit
+                keyterms_list = keyterms_list[:100]
+                if keyterms_list:
+                    logger.info(f"Prepared {len(keyterms_list)} keyterms for macro phrases")
+            
+            # Add Keywords for custom vocabulary (all models)
+            if user_custom_vocabulary:
+                for vocab in user_custom_vocabulary:
+                    if isinstance(vocab, dict) and 'term' in vocab and vocab['term'].strip():
+                        term = vocab['term'].strip()
+                        # Skip if it contains spaces (keywords are for single words only)
+                        if ' ' not in term:
+                            intensifier = vocab.get('intensifier', 1)
+                            keywords_list.append(f"{term}:{intensifier}")
+                    elif isinstance(vocab, str) and vocab.strip() and ' ' not in vocab.strip():
+                        # Handle string format, default intensifier 1
+                        keywords_list.append(f"{vocab.strip()}:1")
+                
+                # Limit to 100 keywords per Deepgram's limit
+                keywords_list = keywords_list[:100]
+                if keywords_list:
+                    logger.info(f"Prepared {len(keywords_list)} keywords for custom vocabulary")
 
+            # TODO: Implement keyterm and keywords support
+            # For now, create LiveOptions without them to test basic connection
+            # The current Deepgram Python SDK may not support these parameters directly
+            if keyterms_list:
+                logger.info(f"Would add keyterms: {keyterms_list} (not yet implemented)")
+            if keywords_list:
+                logger.info(f"Would add keywords: {keywords_list} (not yet implemented)")
+            
             live_options = LiveOptions(**options_dict)
 
             logger.info(f"Starting Deepgram connection with options: {options_dict}")
@@ -162,9 +207,14 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
             logger.error(f"Error starting FFmpeg: {e}")
             return False
 
+    # Variables to store user's macro phrases and custom vocabulary
+    user_macro_phrases = []
+    user_custom_vocabulary = []
+
     async def handle_configuration_message(config_data):
         """Handle configuration messages from client"""
         nonlocal dg_smart_format, dg_diarize, user_profile_utterances, multilingual_enabled, target_language
+        nonlocal user_macro_phrases, user_custom_vocabulary
         
         try:
             user_id_from_client = config_data.get("user_id")
@@ -183,18 +233,25 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
                 logger.info(f"Updating settings for user: {user_id_from_client}, profile: {selected_profile_id_from_client}")
                 try:
                     user_settings = await get_user_settings_func(user_id_from_client)
-                    if user_settings and user_settings.transcriptionProfiles:
-                        selected_profile = next((p for p in user_settings.transcriptionProfiles if p.id == selected_profile_id_from_client), None)
-                        if selected_profile:
-                            logger.info(f"Found profile '{selected_profile.name}'. Updating Deepgram settings.")
-                            dg_smart_format = selected_profile.smart_format
-                            dg_diarize = selected_profile.diarize
-                            user_profile_utterances = selected_profile.utterances
-                            logger.info(f"Updated settings: smart_format={dg_smart_format}, diarize={dg_diarize}, utterances={user_profile_utterances}, multilingual_enabled={multilingual_enabled}")
+                    if user_settings:
+                        # Load user's macro phrases and custom vocabulary
+                        user_macro_phrases = user_settings.macroPhrases or []
+                        user_custom_vocabulary = user_settings.customVocabulary or []
+                        
+                        logger.info(f"Loaded {len(user_macro_phrases)} macro phrases and {len(user_custom_vocabulary)} custom vocabulary items for user {user_id_from_client}")
+                        
+                        if user_settings.transcriptionProfiles:
+                            selected_profile = next((p for p in user_settings.transcriptionProfiles if p.id == selected_profile_id_from_client), None)
+                            if selected_profile:
+                                logger.info(f"Found profile '{selected_profile.name}'. Updating Deepgram settings.")
+                                dg_smart_format = selected_profile.smart_format
+                                dg_diarize = selected_profile.diarize
+                                user_profile_utterances = selected_profile.utterances
+                                logger.info(f"Updated settings: smart_format={dg_smart_format}, diarize={dg_diarize}, utterances={user_profile_utterances}, multilingual_enabled={multilingual_enabled}")
+                            else:
+                                logger.warning(f"Profile ID {selected_profile_id_from_client} not found.")
                         else:
-                            logger.warning(f"Profile ID {selected_profile_id_from_client} not found.")
-                    else:
-                        logger.warning(f"No transcription profiles for user {user_id_from_client}.")
+                            logger.warning(f"No transcription profiles for user {user_id_from_client}.")
                 except Exception as e_settings:
                     logger.error(f"Error fetching/processing user settings: {e_settings}")
             else:
