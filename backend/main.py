@@ -210,9 +210,11 @@ class SaveSessionRequest(BaseModel):
     final_transcript_text: str 
     user_id: str  
     patient_context: Optional[str] = None 
+    patient_name: Optional[str] = None  # Add patient name field
     encounter_type: Optional[str] = None  
     llm_template: Optional[str] = None
-    llm_template_id: Optional[str] = None    
+    llm_template_id: Optional[str] = None
+    location: Optional[str] = None  # Add location field too    
 
 @app.post("/api/v1/save_session_data") 
 async def save_session_data_endpoint(request_data: SaveSessionRequest):
@@ -220,9 +222,11 @@ async def save_session_data_endpoint(request_data: SaveSessionRequest):
     original_transcript = request_data.final_transcript_text
     user_id = request_data.user_id 
     patient_context = request_data.patient_context 
+    patient_name = request_data.patient_name  # Extract patient name
     encounter_type = request_data.encounter_type   
     llm_template = request_data.llm_template  
-    llm_template_id = request_data.llm_template_id   
+    llm_template_id = request_data.llm_template_id
+    location = request_data.location  # Extract location   
 
     # Get user settings to retrieve the actual LLM instructions from the profile
     custom_instructions = None
@@ -337,6 +341,40 @@ async def save_session_data_endpoint(request_data: SaveSessionRequest):
     elif not s3_client:
         print(f"S3 client not configured for session_id {session_id}. Skipping transcript polishing as polished note cannot be saved.")
 
+    # Save session metadata to S3 (including patient name and other details)
+    if s3_client:
+        try:
+            session_metadata = {
+                "session_id": session_id,
+                "patient_name": patient_name,
+                "patient_context": patient_context,
+                "encounter_type": encounter_type,
+                "llm_template": llm_template,
+                "llm_template_id": llm_template_id,
+                "location": location,
+                "user_id": user_id,
+                "created_date": datetime.now(timezone.utc).isoformat(),
+                "s3_paths": s3_paths
+            }
+            
+            metadata_content = json.dumps(session_metadata, indent=2)
+            s3_metadata_path = await save_text_to_s3(
+                s3_client=s3_client,
+                aws_s3_bucket_name=AWS_S3_BUCKET_NAME,
+                tenant_id=user_id,
+                session_id=session_id,
+                content=metadata_content,
+                folder="metadata"
+            )
+            if s3_metadata_path:
+                s3_paths["metadata"] = s3_metadata_path
+                print(f"Session metadata saved to: {s3_metadata_path}")
+            else:
+                errors.append("Failed to save session metadata to S3.")
+        except Exception as e:
+            print(f"Error saving session metadata for {session_id}: {e}")
+            errors.append(f"Error saving session metadata: {str(e)}")
+
     response_message = "Session data processing completed."
     if not s3_paths and errors:
          raise HTTPException(status_code=500, detail=f"Failed to save any session data to S3 for session_id {session_id}. Errors: {'; '.join(errors)}")
@@ -365,6 +403,7 @@ async def delete_session_recording(
 
     original_transcript_key = f"{user_id}/transcripts/original/{session_id}.txt"
     polished_transcript_key = f"{user_id}/transcripts/polished/{session_id}.txt"
+    metadata_key = f"{user_id}/metadata/{session_id}.txt"  # Add metadata key
 
     deleted_count = 0
     error_messages = [] # To collect any specific error messages if needed later
@@ -387,6 +426,15 @@ async def delete_session_recording(
         print(f"  Successfully deleted polished transcript: {polished_transcript_key}")
     else:
         print(f"  Failed to delete or polished transcript not found: {polished_transcript_key}")
+
+    # --- Delete Metadata ---
+    print(f"  Attempting to delete metadata: {metadata_key}")
+    metadata_deleted = await delete_s3_object(s3_client, AWS_S3_BUCKET_NAME, metadata_key)
+    if metadata_deleted:
+        deleted_count += 1
+        print(f"  Successfully deleted metadata: {metadata_key}")
+    else:
+        print(f"  Failed to delete or metadata not found: {metadata_key}")
 
     if deleted_count > 0:
         return {"message": f"Successfully deleted {deleted_count} associated file(s) for session {session_id}."}
@@ -461,27 +509,61 @@ async def get_user_recordings(user_id: str = Path(..., description="User's uniqu
 
                         s3_path_transcript_original = obj_key # The S3 key of the .txt file itself
                         s3_path_transcript_polished = f"{user_id}/transcripts/polished/{session_id}.txt"
+                        s3_path_metadata = f"{user_id}/metadata/{session_id}.txt"
                         
-                        # Attempt to create a more friendly name if session_id is a timestamp like '20250521084548959319'
-                        rec_name = f"Tx @ {session_id}" # Default name
-                        if len(session_id) == 20 and session_id.isdigit(): # Basic check for timestamp-like string
-                            try:
-                                ts_dt = datetime.strptime(session_id[:14], "%Y%m%d%H%M%S")
-                                rec_name = ts_dt.strftime("Transcript %Y-%m-%d %H:%M")
-                            except ValueError:
-                                pass # Keep default if parsing fails
+                        # Try to load metadata to get patient name and other details
+                        rec_name = None
+                        patient_context = None
+                        encounter_type = None
+                        llm_template_name = None
+                        location = None
+                        
+                        try:
+                            # Attempt to fetch metadata from S3
+                            metadata_response = s3_client.get_object(Bucket=AWS_S3_BUCKET_NAME, Key=s3_path_metadata)
+                            metadata_content = metadata_response['Body'].read().decode('utf-8')
+                            metadata = json.loads(metadata_content)
+                            
+                            # Use patient name from metadata if available
+                            if metadata.get('patient_name'):
+                                rec_name = metadata['patient_name']
+                                print(f"Using patient name from metadata: '{rec_name}' for session {session_id}")
+                            
+                            # Extract other metadata
+                            patient_context = metadata.get('patient_context')
+                            encounter_type = metadata.get('encounter_type')
+                            llm_template_name = metadata.get('llm_template')
+                            location = metadata.get('location')
+                            
+                        except ClientError as e:
+                            if e.response['Error']['Code'] == 'NoSuchKey':
+                                print(f"No metadata found for session {session_id}, using fallback name generation")
+                            else:
+                                print(f"Error fetching metadata for session {session_id}: {e}")
+                        except Exception as e:
+                            print(f"Error parsing metadata for session {session_id}: {e}")
+                        
+                        # Fallback name generation if no patient name from metadata
+                        if not rec_name:
+                            rec_name = f"Tx @ {session_id}" # Default name
+                            if len(session_id) == 20 and session_id.isdigit(): # Basic check for timestamp-like string
+                                try:
+                                    ts_dt = datetime.strptime(session_id[:14], "%Y%m%d%H%M%S")
+                                    rec_name = ts_dt.strftime("Transcript %Y-%m-%d %H:%M")
+                                except ValueError:
+                                    pass # Keep default if parsing fails
 
                         info = RecordingInfo(
                             id=session_id,
-                            name=rec_name, # Use session_id or formatted timestamp as the name
+                            name=rec_name, # Use patient name from metadata or fallback
                             date=record_date,
                             s3PathTranscript=s3_path_transcript_original,
                             s3PathPolished=s3_path_transcript_polished,
-                            s3PathMetadata=None, # Metadata files are not the source of this list
-                            patientContext=None,
-                            encounterType=None,
-                            llmTemplateName=None,
-                            location=None,
+                            s3PathMetadata=s3_path_metadata, # Include metadata path
+                            patientContext=patient_context,
+                            encounterType=encounter_type,
+                            llmTemplateName=llm_template_name,
+                            location=location,
                             durationSeconds=None,
                             status="saved" # Default status from RecordingInfo model
                         )

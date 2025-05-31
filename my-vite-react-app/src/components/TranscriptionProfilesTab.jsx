@@ -33,9 +33,18 @@ function TranscriptionProfilesTab({ transcriptionProfiles, deleteTranscriptionPr
               </IconButton>
               <ListItemText 
                 primary={profile.name} 
-                secondary={profile.llmInstructions ? 
-                  'Custom LLM instructions configured' : 
-                  'No custom instructions'
+                secondary={
+                  <div>
+                    <div>{profile.llmInstructions ? 
+                      'Custom LLM instructions configured' : 
+                      'No custom instructions'
+                    }</div>
+                    <div style={{ marginTop: '4px', fontSize: '0.875rem', color: '#666' }}>
+                      Template: {profile.template_structure || 'SOAP'} | 
+                      Format: {profile.output_format || 'paragraph'} | 
+                      Diagnoses: {profile.show_visit_diagnoses ? 'Enabled' : 'Disabled'}
+                    </div>
+                  </div>
                 }
               />
             </Paper>

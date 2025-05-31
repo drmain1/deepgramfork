@@ -120,11 +120,11 @@ export function RecordingsProvider({ children }) {
     }
   }, [isAuthenticated, user, isLoading, fetchUserRecordings]);
 
-  const startPendingRecording = useCallback((sessionId) => {
+  const startPendingRecording = useCallback((sessionId, recordingName) => {
     const now = new Date();
     const newRecording = {
       id: sessionId, 
-      name: `Pending Recording - ${now.toLocaleTimeString()}`,
+      name: recordingName || `Pending Recording - ${now.toLocaleTimeString()}`,
       date: now.toISOString(),
       status: 'pending',
     };

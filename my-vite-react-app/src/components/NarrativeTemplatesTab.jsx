@@ -31,6 +31,7 @@ function NarrativeTemplatesTab({ addTranscriptionProfile, settingsLoading }) {
   const [diarize, setDiarize] = useState(false);
   const [numSpeakers, setNumSpeakers] = useState(2);
   const [utterances, setUtterances] = useState(false);
+  
 
   useEffect(() => {
     if (isSavingProfile) {
@@ -233,6 +234,7 @@ function NarrativeTemplatesTab({ addTranscriptionProfile, settingsLoading }) {
               Provides start and end times for each word in the transcript. Useful for precise audio navigation.
             </Typography>
           </Box>
+
 
           <Button 
             variant="contained" 

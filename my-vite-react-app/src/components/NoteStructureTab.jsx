@@ -1,6 +1,9 @@
 import { useState } from 'react';
-import { Box, FormControl, FormControlLabel, Radio, RadioGroup, TextField, Button, Card, CardContent, Switch, ToggleButton, ToggleButtonGroup, Typography, Modal, IconButton, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions } from '@mui/material';
-import VisibilityIcon from '@mui/icons-material/Visibility'; 
+import { Box, FormControl, FormControlLabel, Radio, RadioGroup, TextField, Button, Card, CardContent, Switch, ToggleButton, ToggleButtonGroup, Typography, Modal, IconButton, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, CircularProgress } from '@mui/material';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'; 
 import { useTemplate } from '../contexts/TemplateContext';
 import { generateLLMInstructions } from '../utils/generateLLMInstructions';
 import { getNoteSample } from '../utils/getNoteSample'; 
@@ -20,7 +23,7 @@ const modalStyle = {
   overflowY: 'auto',
 };
 
-function NoteStructureTab() {
+function NoteStructureTab({ addTranscriptionProfile, settingsLoading }) {
   const [structure, setStructure] = useState('SOAP');
   const [customInstructions, setCustomInstructions] = useState('');
   const [showDiagnoses, setShowDiagnoses] = useState(false);
@@ -30,8 +33,23 @@ function NoteStructureTab() {
   const [sampleModalOpen, setSampleModalOpen] = useState(false);
   const [currentSampleText, setCurrentSampleText] = useState('');
   const [currentSampleTitle, setCurrentSampleTitle] = useState('');
+  const [saveButtonState, setSaveButtonState] = useState({ text: 'Save to Template', icon: null, color: 'primary', disabled: false });
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!addTranscriptionProfile) {
+      alert('Unable to save profile. Please try again.');
+      return;
+    }
+
+    setIsSavingProfile(true);
+    setSaveButtonState({ 
+      text: 'Saving...', 
+      icon: <CircularProgress size={24} color="inherit" />,
+      color: 'info', 
+      disabled: true 
+    });
+
     const template = {
       structure,
       customInstructions,
@@ -40,11 +58,53 @@ function NoteStructureTab() {
       showDiagnoses,
       outputFormat,
     };
+    
     const llmInstructions = generateLLMInstructions(template);
-    alert(`Template saved (see console for details):\nCheck console for full instructions and template object.`);
-    console.log("Generated LLM Instructions:", llmInstructions);
-    console.log("Template Object:", template);
-    // TODO: Send to backend
+    
+    // Map structure values to backend-expected format
+    const structureMapping = {
+      'SOAP': 'SOAP',
+      'SOAP_Combined': 'SOAP (Assessment & Plan Combined)',
+      'DAP': 'DAP',
+      'BIRP': 'BIRP'
+    };
+
+    const profileToSave = {
+      id: `standard_template_${structure}_${Date.now()}`.toLowerCase(),
+      name: `Standard Template - ${structureMapping[structure] || structure}`,
+      llmInstructions: llmInstructions,
+      template_structure: structureMapping[structure] || structure,
+      show_visit_diagnoses: showDiagnoses,
+      output_format: outputFormat,
+      isDefault: false,
+      smart_format: true,
+      diarize: false,
+      utterances: false,
+    };
+    
+    try {
+      const status = await addTranscriptionProfile(profileToSave);
+      if (status === 'success') {
+        setSaveButtonState({ text: 'Saved!', icon: <CheckCircleOutlineIcon />, color: 'success', disabled: true });
+      } else if (status === 'duplicate') {
+        setSaveButtonState({ text: 'Already Saved!', icon: <WarningAmberIcon />, color: 'warning', disabled: true });
+      } else {
+        setSaveButtonState({ text: 'Save Failed', icon: <ErrorOutlineIcon />, color: 'error', disabled: false });
+      }
+    } catch (error) {
+      console.error("Error saving standard template profile:", error);
+      setSaveButtonState({ text: 'Save Failed', icon: <ErrorOutlineIcon />, color: 'error', disabled: false });
+    }
+
+    setTimeout(() => {
+      setIsSavingProfile(false);
+      setSaveButtonState({
+        text: 'Save to Template',
+        icon: null,
+        color: 'primary',
+        disabled: settingsLoading
+      });
+    }, 2500);
   };
 
   const handleOutputFormatChange = (event, newFormat) => {
@@ -121,8 +181,15 @@ function NoteStructureTab() {
             fullWidth
             sx={{ mt: 2 }}
           />
-          <Button variant="contained" onClick={handleSave} sx={{ mt: 2 }}>
-            Save to Template
+          <Button 
+            variant="contained" 
+            color={saveButtonState.color} 
+            onClick={handleSave} 
+            sx={{ mt: 2 }}
+            startIcon={saveButtonState.icon} 
+            disabled={saveButtonState.disabled || settingsLoading}
+          >
+            {saveButtonState.text}
           </Button>
         </Box>
       </CardContent>

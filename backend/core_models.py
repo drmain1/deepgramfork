@@ -12,6 +12,19 @@ class TranscriptionProfileItem(BaseModel):
     # The original websocket_stream_endpoint code read 'utterances' from the profile (line 225 in main.py)
     # but didn't use it in LiveOptions. Kept for consistency with existing profile loading logic.
     utterances: Optional[bool] = Field(default=False, description="Enable Deepgram Utterance detection (word timestamps etc)")
+    
+    # Template Structure and Output Format options
+    template_structure: Optional[str] = Field(default="SOAP", description="Template structure format (SOAP, DAP, BIRP, etc.)")
+    show_visit_diagnoses: Optional[bool] = Field(default=False, description="Show visit diagnoses suggestions in output")
+    output_format: Optional[str] = Field(default="paragraph", description="Output format (paragraph, bullet_points)")
+    
+    # Legacy fields for backward compatibility
+    llmInstructions: Optional[str] = Field(default=None, description="Custom LLM instructions for this profile")
+    llmPrompt: Optional[str] = Field(default=None, description="Legacy LLM prompt field")
+    specialty: Optional[str] = Field(default=None, description="Medical specialty associated with this profile")
+    originalTemplateId: Optional[str] = Field(default=None, description="Original template ID if created from a template")
+    isDefault: Optional[bool] = Field(default=False, description="Whether this is the default profile")
+    num_speakers: Optional[int] = Field(default=None, description="Number of speakers for diarization")
 
 class UserSettingsData(BaseModel):
     macroPhrases: List[Dict[str, Any]] = Field(default_factory=list)
@@ -35,7 +48,10 @@ DEFAULT_USER_SETTINGS = UserSettingsData(
             interim_results=True,
             utterance_end_ms="1000",
             vad_events=True,
-            utterances=False
+            utterances=False,
+            template_structure="SOAP",
+            show_visit_diagnoses=False,
+            output_format="paragraph"
         )
     ]
 )
