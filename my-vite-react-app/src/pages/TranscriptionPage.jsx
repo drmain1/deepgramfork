@@ -106,7 +106,7 @@ function TranscriptionPage() {
 
   // If a recording is selected from the sidebar, show the transcript viewer
   if (selectedRecordingId) {
-    return <TranscriptViewer />;
+    return <TranscriptViewer key={selectedRecordingId} />;
   }
 
   // Loading and authentication checks

@@ -257,10 +257,11 @@ export function RecordingsProvider({ children }) {
         return; // Or toggle behavior can be implemented here
     }
     setSelectedRecordingId(recordingId);
+    // Clear transcript content when selecting any recording (including new ones)
+    setOriginalTranscriptContent(null);
+    setPolishedTranscriptContent(null);
+    setSelectedTranscriptError(null);
     if (recordingId === null) {
-      setOriginalTranscriptContent(null);
-      setPolishedTranscriptContent(null);
-      setSelectedTranscriptError(null);
       setIsLoadingSelectedTranscript(false);
     }
   }, [selectedRecordingId]);
@@ -279,18 +280,7 @@ export function RecordingsProvider({ children }) {
           return;
         }
 
-        // If recording is saved but we have an error message about processing, fetch the content
-        const needsToFetch = recording.status === 'saved' && 
-                            selectedTranscriptError === 'Recording is still being processed. Please wait for it to complete.';
-
-        // Always fetch on initial selection or when recording becomes available
-        const isInitialFetch = !originalTranscriptContent && !polishedTranscriptContent && !selectedTranscriptError;
-
-        if (!needsToFetch && !isInitialFetch) {
-          return;
-        }
-
-        console.log('Fetching transcript content for recording:', recording.id, 'needsToFetch:', needsToFetch, 'isInitialFetch:', isInitialFetch);
+        console.log('Fetching transcript content for recording:', recording.id);
 
         setIsLoadingSelectedTranscript(true);
         setSelectedTranscriptError(null);
@@ -346,7 +336,7 @@ export function RecordingsProvider({ children }) {
         setIsLoadingSelectedTranscript(false);
       }
     }
-  }, [selectedRecordingId, recordings, fetchTranscriptContent, selectedTranscriptError]); // Simplified dependencies
+  }, [selectedRecordingId, recordings, fetchTranscriptContent]); // Simplified dependencies
 
   // Separate effect to detect status transitions for the selected recording
   useEffect(() => {
