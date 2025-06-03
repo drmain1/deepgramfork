@@ -74,17 +74,31 @@ export function RecordingsProvider({ children }) {
           });
         });
 
-        const merged = [...localNonSaved];
-        s3Map.forEach((s3Rec, id) => {
-          if (!merged.find(localRec => localRec.id === id)) {
-            // Check if we have location data in localStorage for this recording
-            const localRecWithLocation = prevRecordings.find(localRec => localRec.id === id);
-            if (localRecWithLocation && localRecWithLocation.location && !s3Rec.location) {
-              console.log(`Preserving location from localStorage for recording ${id}:`, localRecWithLocation.location);
-              s3Rec.location = localRecWithLocation.location;
-            }
-            merged.push(s3Rec);
+        const merged = [];
+        
+        // First, handle local recordings (pending, saving, failed)
+        localNonSaved.forEach(localRec => {
+          const s3Version = s3Map.get(localRec.id);
+          if (s3Version) {
+            // Recording exists in both local and S3 - use S3 version (it's been processed)
+            console.log(`Updating recording ${localRec.id} from status '${localRec.status}' to 'saved'`);
+            // Preserve any local data that might not be in S3
+            const updatedRec = {
+              ...localRec,
+              ...s3Version,
+              status: 'saved' // Ensure status is updated
+            };
+            merged.push(updatedRec);
+            s3Map.delete(localRec.id); // Remove from s3Map so we don't add it again
+          } else {
+            // Recording only exists locally (still processing or failed)
+            merged.push(localRec);
           }
+        });
+        
+        // Then, add any remaining S3 recordings that weren't in local storage
+        s3Map.forEach((s3Rec, id) => {
+          merged.push(s3Rec);
         });
         
         // Debug: Check final merged recordings
@@ -135,6 +149,26 @@ export function RecordingsProvider({ children }) {
       setRecordings([]);
     }
   }, [isAuthenticated, user, isLoading, fetchUserRecordings]);
+
+  // Periodic check for recordings with 'saving' status to auto-refresh when processing completes
+  useEffect(() => {
+    if (!isAuthenticated || !user || !user.sub) return;
+
+    const hasSavingRecordings = recordings.some(rec => rec.status === 'saving');
+    if (!hasSavingRecordings) return;
+
+    console.log('Detected recordings with saving status, setting up periodic refresh...');
+    
+    const intervalId = setInterval(() => {
+      console.log('Checking for completed recordings...');
+      fetchUserRecordings();
+    }, 5000); // Check every 5 seconds
+
+    return () => {
+      console.log('Clearing periodic refresh interval');
+      clearInterval(intervalId);
+    };
+  }, [recordings, isAuthenticated, user, fetchUserRecordings]);
 
   const startPendingRecording = useCallback((sessionId, recordingName) => {
     const now = new Date();
@@ -236,6 +270,28 @@ export function RecordingsProvider({ children }) {
     if (selectedRecordingId) {
       const recording = recordings.find(r => r.id === selectedRecordingId);
       if (recording) {
+        // Check if recording is still being processed
+        if (recording.status === 'pending' || recording.status === 'saving') {
+          setIsLoadingSelectedTranscript(false);
+          setSelectedTranscriptError('Recording is still being processed. Please wait for it to complete.');
+          setOriginalTranscriptContent(null);
+          setPolishedTranscriptContent(null);
+          return;
+        }
+
+        // If recording is saved but we have an error message about processing, fetch the content
+        const needsToFetch = recording.status === 'saved' && 
+                            selectedTranscriptError === 'Recording is still being processed. Please wait for it to complete.';
+
+        // Always fetch on initial selection or when recording becomes available
+        const isInitialFetch = !originalTranscriptContent && !polishedTranscriptContent && !selectedTranscriptError;
+
+        if (!needsToFetch && !isInitialFetch) {
+          return;
+        }
+
+        console.log('Fetching transcript content for recording:', recording.id, 'needsToFetch:', needsToFetch, 'isInitialFetch:', isInitialFetch);
+
         setIsLoadingSelectedTranscript(true);
         setSelectedTranscriptError(null);
         setOriginalTranscriptContent(null); // Clear previous content
@@ -246,6 +302,11 @@ export function RecordingsProvider({ children }) {
             let originalContent = 'Original transcript not available or S3 path missing.';
             if (recording.s3PathTranscript) {
               originalContent = await fetchTranscriptContent(recording.s3PathTranscript, 'original');
+            } else {
+              // Check if recording was just saved and might have missing paths
+              if (recording.status === 'saved' && !recording.s3PathTranscript) {
+                originalContent = 'Original transcript S3 path missing. Please refresh the page and try again.';
+              }
             }
             setOriginalTranscriptContent(originalContent);
 
@@ -259,7 +320,11 @@ export function RecordingsProvider({ children }) {
               polishedContentToSet = await fetchTranscriptContent(recording.s3PathPolished, 'polished');
             } else {
               // Fallback if neither local edit nor S3 path is available.
-              polishedContentToSet = 'Polished transcript not available or S3 path missing.';
+              if (recording.status === 'saved' && !recording.s3PathPolished) {
+                polishedContentToSet = 'Polished transcript S3 path missing. Please refresh the page and try again.';
+              } else {
+                polishedContentToSet = 'Polished transcript not available or S3 path missing.';
+              }
             }
             setPolishedTranscriptContent(polishedContentToSet);
 
@@ -270,7 +335,9 @@ export function RecordingsProvider({ children }) {
             setIsLoadingSelectedTranscript(false);
           }
         };
-        fetchAllTranscripts();
+        
+        // Add a small delay to allow for state propagation
+        setTimeout(fetchAllTranscripts, 100);
       } else {
         // Recording ID selected but not found in the list, maybe clear?
         setSelectedTranscriptError(`Recording with ID ${selectedRecordingId} not found.`);
@@ -279,7 +346,20 @@ export function RecordingsProvider({ children }) {
         setIsLoadingSelectedTranscript(false);
       }
     }
-  }, [selectedRecordingId, fetchTranscriptContent]); // Removed 'recordings' dependency
+  }, [selectedRecordingId, recordings, fetchTranscriptContent, selectedTranscriptError]); // Simplified dependencies
+
+  // Separate effect to detect status transitions for the selected recording
+  useEffect(() => {
+    if (selectedRecordingId) {
+      const recording = recordings.find(r => r.id === selectedRecordingId);
+      if (recording && recording.status === 'saved' && 
+          selectedTranscriptError === 'Recording is still being processed. Please wait for it to complete.') {
+        console.log('Detected status transition to saved for selected recording:', recording.id);
+        // Clear the error to trigger a re-fetch in the main effect
+        setSelectedTranscriptError(null);
+      }
+    }
+  }, [selectedRecordingId, recordings, selectedTranscriptError]);
 
   // Separate effect to handle polished transcript updates from recordings changes
   useEffect(() => {

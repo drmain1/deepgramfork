@@ -22,6 +22,10 @@ function RecentRecordingItem({ recording, onDelete }) {
   const navigate = useNavigate();
 
   const handleClick = () => {
+    // Prevent clicking on recordings that are still being processed
+    if (recording.status === 'pending' || recording.status === 'saving') {
+      return;
+    }
     selectRecording(recording.id);
     navigate('/transcription'); // Navigate to transcription route where TranscriptViewer logic is implemented
   };
@@ -53,13 +57,21 @@ function RecentRecordingItem({ recording, onDelete }) {
 
   switch (recording.status) {
     case 'pending':
-      statusIcon = <HourglassEmptyIcon fontSize="small" />;
+      statusIcon = <HourglassEmptyIcon fontSize="small" sx={{ color: '#ffa726' }} />;
       statusText = 'Pending...';
       break;
     case 'saving':
-      statusIcon = <CloudSyncIcon fontSize="small" />;
+      statusIcon = (
+        <CloudSyncIcon 
+          fontSize="small" 
+          sx={{ 
+            color: '#42a5f5',
+            animation: 'pulse 2s infinite'
+          }} 
+        />
+      );
       statusColor = 'primary.main'; // Blue for saving
-      statusText = 'Saving to cloud...';
+      statusText = 'Processing note (this may take 10-20 seconds)...';
       break;
     case 'saved':
       statusIcon = <CheckCircleOutlineIcon fontSize="small" color="success" />;
@@ -102,24 +114,52 @@ function RecentRecordingItem({ recording, onDelete }) {
         <b>Status:</b> Failed<br />
         <b>Error:</b> {recording.error || 'Unknown error'}
     </React.Fragment>
+  ) : recording.status === 'saving' ? (
+    <React.Fragment>
+      <Typography color="inherit">{primaryText}</Typography>
+      <b>Status:</b> Processing LLM note generation<br />
+      <em>Please wait 10-20 seconds for completion...</em>
+    </React.Fragment>
+  ) : recording.status === 'pending' ? (
+    <React.Fragment>
+      <Typography color="inherit">{primaryText}</Typography>
+      <b>Status:</b> Recording in progress<br />
+      <em>Complete the recording to view transcript</em>
+    </React.Fragment>
   ) : primaryText;
 
   const isSelected = recording.id === selectedRecordingId;
+  const isProcessing = recording.status === 'pending' || recording.status === 'saving';
 
   return (
     <Tooltip title={tooltipTitle} placement="right-start" arrow>
       <TooltipCompatibleWrapper>
+        <style>
+          {`
+            @keyframes pulse {
+              0% { opacity: 1; }
+              50% { opacity: 0.5; }
+              100% { opacity: 1; }
+            }
+          `}
+        </style>
         <ListItem
-          button
+          button={!isProcessing} // Only allow button behavior if not processing
           onClick={handleClick} // Updated onClick handler
           selected={isSelected} // MUI's selected prop for visual indication
           sx={{
-            borderLeft: recording.status === 'pending' ? '3px solid orange'
-                      : recording.status === 'saving' ? '3px solid blue'
+            borderLeft: recording.status === 'pending' ? '3px solid #ffa726'
+                      : recording.status === 'saving' ? '3px solid #42a5f5'
                       : recording.status === 'failed' ? '3px solid red'
                       : '3px solid transparent',
             paddingY: '4px',
             width: '100%',
+            // Apply disabled styling for processing recordings
+            ...(isProcessing && {
+              opacity: 0.7,
+              cursor: 'not-allowed',
+              pointerEvents: 'none', // Completely disable clicking
+            }),
             // Apply a different background or style if selected
             ...(isSelected && {
               backgroundColor: 'action.selected', // Example: uses theme's selected color

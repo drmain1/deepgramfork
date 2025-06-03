@@ -333,10 +333,14 @@ function RecordingView({
       return;
     }
 
+    // Update status to 'saving' immediately to show processing indicator
+    updateRecording(sessionId, { 
+      status: 'saving', 
+      name: `Processing: ${patientDetails || 'New Note'}...` 
+    });
+
     setSaveStatusMessage('Generating and saving notes...');
     setIsSessionSaved(false);
-
-    updateRecording(sessionId, { status: 'saving', name: `Saving: ${patientDetails || 'New Note'}...` });
 
     try {
       const url = '/api/v1/save_session_data';
@@ -407,19 +411,20 @@ function RecordingView({
       }
 
       if (response.ok) {
-        setSaveStatusMessage(`Notes generated and saved!\nNotes: ${result.notes_s3_path || 'N/A'}\nAudio: ${result.audio_s3_path || 'N/A'}`);
+        setSaveStatusMessage(`Notes generated and saved!\nNotes: ${result.saved_paths?.polished_transcript || 'N/A'}\nAudio: ${result.saved_paths?.audio || 'N/A'}`);
         setIsSessionSaved(true);
         
         // Keep the original patient name if provided, otherwise use a fallback
         const savedName = patientDetails || `Session ${sessionId}`;
         
+        // Update with correct property names that match RecordingsContext expectations
         updateRecording(sessionId, {
           status: 'saved',
           name: savedName,
           date: new Date().toISOString(),
-          originalTranscriptS3Path: result.original_transcript_s3_path,
-          polishedTranscriptS3Path: result.polished_transcript_s3_path,
-          audioS3Path: result.audio_s3_path,
+          s3PathTranscript: result.saved_paths?.original_transcript,
+          s3PathPolished: result.saved_paths?.polished_transcript,
+          s3PathAudio: result.saved_paths?.audio,
           context: patientContext,
           location: selectedLocation,
           encounterType: encounterType
