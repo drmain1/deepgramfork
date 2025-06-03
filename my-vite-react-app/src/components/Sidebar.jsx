@@ -153,7 +153,7 @@ function Sidebar() {
             <span className="material-icons text-white text-2xl">mic</span>
           </div>
           <div>
-            <h1 className="text-2xl font-semibold text-white">Nabla</h1>
+            <h1 className="text-2xl font-semibold text-white">Medlegaldoc</h1>
             <p className="text-sm text-gray-400">Medical Transcription</p>
           </div>
         </div>
