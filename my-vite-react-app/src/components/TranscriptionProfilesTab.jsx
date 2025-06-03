@@ -33,7 +33,18 @@ function TranscriptionProfilesTab({ transcriptionProfiles, deleteTranscriptionPr
               </IconButton>
               <ListItemText 
                 primary={profile.name} 
-                secondary={`LLM Instructions: ${profile.llmInstructions}`}
+                secondary={
+                  <Box>
+                    {profile.specialty && <Typography variant="body2" color="text.secondary">Specialty: {profile.specialty}</Typography>}
+                    <Typography variant="caption" color="text.secondary">
+                      Settings: 
+                      {profile.smart_format && ' Smart Format'}
+                      {profile.diarize && ` • Speaker Diarization (${profile.num_speakers || 'auto'} speakers)`}
+                      {profile.utterances && ' • Word Timestamps'}
+                    </Typography>
+                    {profile.isDefault && <Typography variant="caption" color="primary" display="block">Default Profile</Typography>}
+                  </Box>
+                }
               />
             </Paper>
           ))}
