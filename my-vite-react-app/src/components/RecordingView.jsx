@@ -39,7 +39,7 @@ function RecordingView({
   onClose
 }) {
   const { user } = useAuth0();
-  const { startPendingRecording, updateRecording, removeRecording } = useRecordings();
+  const { startPendingRecording, updateRecording, removeRecording, fetchUserRecordings } = useRecordings();
 
   const [isRecording, setIsRecording] = useState(false);
   const [hasStreamedOnce, setHasStreamedOnce] = useState(false);
@@ -429,6 +429,14 @@ function RecordingView({
           location: selectedLocation,
           encounterType: encounterType
         });
+        
+        // Trigger a fetch of recordings after a short delay to ensure backend is ready
+        setTimeout(() => {
+          if (fetchUserRecordings) {
+            console.log('Fetching updated recordings after save...');
+            fetchUserRecordings();
+          }
+        }, 1000);
       } else {
         const errorText = result.error || result.detail || `HTTP ${response.status}: ${response.statusText}`;
         console.error('Server responded with error:', errorText);

@@ -16,6 +16,7 @@ export function RecordingsProvider({ children }) {
   const [polishedTranscriptContent, setPolishedTranscriptContent] = useState(null);
   const [isLoadingSelectedTranscript, setIsLoadingSelectedTranscript] = useState(false);
   const [selectedTranscriptError, setSelectedTranscriptError] = useState(null);
+  const [previousRecordingStatus, setPreviousRecordingStatus] = useState({});
 
 
   useEffect(() => {
@@ -338,18 +339,28 @@ export function RecordingsProvider({ children }) {
     }
   }, [selectedRecordingId, recordings, fetchTranscriptContent]); // Simplified dependencies
 
-  // Separate effect to detect status transitions for the selected recording
+  // Track status changes for all recordings
   useEffect(() => {
-    if (selectedRecordingId) {
-      const recording = recordings.find(r => r.id === selectedRecordingId);
-      if (recording && recording.status === 'saved' && 
-          selectedTranscriptError === 'Recording is still being processed. Please wait for it to complete.') {
-        console.log('Detected status transition to saved for selected recording:', recording.id);
-        // Clear the error to trigger a re-fetch in the main effect
+    const statusMap = {};
+    recordings.forEach(rec => {
+      const prevStatus = previousRecordingStatus[rec.id];
+      const currentStatus = rec.status;
+      statusMap[rec.id] = currentStatus;
+      
+      // If this is the selected recording and it transitioned from saving/pending to saved
+      if (selectedRecordingId === rec.id && 
+          (prevStatus === 'saving' || prevStatus === 'pending') && 
+          currentStatus === 'saved') {
+        console.log('Detected status transition to saved for selected recording:', rec.id);
+        // Trigger a re-fetch by clearing the error
         setSelectedTranscriptError(null);
+        // Force refetch transcripts
+        setOriginalTranscriptContent(null);
+        setPolishedTranscriptContent(null);
       }
-    }
-  }, [selectedRecordingId, recordings, selectedTranscriptError]);
+    });
+    setPreviousRecordingStatus(statusMap);
+  }, [recordings, selectedRecordingId]); // Don't include previousRecordingStatus to avoid infinite loop
 
   // Separate effect to handle polished transcript updates from recordings changes
   useEffect(() => {
