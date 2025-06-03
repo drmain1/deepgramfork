@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { TextField, Button, Box, IconButton, Tooltip, Snackbar } from '@mui/material';
-import { ContentCopy, Check } from '@mui/icons-material';
+import { TextField, Button, Box, IconButton, Tooltip, Snackbar, Alert } from '@mui/material';
+import { ContentCopy, Check, Edit as EditIcon, Save as SaveIcon } from '@mui/icons-material';
 import { generatePdfFromText } from './pdfUtils';
-import PdfPreviewModal from './PdfPreviewModal';
 import FormattedMedicalText from './FormattedMedicalText';
 
 function EditableNote({ 
@@ -24,7 +23,6 @@ function EditableNote({
   const [editableContent, setEditableContent] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [lastSyncedContent, setLastSyncedContent] = useState('');
-  const [showPdfModal, setShowPdfModal] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [showCopyFeedback, setShowCopyFeedback] = useState(false);
   const isInitialMount = useRef(true);
@@ -65,12 +63,13 @@ function EditableNote({
     setIsEditing(true);
   };
 
-  const handleContentChange = (e) => {
-    setEditableContent(e.target.value);
+  const handleCancel = () => {
+    setEditableContent(lastSyncedContent);
+    setIsEditing(false);
   };
 
-  const handleGeneratePdf = () => {
-    setShowPdfModal(true);
+  const handleContentChange = (e) => {
+    setEditableContent(e.target.value);
   };
 
   const handleQuickPdf = () => {
@@ -185,6 +184,11 @@ function EditableNote({
               height: '100%',
               padding: 0,
               display: 'flex',
+              border: '2px solid',
+              borderColor: 'primary.main',
+              '&:hover': {
+                borderColor: 'primary.dark',
+              },
               '& textarea.MuiOutlinedInput-input': {
                 padding: '12px',
                 height: '100% !important',
@@ -196,7 +200,7 @@ function EditableNote({
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
                 color: 'text.primary',
-                backgroundColor: 'grey.50',
+                backgroundColor: 'background.paper',
                 resize: 'none',
                 minHeight: 0,
                 flex: 1
@@ -229,10 +233,8 @@ function EditableNote({
               border: '1px solid',
               borderColor: 'divider',
               borderRadius: 1,
-              overflowY: 'auto',
-              cursor: 'pointer'
+              overflowY: 'auto'
             }}
-            onClick={handleEdit}
             data-formatted-medical-text="true"
           />
           
@@ -266,57 +268,57 @@ function EditableNote({
           )}
         </Box>
       )}
-      <Box sx={{ p: 1, mt: 1, flexShrink: 0, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-        {isEditing ? (
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleSave}
-          >
-            Save Changes
-          </Button>
-        ) : (
-          <Button
-            variant="outlined"
-            onClick={handleEdit}
-            disabled={isLoading}
-          >
-            Edit Note
-          </Button>
+      <Box sx={{ p: 1, mt: 1, flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        {/* Editing indicator */}
+        {isEditing && (
+          <Alert severity="info" sx={{ py: 0.5, px: 2 }}>
+            Editing mode - Changes will be saved when you click Save
+          </Alert>
         )}
-        {(content || editableContent) && !isEditing && (
-          <>
+        {!isEditing && <Box />}
+        
+        {/* Action buttons */}
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {isEditing ? (
+            <>
+              <Button
+                variant="outlined"
+                onClick={handleCancel}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={handleSave}
+                startIcon={<SaveIcon />}
+              >
+                Save Changes
+              </Button>
+            </>
+          ) : (
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleEdit}
+              disabled={isLoading}
+              startIcon={<EditIcon />}
+            >
+              Edit Note
+            </Button>
+          )}
+          {(content || editableContent) && !isEditing && (
             <Button
               variant="outlined"
               color="secondary"
               onClick={handleQuickPdf}
               disabled={isLoading}
-              size="small"
             >
-              Quick PDF
+              Generate PDF
             </Button>
-            <Button
-              variant="contained"
-              color="secondary"
-              onClick={handleGeneratePdf}
-              disabled={isLoading}
-            >
-              Professional PDF
-            </Button>
-          </>
-        )}
+          )}
+        </Box>
       </Box>
-      
-      <PdfPreviewModal
-        open={showPdfModal}
-        onClose={() => setShowPdfModal(false)}
-        content={editableContent}
-        location={location}
-        recordingId={recordingId}
-        doctorName={doctorName}
-        doctorSignature={doctorSignature}
-        isSigned={isSigned}
-      />
       
       {/* Copy Success Feedback */}
       <Snackbar
