@@ -385,7 +385,7 @@ function RecordingView({
       // Embed location data in the transcript content itself as a backup
       const finalTranscriptContent = combinedTranscript;
       let transcriptWithLocation = finalTranscriptContent;
-      if (selectedLocation && selectedLocation.trim()) {
+      if (selectedLocation && selectedLocation.trim() && selectedLocation !== '__LEAVE_OUT__') {
         const locationHeader = `CLINIC LOCATION:\n${selectedLocation.trim()}\n\n---\n\n`;
         transcriptWithLocation = locationHeader + finalTranscriptContent;
       }
@@ -403,7 +403,7 @@ function RecordingView({
           encounter_type: encounterType,
           llm_template: llmTemplate,
           llm_template_id: llmTemplateId,
-          location: selectedLocation,
+          location: selectedLocation === '__LEAVE_OUT__' ? '' : selectedLocation,
           user_id: user.sub
         }),
       });
@@ -419,7 +419,7 @@ function RecordingView({
       }
 
       if (response.ok) {
-        setSaveStatusMessage(`Notes generated and saved!\nNotes: ${result.saved_paths?.polished_transcript || 'N/A'}\nAudio: ${result.saved_paths?.audio || 'N/A'}`);
+        setSaveStatusMessage('Notes generated and saved!');
         setIsSessionSaved(true);
         
         // Keep the original patient name if provided, otherwise use a fallback
@@ -434,7 +434,7 @@ function RecordingView({
           s3PathPolished: result.saved_paths?.polished_transcript,
           s3PathAudio: result.saved_paths?.audio,
           context: patientContext,
-          location: selectedLocation,
+          location: selectedLocation === '__LEAVE_OUT__' ? '' : selectedLocation,
           encounterType: encounterType
         });
         

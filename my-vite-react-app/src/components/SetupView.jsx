@@ -275,6 +275,7 @@ function SetupView({
                         disabled={settingsLoading || (!userSettings.officeInformation && !settingsLoading)}
                       >
                         <option value="">Select a location...</option>
+                        <option value="__LEAVE_OUT__">Leave out of transcript</option>
                         {settingsLoading && !userSettings.officeInformation ? (
                           <option value="" disabled>Loading locations...</option>
                         ) : (
