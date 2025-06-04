@@ -94,9 +94,8 @@ function RecordingView({
       setIsSessionSaved(false);
       setSaveStatusMessage('');
 
-      let newSessionId = Date.now().toString();
-      setSessionId(newSessionId);
-      startPendingRecording(newSessionId, patientDetails || 'New Session');
+      // Don't create a session ID here - wait for the backend to provide one
+      console.log("[RecordingView] Starting new recording session...");
     }
 
     const activeProfile = userSettings.transcriptionProfiles?.find(p => p.id === selectedProfileId);
@@ -189,8 +188,15 @@ function RecordingView({
             const parsedMessage = JSON.parse(message);
             if (parsedMessage.type === 'session_init') {
               console.log('Received session_init (JSON):', parsedMessage);
-              setSessionId(parsedMessage.session_id);
+              const backendSessionId = parsedMessage.session_id;
+              
+              // Set our session ID to match the backend
+              setSessionId(backendSessionId);
               setError('');
+              
+              // Create the pending recording with the backend's session ID
+              console.log('[WebSocket] Creating pending recording with backend session ID:', backendSessionId);
+              startPendingRecording(backendSessionId, patientDetails || 'New Session');
             } else if (parsedMessage.type === 'transcript') {
               if (parsedMessage.is_final) {
                 setFinalTranscript(prev => (prev ? prev + ' ' : '') + parsedMessage.text);
@@ -342,6 +348,8 @@ function RecordingView({
     setSaveStatusMessage('Generating and saving notes...');
     setIsSessionSaved(false);
 
+    console.log("[RecordingView] Saving session with ID:", sessionId);
+    
     try {
       const url = '/api/v1/save_session_data';
       

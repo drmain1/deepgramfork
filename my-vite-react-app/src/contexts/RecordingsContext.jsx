@@ -62,7 +62,9 @@ export function RecordingsProvider({ children }) {
       });
 
       setRecordings(prevRecordings => {
-        const localNonSaved = prevRecordings.filter(r => r.status !== 'saved');
+        console.log("[fetchUserRecordings] Current local recordings:", prevRecordings.map(r => ({ id: r.id, name: r.name, status: r.status })));
+        // Include ALL local recordings for proper merging
+        const localRecordings = prevRecordings;
         const s3Map = new Map(fetchedRecordings.map(r => [r.id, { ...r, date: r.date }])); 
 
         // Debug: Check what's in the s3Map
@@ -77,12 +79,12 @@ export function RecordingsProvider({ children }) {
 
         const merged = [];
         
-        // First, handle local recordings (pending, saving, failed)
-        localNonSaved.forEach(localRec => {
+        // First, handle ALL local recordings
+        localRecordings.forEach(localRec => {
           const s3Version = s3Map.get(localRec.id);
           if (s3Version) {
             // Recording exists in both local and S3 - use S3 version (it's been processed)
-            console.log(`Updating recording ${localRec.id} from status '${localRec.status}' to 'saved'`);
+            console.log(`[MERGE] Found S3 version for local recording ${localRec.id} (was ${localRec.status}, now saved)`);
             // Preserve any local data that might not be in S3
             const updatedRec = {
               ...localRec,
@@ -93,6 +95,7 @@ export function RecordingsProvider({ children }) {
             s3Map.delete(localRec.id); // Remove from s3Map so we don't add it again
           } else {
             // Recording only exists locally (still processing or failed)
+            console.log(`[MERGE] Keeping local-only recording ${localRec.id} with status ${localRec.status}`);
             merged.push(localRec);
           }
         });
@@ -132,7 +135,7 @@ export function RecordingsProvider({ children }) {
           const parsed = JSON.parse(savedLocalRecordings);
           if (Array.isArray(parsed)) {
             const filteredLocal = parsed.filter(rec => 
-              rec && typeof rec.id === 'string' && rec.id.startsWith('session_') && 
+              rec && typeof rec.id === 'string' && 
               typeof rec.status === 'string' && ['pending', 'saving', 'saved', 'failed'].includes(rec.status)
             );
             setRecordings(filteredLocal.sort((a,b) => new Date(b.date) - new Date(a.date)));
@@ -185,11 +188,15 @@ export function RecordingsProvider({ children }) {
   }, []);
 
   const updateRecording = useCallback((sessionId, updates) => {
-    setRecordings(prevRecordings =>
-      prevRecordings.map(rec =>
+    console.log(`[updateRecording] Updating recording ${sessionId} with:`, updates);
+    setRecordings(prevRecordings => {
+      console.log(`[updateRecording] Current recordings:`, prevRecordings.map(r => ({ id: r.id, status: r.status })));
+      const updated = prevRecordings.map(rec =>
         rec.id === sessionId ? { ...rec, ...updates, date: rec.date, lastUpdated: new Date().toISOString() } : rec 
-      )
-    );
+      );
+      console.log(`[updateRecording] Updated recordings:`, updated.map(r => ({ id: r.id, status: r.status })));
+      return updated;
+    });
   }, []);
 
   const removeRecording = useCallback((sessionId) => {
