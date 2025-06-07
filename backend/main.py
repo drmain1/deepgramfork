@@ -20,13 +20,13 @@ from botocore.exceptions import ClientError
 from datetime import datetime, timedelta, timezone
 
 # Import the refactored Deepgram handler
-from .deepgram_utils import handle_deepgram_websocket
+from deepgram_utils import handle_deepgram_websocket
 
 # Import the new Speechmatics handler for multilingual support
-from .speechmatics_utils import handle_speechmatics_websocket
+from speechmatics_utils import handle_speechmatics_websocket
 
 # Import the new AWS utility functions
-from .aws_utils import polish_transcript_with_bedrock, save_text_to_s3, delete_s3_object
+from aws_utils import polish_transcript_with_bedrock, save_text_to_s3, delete_s3_object
 
 # Ensure the .env file is in the root of the trans10 directory or adjust path
 # Example: load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
