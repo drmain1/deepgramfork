@@ -10,11 +10,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@aws-amplify/ui-react": "^6.11.2",
     "@chakra-ui/react": "^3.18.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
     "@mui/icons-material": "^7.1.0",
     "@mui/material": "^7.1.0",
+    "aws-amplify": "^6.15.0",
     "framer-motion": "^6.5.1",
     "html2canvas": "^1.4.1",
     "html2pdf.js": "^0.10.3",

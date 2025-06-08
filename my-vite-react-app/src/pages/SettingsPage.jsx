@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { useAuth0 } from '@auth0/auth0-react';
+import { useAuth } from '../contexts/AuthContext';
 import SettingsTabs from '../components/SettingsTabs';
 import { useUserSettings } from '../contexts/UserSettingsContext';
 
 function SettingsPage() {
   const [tabValue, setTabValue] = useState(0);
-  const { user, isAuthenticated, isLoading: authLoading } = useAuth0();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
 
   const {
     userSettings,

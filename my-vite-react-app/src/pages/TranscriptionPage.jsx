@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth0 } from '@auth0/auth0-react';
+import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useRecordings } from '../contexts/RecordingsContext';
 import { useUserSettings } from '../contexts/UserSettingsContext';
@@ -8,7 +8,7 @@ import SetupView from '../components/SetupView';
 import RecordingView from '../components/RecordingView';
 
 function TranscriptionPage() {
-  const { user, isAuthenticated, isLoading: authLoading } = useAuth0();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { selectedRecordingId } = useRecordings();
   const { userSettings, settingsLoading } = useUserSettings();
   const navigate = useNavigate();

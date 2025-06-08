@@ -1,10 +1,10 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { useAuth0 } from '@auth0/auth0-react';
+import { useAuth } from './AuthContext';
 
 const RecordingsContext = createContext();
 
 export function RecordingsProvider({ children }) {
-  const { getAccessTokenSilently, user, isAuthenticated, isLoading } = useAuth0();
+  const { getAccessTokenSilently, user, isAuthenticated, isLoading } = useAuth();
   const [recordings, setRecordings] = useState(() => {
     return []; 
   });
@@ -38,7 +38,8 @@ export function RecordingsProvider({ children }) {
     setIsFetchingRecordings(true);
     try {
       const accessToken = await getAccessTokenSilently();
-      const response = await fetch(`/api/v1/user_recordings/${user.sub}`, {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_BASE_URL}/api/v1/user_recordings/${user.sub}`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
@@ -210,7 +211,8 @@ export function RecordingsProvider({ children }) {
     }
     try {
       const accessToken = await getAccessTokenSilently();
-      const response = await fetch(`/api/v1/recordings/${user.sub}/${sessionId}`, {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_BASE_URL}/api/v1/recordings/${user.sub}/${sessionId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -243,7 +245,12 @@ export function RecordingsProvider({ children }) {
     try {
       // Ensure VITE_API_BASE_URL is correctly configured in your .env file for production
       const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-      const response = await fetch(`${apiUrl}/api/v1/s3_object_content?s3_key=${encodeURIComponent(s3Key)}`);
+      const accessToken = await getAccessTokenSilently();
+      const response = await fetch(`${apiUrl}/api/v1/s3_object_content?s3_key=${encodeURIComponent(s3Key)}`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        },
+      });
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`Failed to fetch ${type} transcript (${s3Key}): ${response.status} ${response.statusText}. Server: ${errorText}`);

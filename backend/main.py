@@ -1,6 +1,6 @@
 import uvicorn
 import asyncio
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 import os
@@ -28,10 +28,19 @@ from speechmatics_utils import handle_speechmatics_websocket
 # Import the new AWS utility functions
 from aws_utils import polish_transcript_with_bedrock, save_text_to_s3, delete_s3_object
 
-# Ensure the .env file is in the root of the trans10 directory or adjust path
-# Example: load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
-load_dotenv(dotenv_path=dotenv_path)
+# Import authentication middleware
+from auth_middleware import get_current_user, get_user_id
+
+# Load .env file from backend directory first, then fall back to parent directory
+backend_env_path = os.path.join(os.path.dirname(__file__), '.env')
+parent_env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+
+if os.path.exists(backend_env_path):
+    load_dotenv(dotenv_path=backend_env_path)
+    print(f"Loaded .env from backend directory: {backend_env_path}")
+else:
+    load_dotenv(dotenv_path=parent_env_path)
+    print(f"Loaded .env from parent directory: {parent_env_path}")
 
 deepgram_api_key = os.getenv("deepgram_api_key")
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
@@ -157,7 +166,13 @@ class SaveUserSettingsRequest(BaseModel):
 DEFAULT_USER_SETTINGS = UserSettingsData().model_dump()
 
 @app.get("/api/v1/user_settings/{user_id}", response_model=UserSettingsData)
-async def get_user_settings(user_id: str = Path(..., description="The ID of the user whose settings are to be fetched")):
+async def get_user_settings(
+    user_id: str = Path(..., description="The ID of the user whose settings are to be fetched"),
+    current_user_id: str = Depends(get_user_id)
+):
+    # Verify that the requested user_id matches the authenticated user
+    if user_id != current_user_id:
+        raise HTTPException(status_code=403, detail="You can only access your own settings")
     if not s3_client:
         raise HTTPException(status_code=503, detail="S3 client not initialized. Cannot fetch settings.")
     if not AWS_S3_BUCKET_NAME:
@@ -191,7 +206,13 @@ async def get_user_settings(user_id: str = Path(..., description="The ID of the 
         raise HTTPException(status_code=500, detail=f"Unexpected error fetching user settings: {str(e)}")
 
 @app.post("/api/v1/user_settings")
-async def save_user_settings(request: SaveUserSettingsRequest):
+async def save_user_settings(
+    request: SaveUserSettingsRequest,
+    current_user_id: str = Depends(get_user_id)
+):
+    # Verify that the user_id in the request matches the authenticated user
+    if request.user_id != current_user_id:
+        raise HTTPException(status_code=403, detail="You can only save your own settings")
     if not s3_client:
         raise HTTPException(status_code=503, detail="S3 client not initialized. Cannot save settings.")
     if not AWS_S3_BUCKET_NAME:
@@ -230,7 +251,13 @@ class SaveSessionRequest(BaseModel):
     location: Optional[str] = None  # Add location field too
 
 @app.post("/api/v1/save_session_data") 
-async def save_session_data_endpoint(request_data: SaveSessionRequest):
+async def save_session_data_endpoint(
+    request_data: SaveSessionRequest,
+    current_user_id: str = Depends(get_user_id)
+):
+    # Verify that the user_id in the request matches the authenticated user
+    if request_data.user_id != current_user_id:
+        raise HTTPException(status_code=403, detail="You can only save your own session data")
     session_id = request_data.session_id
     original_transcript = request_data.final_transcript_text
     user_id = request_data.user_id 
@@ -405,8 +432,12 @@ async def save_session_data_endpoint(request_data: SaveSessionRequest):
 @app.delete("/api/v1/recordings/{user_id}/{session_id}", status_code=200)
 async def delete_session_recording(
     user_id: str = Path(..., description="The ID of the user who owns the recording"),
-    session_id: str = Path(..., description="The ID of the session recording to delete")
+    session_id: str = Path(..., description="The ID of the session recording to delete"),
+    current_user_id: str = Depends(get_user_id)
 ):
+    # Verify that the user_id matches the authenticated user
+    if user_id != current_user_id:
+        raise HTTPException(status_code=403, detail="You can only delete your own recordings")
     if not s3_client:
         raise HTTPException(status_code=503, detail="S3 client not initialized. Cannot delete recording.")
     if not AWS_S3_BUCKET_NAME:
@@ -472,7 +503,13 @@ class RecordingInfo(BaseModel):
     # Add any other relevant fields that might be in session_metadata.json and useful for display
 
 @app.get("/api/v1/user_recordings/{user_id}", response_model=List[RecordingInfo])
-async def get_user_recordings(user_id: str = Path(..., description="User's unique identifier")):
+async def get_user_recordings(
+    user_id: str = Path(..., description="User's unique identifier"),
+    current_user_id: str = Depends(get_user_id)
+):
+    # Verify that the user_id matches the authenticated user
+    if user_id != current_user_id:
+        raise HTTPException(status_code=403, detail="You can only access your own recordings")
     print(f"--- get_user_recordings called with user_id: '{user_id}' ---") # Enhanced log
     if not s3_client:
         print("S3 client not initialized. Cannot fetch recordings.")
@@ -599,7 +636,19 @@ async def get_user_recordings(user_id: str = Path(..., description="User's uniqu
 from fastapi.responses import PlainTextResponse
 
 @app.get("/api/v1/s3_object_content", response_class=PlainTextResponse)
-async def get_s3_object_content(s3_key: str):
+async def get_s3_object_content(
+    s3_key: str,
+    current_user: dict = Depends(get_current_user)
+):
+    # Extract user_id from the S3 key to verify ownership
+    # S3 keys are in format: user_transcripts/{user_id}/session_{session_id}/...
+    key_parts = s3_key.split('/')
+    if len(key_parts) < 2 or not key_parts[0] in ['user_transcripts', 'user_settings']:
+        raise HTTPException(status_code=400, detail="Invalid S3 key format")
+    
+    key_user_id = key_parts[1]
+    if key_user_id != current_user['sub']:
+        raise HTTPException(status_code=403, detail="You can only access your own content")
     if not s3_client:
         print("S3 client not initialized. Cannot fetch S3 object content.")
         raise HTTPException(status_code=503, detail="S3 service not available")
@@ -628,4 +677,4 @@ if __name__ == "__main__":
         print("deepgram_api_key not found. Ensure .env is in the /Users/davidmain/Desktop/trans10 directory and contains the key 'deepgram_api_key'.")
     else:
         print(f"deepgram_api_key found: {deepgram_api_key[:5]}...")
-    uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True, ws_ping_interval=20, ws_ping_timeout=20) 
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True, ws_ping_interval=20, ws_ping_timeout=20) 

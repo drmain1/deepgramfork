@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth0 } from '@auth0/auth0-react';
+import { useAuth } from '../contexts/AuthContext';
 import { useRecordings } from '../contexts/RecordingsContext';
 import { useUserSettings } from '../contexts/UserSettingsContext';
 import TranscriptViewer from './TranscriptViewer';
@@ -7,7 +7,7 @@ import SetupView from './SetupView';
 import RecordingView from './RecordingView';
 
 const AudioRecorder = () => {
-  const { user, isAuthenticated, isLoading: authLoading } = useAuth0();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { selectedRecordingId } = useRecordings();
   const { userSettings, settingsLoading } = useUserSettings();
 

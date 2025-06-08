@@ -1,9 +1,9 @@
 import React from 'react';
-import { useAuth0 } from '@auth0/auth0-react';
+import { useAuth } from '../contexts/AuthContext';
 import Button from '@mui/material/Button';
 
 const LoginButton = () => {
-  const { loginWithRedirect } = useAuth0();
+  const { loginWithRedirect } = useAuth();
 
   return (
     <Button variant="contained" color="primary" onClick={() => loginWithRedirect()}>

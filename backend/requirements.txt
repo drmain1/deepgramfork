@@ -5,3 +5,5 @@ websockets
 boto3
 deepgram-sdk
 speechmatics-python
+python-jose[cryptography]
+httpx

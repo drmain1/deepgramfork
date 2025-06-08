@@ -1,12 +1,12 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { useAuth0 } from '@auth0/auth0-react';
+import { useAuth } from './AuthContext';
 
 const UserSettingsContext = createContext();
 
 export const useUserSettings = () => useContext(UserSettingsContext);
 
 export const UserSettingsProvider = ({ children }) => {
-  const { isAuthenticated, getAccessTokenSilently, user } = useAuth0();
+  const { isAuthenticated, getAccessTokenSilently, user } = useAuth();
   const [userSettings, setUserSettings] = useState({
     macroPhrases: [],
     customVocabulary: [],

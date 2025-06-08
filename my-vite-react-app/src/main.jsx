@@ -3,29 +3,26 @@ import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import './index.css';
 import './styles.css';
-import { Auth0Provider, withAuthenticationRequired } from '@auth0/auth0-react';
-import AuthLoading from './components/AuthLoading.jsx'; 
+import { Authenticator } from '@aws-amplify/ui-react';
+import '@aws-amplify/ui-react/styles.css';
+import { Amplify } from 'aws-amplify';
+import { amplifyConfig } from './amplifyconfigure.js';
+import { AuthProvider } from './contexts/AuthContext.jsx';
 import { UserSettingsProvider } from './contexts/UserSettingsContext.jsx'; 
 
-const domain = import.meta.env.VITE_AUTH0_DOMAIN;
-const clientId = import.meta.env.VITE_AUTH0_CLIENT_ID;
-
-const ProtectedApp = withAuthenticationRequired(App, {
-  onRedirecting: () => <AuthLoading />,
-});
+// Configure Amplify
+Amplify.configure(amplifyConfig);
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <Auth0Provider
-      domain={domain}
-      clientId={clientId}
-      authorizationParams={{
-        redirect_uri: window.location.origin 
-      }}
-    >
-      <UserSettingsProvider>
-        <ProtectedApp />
-      </UserSettingsProvider>
-    </Auth0Provider>
+    <Authenticator signUpAttributes={['email']}>
+      {({ signOut, user }) => (
+        <AuthProvider>
+          <UserSettingsProvider>
+            <App />
+          </UserSettingsProvider>
+        </AuthProvider>
+      )}
+    </Authenticator>
   </React.StrictMode>
 );

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useAuth0 } from '@auth0/auth0-react';
+import { useAuth } from '../contexts/AuthContext';
 import { useRecordings } from '../contexts/RecordingsContext';
 import {
   Box,
@@ -38,7 +38,7 @@ function RecordingView({
   userSettings,
   onClose
 }) {
-  const { user } = useAuth0();
+  const { user } = useAuth();
   const { startPendingRecording, updateRecording, removeRecording, fetchUserRecordings } = useRecordings();
 
   const [isRecording, setIsRecording] = useState(false);
