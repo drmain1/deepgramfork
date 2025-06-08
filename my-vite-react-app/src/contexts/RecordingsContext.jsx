@@ -243,10 +243,18 @@ export function RecordingsProvider({ children }) {
       return type === 'original' ? 'Original transcript S3 path not found.' : 'Polished transcript S3 path not found.';
     }
     try {
+      // Strip the s3://bucket-name/ prefix if present
+      let cleanS3Key = s3Key;
+      if (s3Key.startsWith('s3://')) {
+        const parts = s3Key.split('/');
+        // Remove 's3:' and bucket name, keeping the rest
+        cleanS3Key = parts.slice(3).join('/');
+      }
+      
       // Ensure VITE_API_BASE_URL is correctly configured in your .env file for production
       const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
       const accessToken = await getAccessTokenSilently();
-      const response = await fetch(`${apiUrl}/api/v1/s3_object_content?s3_key=${encodeURIComponent(s3Key)}`, {
+      const response = await fetch(`${apiUrl}/api/v1/s3_object_content?s3_key=${encodeURIComponent(cleanS3Key)}`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
         },

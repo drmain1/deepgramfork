@@ -121,7 +121,7 @@ async def save_text_to_s3(s3_client, aws_s3_bucket_name: str, tenant_id: str, se
             lambda: s3_client.put_object(Bucket=aws_s3_bucket_name, Key=s3_key, Body=content.encode('utf-8'), ContentType='text/plain')
         )
         print(f"Successfully uploaded {s3_key} to S3 bucket {aws_s3_bucket_name} (via aws_utils).")
-        return f"s3://{aws_s3_bucket_name}/{s3_key}"
+        return s3_key  # Return just the key, not the full S3 URI
     except Exception as e:
         print(f"Error uploading {s3_key} to S3 (via aws_utils): {e}")
         return None
