@@ -233,6 +233,41 @@ async def get_user_settings(
         print(f"Unexpected error fetching settings for user {user_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Unexpected error fetching user settings: {str(e)}")
 
+@app.get("/api/v1/debug/transcription_profiles/{user_id}")
+async def debug_transcription_profiles(
+    user_id: str = Path(..., description="The ID of the user whose profiles to debug"),
+    current_user_id: str = Depends(get_user_id)
+):
+    """Debug endpoint to check transcription profiles"""
+    if user_id != current_user_id:
+        raise HTTPException(status_code=403, detail="You can only debug your own profiles")
+    
+    try:
+        user_settings = await get_user_settings(user_id, current_user_id=user_id)
+        profiles_info = []
+        
+        if user_settings and user_settings.transcriptionProfiles:
+            for profile in user_settings.transcriptionProfiles:
+                profile_info = {
+                    "id": profile.id,
+                    "name": profile.name,
+                    "has_llmInstructions": bool(profile.llmInstructions),
+                    "llmInstructions_length": len(profile.llmInstructions) if profile.llmInstructions else 0,
+                    "llmInstructions_preview": profile.llmInstructions[:100] + "..." if profile.llmInstructions and len(profile.llmInstructions) > 100 else profile.llmInstructions,
+                    "has_llmPrompt": bool(profile.llmPrompt),
+                    "specialty": profile.specialty,
+                    "originalTemplateId": profile.originalTemplateId
+                }
+                profiles_info.append(profile_info)
+        
+        return {
+            "user_id": user_id,
+            "profiles_count": len(profiles_info),
+            "profiles": profiles_info
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.post("/api/v1/user_settings")
 async def save_user_settings(
     request: SaveUserSettingsRequest,
@@ -300,7 +335,7 @@ async def save_session_data_endpoint(
     # Get user settings to retrieve the actual LLM instructions from the profile
     custom_instructions = None
     try:
-        user_settings = await get_user_settings(user_id)
+        user_settings = await get_user_settings(user_id, current_user_id=user_id)  # Pass the user_id as current_user_id
         if user_settings and user_settings.transcriptionProfiles:
             # First try to find by ID (more reliable), then fallback to name
             selected_profile = None
@@ -315,6 +350,8 @@ async def save_session_data_endpoint(
                 if selected_profile.llmInstructions:
                     custom_instructions = selected_profile.llmInstructions
                     print(f"Using LLM instructions from profile '{selected_profile.name}' (length: {len(custom_instructions)}) for session {session_id}")
+                    # Log first 200 chars of instructions for debugging
+                    print(f"LLM instructions preview: {custom_instructions[:200]}..." if len(custom_instructions) > 200 else f"LLM instructions: {custom_instructions}")
                 elif selected_profile.llmPrompt:
                     # Fallback to deprecated llmPrompt field
                     custom_instructions = selected_profile.llmPrompt
@@ -330,9 +367,11 @@ async def save_session_data_endpoint(
     if not custom_instructions:
         custom_instructions = f"Patient Context: {patient_context}\nEncounter Type: {encounter_type}\nTemplate: {llm_template}"
         print(f"Using fallback LLM instructions for session {session_id}")
+        print(f"Fallback reason: No profile instructions found. Template ID: {llm_template_id}, Template Name: {llm_template}")
     else:
         # Append context information to the profile instructions
-        custom_instructions += f"\n\nAdditional Context:\nPatient Context: {patient_context}\nEncounter Type: {encounter_type}" 
+        custom_instructions += f"\n\nAdditional Context:\nPatient Context: {patient_context}\nEncounter Type: {encounter_type}"
+        print(f"Final instructions length after adding context: {len(custom_instructions)}") 
 
     print(f"Received save request for session: {session_id}, user: {user_id}")
 

@@ -15,6 +15,8 @@ async def polish_transcript_with_bedrock(transcript: str, bedrock_client, custom
     # Define the default prompt if no custom instructions are provided
     if custom_instructions:
         user_prompt_content = custom_instructions
+        print(f"[Bedrock] Using custom instructions (length: {len(custom_instructions)})")
+        print(f"[Bedrock] Instructions preview: {custom_instructions[:200]}..." if len(custom_instructions) > 200 else f"[Bedrock] Instructions: {custom_instructions}")
     else:
         user_prompt_content = """Please review and polish the following medical transcript. Focus on:
 - Clarity and conciseness.
@@ -22,6 +24,7 @@ async def polish_transcript_with_bedrock(transcript: str, bedrock_client, custom
 - Ensuring a professional and formal tone suitable for clinical notes.
 - Do NOT add any information that isn't present in the original transcript.
 - Do NOT add any preamble like 'Here is the polished transcript:'. Just output the polished text directly."""
+        print("[Bedrock] Using default medical transcript instructions")
 
     prompt = f"""Human: {user_prompt_content}
 

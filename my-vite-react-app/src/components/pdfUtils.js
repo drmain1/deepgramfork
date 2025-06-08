@@ -750,7 +750,7 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
     headerFontSize = 11,
     footerFontSize = 10,
     lineHeight = 1.2,
-    backgroundColor = '#eeece2',
+    backgroundColor = '#faf9f5',
     includePageNumbers = true,
     includeHeaderOnAllPages = true
   } = options;
@@ -785,8 +785,10 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
         position: absolute;
         top: -9999px;
         left: -9999px;
-        font-family: 'Helvetica Neue', Arial, sans-serif;
-        font-weight: 500;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+        font-weight: 400;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
         box-sizing: border-box;
         padding: ${margins.top * 3.77}px ${margins.right * 3.77}px ${margins.bottom * 3.77}px ${margins.left * 3.77}px;
       `;
@@ -820,11 +822,13 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
           margin-bottom: 30px;
           font-size: ${fontSize}px;
           line-height: ${lineHeight};
-          color: #000;
-          font-weight: 500;
-          letter-spacing: 0.01em;
-          text-align: justify;
+          color: #1a1a1a;
+          font-weight: 400;
+          letter-spacing: 0;
+          text-align: left;
           min-height: calc(100vh - 150px);
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
         ">
           ${pageContent}
         </div>
@@ -999,18 +1003,19 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
 
       // Generate canvas for this page
       const canvas = await html2canvas(pageContainer, {
-        scale: 2, // Increased to 2 for sharper text
+        scale: 2, // Balanced scale for quality vs file size
         useCORS: true,
         backgroundColor: backgroundColor,
         logging: false,
         width: 794,
         height: 1123,
         windowWidth: 794,
-        windowHeight: 1123
+        windowHeight: 1123,
+        letterRendering: true
       });
 
-      // Add to PDF with higher quality
-      const imgData = canvas.toDataURL('image/jpeg', 0.95); // Increased to 95% quality
+      // Add to PDF with JPEG for smaller file size
+      const imgData = canvas.toDataURL('image/jpeg', 0.92); // High quality JPEG
       pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, pageHeight);
 
       // Clean up
@@ -1342,13 +1347,14 @@ export const convertFormattedTextToHtml = (content) => {
       headerRow.forEach((cell, cellIndex) => {
         tableHtml += `
           <th style="
-            border: 1px solid #000;
-            padding: 6px 8px;
-            background-color: #d6cdb5;
-            font-weight: 700;
+            border: 1px solid #333;
+            padding: 8px 10px;
+            background-color: #e8e4dc;
+            font-weight: 900;
             text-align: ${cellIndex === 0 ? 'left' : 'center'};
-            font-size: 11px;
+            font-size: 12px;
             color: #000;
+            letter-spacing: -0.02em;
             width: ${colWidth}%;
           ">${cell}</th>
         `;
@@ -1417,9 +1423,9 @@ export const convertFormattedTextToHtml = (content) => {
     if (markdownMatch || headerMatch) {
       const match = markdownMatch || headerMatch;
       const [, header, content] = match;
-      htmlContent += `<p style="margin: 10px 0 5px 0; font-weight: 700; font-size: 13px;"><strong>${header}</strong>`;
+      htmlContent += `<p style="margin: 12px 0 6px 0; font-weight: 900; font-size: 14px; color: #000; letter-spacing: -0.02em;"><strong style="font-weight: 900;">${header}</strong>`;
       if (content) {
-        htmlContent += ` ${parseInlineFormatting(content)}`;
+        htmlContent += ` <span style="font-weight: 400; font-size: 13px;">${parseInlineFormatting(content)}</span>`;
       }
       htmlContent += '</p>';
     } else if (numberedMatch) {
@@ -1434,7 +1440,7 @@ export const convertFormattedTextToHtml = (content) => {
       htmlContent += '<br>';
     } else {
       // Regular content line
-      htmlContent += `<p style="margin: 3px 0; font-weight: 500;">${parseInlineFormatting(line)}</p>`;
+      htmlContent += `<p style="margin: 4px 0; font-weight: 400; font-size: 13px; color: #1a1a1a; line-height: 1.5;">${parseInlineFormatting(line)}</p>`;
     }
     
     i++;
