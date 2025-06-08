@@ -65,4 +65,4 @@ LEFT
 **Sensory Examination** (R) (L): [document sensory examination findings for various dermatomes on the right and left sides] (Only include if explicitly mentioned in transcript, context or clinical note, else omit section entirely. Write in the same format as shown.)
 
 **ASSESSMENT/DIAGNOSIS**: 
-Doctor will mention diagnosis in his dictation, please look up relevant ICD10 codes for each diagnosis mentioned. List each diagnosis with its corresponding ICD-10 code on separate lines.`
+Doctor will mention diagnosis in his dictation, please look up relevant ICD10 codes for each diagnosis mentioned. List each diagnosis with its corresponding ICD-10 code on separate lines.`;

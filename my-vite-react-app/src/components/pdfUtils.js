@@ -2,6 +2,207 @@ import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
 /**
+ * Generates an optimized PDF using native text rendering instead of images
+ * This creates much smaller file sizes (KB instead of MB)
+ */
+export const generateOptimizedPdf = async (textContent, fileName = "document.pdf", location = "", options = {}) => {
+  if (!textContent || typeof textContent !== 'string') {
+    console.error("PDF Generation: No text content provided or content is not a string.");
+    alert("Cannot generate PDF: No text content available.");
+    return;
+  }
+
+  // Extract location from content if no location parameter provided
+  let finalLocation = location;
+  let finalContent = textContent;
+  
+  if (!location || location.trim() === '') {
+    const extracted = extractLocationFromContent(textContent);
+    finalLocation = extracted.location;
+    finalContent = extracted.cleanedContent;
+  }
+
+  const {
+    doctorName = "",
+    doctorSignature = "",
+    isSigned = false,
+    patientName = "",
+    dateOfBirth = "",
+    dateOfAccident = "",
+    dateOfConsultation = "",
+    phoneNumber = ""
+  } = options;
+
+  try {
+    // Create PDF with text rendering
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    // Set font
+    pdf.setFont("helvetica");
+    
+    // PDF dimensions
+    const pageWidth = 210;
+    const pageHeight = 297;
+    const margins = { top: 20, right: 20, bottom: 20, left: 20 };
+    const contentWidth = pageWidth - margins.left - margins.right;
+    let yPosition = margins.top;
+
+    // Add location header if available
+    if (finalLocation && finalLocation.trim()) {
+      pdf.setFontSize(12);
+      pdf.setFont("helvetica", "bold");
+      const locationLines = pdf.splitTextToSize(finalLocation, contentWidth);
+      locationLines.forEach(line => {
+        if (yPosition > pageHeight - margins.bottom) {
+          pdf.addPage();
+          yPosition = margins.top;
+        }
+        pdf.text(line, pageWidth / 2, yPosition, { align: 'center' });
+        yPosition += 6;
+      });
+      
+      // Add separator line
+      pdf.setLineWidth(0.5);
+      pdf.line(margins.left, yPosition + 2, pageWidth - margins.right, yPosition + 2);
+      yPosition += 10;
+    }
+
+    // Add patient info if available
+    if (patientName || dateOfBirth || phoneNumber) {
+      pdf.setFontSize(11);
+      pdf.setFont("helvetica", "bold");
+      pdf.text("PATIENT INFORMATION", margins.left, yPosition);
+      yPosition += 8;
+      
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(10);
+      
+      if (patientName) {
+        pdf.text(`Name: ${patientName}`, margins.left + 5, yPosition);
+        yPosition += 6;
+      }
+      if (dateOfBirth) {
+        pdf.text(`Date of Birth: ${dateOfBirth}`, margins.left + 5, yPosition);
+        yPosition += 6;
+      }
+      if (dateOfAccident) {
+        pdf.text(`Date of Accident: ${dateOfAccident}`, margins.left + 5, yPosition);
+        yPosition += 6;
+      }
+      if (dateOfConsultation) {
+        pdf.text(`Date of Consultation: ${dateOfConsultation}`, margins.left + 5, yPosition);
+        yPosition += 6;
+      }
+      if (phoneNumber) {
+        pdf.text(`Phone: ${phoneNumber}`, margins.left + 5, yPosition);
+        yPosition += 6;
+      }
+      yPosition += 8;
+    }
+
+    // Parse and add content sections
+    const { sections, unstructuredContent } = parseTranscriptSections(finalContent);
+    
+    pdf.setFontSize(10);
+    
+    // Add sections
+    sections.forEach(section => {
+      if (yPosition > pageHeight - margins.bottom - 20) {
+        pdf.addPage();
+        yPosition = margins.top;
+      }
+      
+      // Section header
+      pdf.setFont("helvetica", "bold");
+      pdf.text(section.header.toUpperCase(), margins.left, yPosition);
+      yPosition += 7;
+      
+      // Section content
+      pdf.setFont("helvetica", "normal");
+      const contentText = section.content.join('\n');
+      const lines = pdf.splitTextToSize(contentText, contentWidth - 5);
+      
+      lines.forEach(line => {
+        if (yPosition > pageHeight - margins.bottom) {
+          pdf.addPage();
+          yPosition = margins.top;
+        }
+        pdf.text(line, margins.left + 5, yPosition);
+        yPosition += 5;
+      });
+      
+      yPosition += 5; // Extra space after section
+    });
+
+    // Add unstructured content if any
+    if (unstructuredContent.trim()) {
+      if (yPosition > pageHeight - margins.bottom - 20) {
+        pdf.addPage();
+        yPosition = margins.top;
+      }
+      
+      pdf.setFont("helvetica", "bold");
+      pdf.text("ADDITIONAL NOTES", margins.left, yPosition);
+      yPosition += 7;
+      
+      pdf.setFont("helvetica", "normal");
+      const lines = pdf.splitTextToSize(unstructuredContent, contentWidth - 5);
+      
+      lines.forEach(line => {
+        if (yPosition > pageHeight - margins.bottom) {
+          pdf.addPage();
+          yPosition = margins.top;
+        }
+        pdf.text(line, margins.left + 5, yPosition);
+        yPosition += 5;
+      });
+    }
+
+    // Add signature if available
+    if (isSigned && doctorName) {
+      // Check if we need a new page for signature
+      if (yPosition > pageHeight - margins.bottom - 40) {
+        pdf.addPage();
+        yPosition = margins.top;
+      } else {
+        yPosition += 20;
+      }
+      
+      // Add signature line
+      pdf.setLineWidth(0.5);
+      pdf.line(margins.left, yPosition, margins.left + 60, yPosition);
+      yPosition += 5;
+      
+      // Add doctor name
+      pdf.setFont("helvetica", "bold");
+      pdf.text(doctorName, margins.left, yPosition);
+      yPosition += 5;
+      
+      // Add date
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9);
+      pdf.text(`Electronically signed on ${new Date().toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      })}`, margins.left, yPosition);
+    }
+
+    // Save the PDF
+    pdf.save(fileName);
+    console.log("Optimized PDF saved successfully!");
+
+  } catch (error) {
+    console.error("Error generating optimized PDF:", error);
+    alert("An error occurred while generating the PDF. Please try again.");
+  }
+};
+
+/**
  * Extracts location data from transcript content if it was embedded as a header
  * @param {string} textContent - The transcript content
  * @returns {object} - { location: string, cleanedContent: string }
@@ -395,9 +596,9 @@ export const generateProfessionalMedicalPdf = async (textContent, fileName = "me
 
     console.log("Generating professional medical PDF...", { actualHeight });
 
-    // Generate canvas from HTML with proper height
+    // Generate canvas from HTML with reduced quality for smaller file size
     const canvas = await html2canvas(container, {
-      scale: 2,
+      scale: 1, // Reduced from 2 to 1 (50% reduction)
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#ffffff',
@@ -413,7 +614,7 @@ export const generateProfessionalMedicalPdf = async (textContent, fileName = "me
       format: 'a4'
     });
 
-    const imgData = canvas.toDataURL('image/png', 0.95);
+    const imgData = canvas.toDataURL('image/jpeg', 0.6); // Changed to JPEG with 60% quality
     const pdfWidth = 210; // A4 width in mm
     const pdfHeight = 297; // A4 height in mm
     const imgWidth = pdfWidth;
@@ -429,7 +630,7 @@ export const generateProfessionalMedicalPdf = async (textContent, fileName = "me
 
       pdf.addImage(
         imgData,
-        'PNG',
+        'JPEG',
         0,
         -yPosition,
         imgWidth,
@@ -454,6 +655,7 @@ export const generateProfessionalMedicalPdf = async (textContent, fileName = "me
     }
   }
 };
+
 
 // Test function to verify PDF generation with location
 export const testPdfGeneration = () => {
@@ -496,11 +698,11 @@ export const generateSimplePdf = (text) => {
     backgroundColor: '#ffffff'
   }).then(canvas => {
     const pdf = new jsPDF();
-    const imgData = canvas.toDataURL('image/png');
+    const imgData = canvas.toDataURL('image/jpeg', 0.6); // Use JPEG with lower quality
     const imgWidth = 210;
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
     
-    pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+    pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight);
     pdf.save('simple-test.pdf');
     
     document.body.removeChild(element);
@@ -509,6 +711,320 @@ export const generateSimplePdf = (text) => {
     console.error("Simple PDF error:", err);
     document.body.removeChild(element);
   });
+};
+
+/**
+ * Generates professional medical PDF with page-by-page rendering
+ * @param {string} textContent - The medical document content
+ * @param {string} fileName - Output filename
+ * @param {string} location - Practice location/header
+ * @param {object} options - Configuration options
+ */
+export const generatePagedMedicalPdf = async (textContent, fileName = "medical-document.pdf", location = "", options = {}) => {
+  if (!textContent || typeof textContent !== 'string') {
+    console.error("PDF Generation: No text content provided or content is not a string.");
+    alert("Cannot generate PDF: No text content available.");
+    return;
+  }
+
+  // Extract location from content if needed
+  let finalLocation = location;
+  let finalContent = textContent;
+  
+  if (!location || location.trim() === '') {
+    const extracted = extractLocationFromContent(textContent);
+    finalLocation = extracted.location;
+    finalContent = extracted.cleanedContent;
+  }
+
+  const {
+    doctorName = "",
+    doctorSignature = "",
+    isSigned = false,
+    patientName = "",
+    dateOfBirth = "",
+    dateOfAccident = "",
+    dateOfConsultation = "",
+    phoneNumber = "",
+    fontSize = 12,
+    headerFontSize = 11,
+    footerFontSize = 10,
+    lineHeight = 1.2,
+    backgroundColor = '#eeece2',
+    includePageNumbers = true,
+    includeHeaderOnAllPages = true
+  } = options;
+
+  try {
+    // Parse content into sections
+    const { sections, unstructuredContent } = parseTranscriptSections(finalContent);
+    
+    // Create PDF
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    const pageWidth = 210;
+    const pageHeight = 297;
+    const margins = { top: 20, right: 20, bottom: 20, left: 20 };
+    const contentWidth = pageWidth - margins.left - margins.right;
+    const contentHeight = pageHeight - margins.top - margins.bottom;
+    
+    let currentPage = 1;
+    let totalPages = 1; // Will update after calculating
+    
+    // Function to create page container with headers/footers
+    const createPageContainer = (pageContent, pageNum, totalPageCount) => {
+      const container = document.createElement('div');
+      container.style.cssText = `
+        width: 794px;
+        height: 1123px;
+        background: ${backgroundColor};
+        position: absolute;
+        top: -9999px;
+        left: -9999px;
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+        font-weight: 500;
+        box-sizing: border-box;
+        padding: ${margins.top * 3.77}px ${margins.right * 3.77}px ${margins.bottom * 3.77}px ${margins.left * 3.77}px;
+      `;
+
+      let html = '';
+
+      // Header - only show location header on subsequent pages
+      if (pageNum > 1 && includeHeaderOnAllPages) {
+        html += `
+          <div style="
+            position: absolute;
+            top: 15px;
+            left: ${margins.left * 3.77}px;
+            right: ${margins.right * 3.77}px;
+            font-size: ${headerFontSize}px;
+            color: #000;
+            font-weight: 700;
+            border-bottom: 2px solid #333;
+            padding-bottom: 8px;
+            text-align: center;
+          ">
+            ${finalLocation ? finalLocation.split('\n')[0] : ''}
+          </div>
+        `;
+      }
+
+      // Main content
+      html += `
+        <div style="
+          margin-top: ${pageNum === 1 ? '10px' : includeHeaderOnAllPages ? '70px' : '20px'};
+          margin-bottom: 30px;
+          font-size: ${fontSize}px;
+          line-height: ${lineHeight};
+          color: #000;
+          font-weight: 500;
+          letter-spacing: 0.01em;
+          text-align: justify;
+          min-height: calc(100vh - 150px);
+        ">
+          ${pageContent}
+        </div>
+      `;
+
+      // Footer with page numbers
+      if (includePageNumbers) {
+        html += `
+          <div style="
+            position: absolute;
+            bottom: 15px;
+            left: ${margins.left * 3.77}px;
+            right: ${margins.right * 3.77}px;
+            font-size: ${footerFontSize}px;
+            color: #333;
+            text-align: center;
+            border-top: 1px solid #ddd;
+            padding-top: 5px;
+            font-weight: 500;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+          ">
+            Page ${pageNum} of ${totalPageCount}
+            ${doctorName && pageNum === totalPageCount ? ` | ${doctorName}` : ''}
+          </div>
+        `;
+      }
+
+      container.innerHTML = html;
+      return container;
+    };
+
+    // Parse content to identify sections and tables
+    const contentElements = [];
+    const lines = finalContent.split('\n');
+    let currentElement = { type: 'text', content: '' };
+    let inTable = false;
+    let tableStartIndex = -1;
+    
+    // Identify content blocks (paragraphs, sections, tables)
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmedLine = line.trim();
+      
+      // Check if this line starts a table
+      if (!inTable && trimmedLine.includes('|') && i < lines.length - 1 && lines[i + 1].trim().includes('|')) {
+        // Save current text element if it has content
+        if (currentElement.content.trim()) {
+          contentElements.push(currentElement);
+        }
+        // Start new table element
+        currentElement = { type: 'table', content: line + '\n' };
+        inTable = true;
+        tableStartIndex = i;
+      } else if (inTable) {
+        // Continue table if line contains |
+        if (trimmedLine.includes('|') || trimmedLine === '') {
+          currentElement.content += line + '\n';
+        } else {
+          // End of table
+          contentElements.push(currentElement);
+          currentElement = { type: 'text', content: line + '\n' };
+          inTable = false;
+        }
+      } else {
+        // Regular text content
+        currentElement.content += line + '\n';
+        
+        // Check if this is a section header or natural break point
+        if (trimmedLine.endsWith(':') && trimmedLine.match(/^[A-Z\s]+:$/) || 
+            trimmedLine === '' && i < lines.length - 1) {
+          // This might be a good break point
+          if (currentElement.content.trim()) {
+            contentElements.push(currentElement);
+            currentElement = { type: 'text', content: '' };
+          }
+        }
+      }
+    }
+    
+    // Don't forget the last element
+    if (currentElement.content.trim()) {
+      contentElements.push(currentElement);
+    }
+    
+    // Now distribute elements across pages
+    const contentPerPage = [];
+    let currentPageElements = [];
+    let currentPageHeight = 0;
+    const maxPageHeight = 38; // Approximate lines per page
+    
+    for (const element of contentElements) {
+      const elementHeight = element.content.split('\n').length;
+      
+      // Never split tables across pages
+      if (element.type === 'table') {
+        if (currentPageHeight + elementHeight > maxPageHeight && currentPageElements.length > 0) {
+          // Start new page for this table
+          contentPerPage.push(currentPageElements.map(el => el.content).join(''));
+          currentPageElements = [element];
+          currentPageHeight = elementHeight;
+        } else {
+          // Add table to current page
+          currentPageElements.push(element);
+          currentPageHeight += elementHeight;
+        }
+      } else {
+        // For text, we can be more flexible
+        if (currentPageHeight + elementHeight > maxPageHeight) {
+          // Check if we should start a new page
+          if (currentPageElements.length > 0) {
+            contentPerPage.push(currentPageElements.map(el => el.content).join(''));
+            currentPageElements = [element];
+            currentPageHeight = elementHeight;
+          } else {
+            // Single element too large, we'll have to split it (rare case)
+            currentPageElements.push(element);
+            currentPageHeight += elementHeight;
+          }
+        } else {
+          currentPageElements.push(element);
+          currentPageHeight += elementHeight;
+        }
+      }
+    }
+    
+    // Add remaining content
+    if (currentPageElements.length > 0) {
+      contentPerPage.push(currentPageElements.map(el => el.content).join(''));
+    }
+    
+    totalPages = contentPerPage.length;
+
+    // Generate each page
+    for (let pageIndex = 0; pageIndex < contentPerPage.length; pageIndex++) {
+      if (pageIndex > 0) {
+        pdf.addPage();
+      }
+
+      // For first page, prepend clinic and patient info if not already in content
+      let pageContent = contentPerPage[pageIndex];
+      if (pageIndex === 0 && finalLocation && !pageContent.includes(finalLocation.split('\n')[0])) {
+        // Build header info
+        let headerContent = '';
+        const locationLines = finalLocation.split('\n').filter(line => line.trim());
+        locationLines.forEach(line => {
+          headerContent += `${line.trim()}\n`;
+        });
+        
+        if (patientName || dateOfBirth || dateOfAccident || dateOfConsultation) {
+          headerContent += '\n';
+          if (patientName) headerContent += `Patient Name: ${patientName}\n`;
+          if (dateOfBirth) headerContent += `Date of Birth: ${dateOfBirth}\n`;
+          if (dateOfAccident) headerContent += `Date of Accident: ${dateOfAccident}\n`;
+          if (dateOfConsultation) headerContent += `Date of Treatment: ${dateOfConsultation}\n`;
+        }
+        
+        pageContent = headerContent + '\n' + pageContent;
+      }
+
+      // Create page container
+      const pageContainer = createPageContainer(
+        convertFormattedTextToHtml(pageContent),
+        pageIndex + 1,
+        contentPerPage.length
+      );
+      
+      document.body.appendChild(pageContainer);
+
+      // Wait for render
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Generate canvas for this page
+      const canvas = await html2canvas(pageContainer, {
+        scale: 2, // Increased to 2 for sharper text
+        useCORS: true,
+        backgroundColor: backgroundColor,
+        logging: false,
+        width: 794,
+        height: 1123,
+        windowWidth: 794,
+        windowHeight: 1123
+      });
+
+      // Add to PDF with higher quality
+      const imgData = canvas.toDataURL('image/jpeg', 0.95); // Increased to 95% quality
+      pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, pageHeight);
+
+      // Clean up
+      document.body.removeChild(pageContainer);
+    }
+
+    // Save PDF
+    pdf.save(fileName);
+    console.log("Professional paged medical PDF saved successfully!");
+
+  } catch (error) {
+    console.error("Error generating paged medical PDF:", error);
+    alert("An error occurred while generating the PDF. Please try again.");
+  }
 };
 
 /**
@@ -528,6 +1044,16 @@ export const generateSimplePdf = (text) => {
  * @param {boolean} [options.useProfessionalFormat=true] - Whether to use professional medical formatting.
  */
 export const generatePdfFromText = async (textContent, fileName = "document.pdf", location = "", options = {}) => {
+  // Use optimized text-based PDF generation only if explicitly requested
+  if (options.useOptimized === true) {
+    return await generateOptimizedPdf(textContent, fileName, location, options);
+  }
+  
+  // Use the new paged medical PDF generator for professional documents
+  if (options.usePagedFormat !== false) {
+    return await generatePagedMedicalPdf(textContent, fileName, location, options);
+  }
+  
   // For medical transcripts, use the enhanced professional PDF generator by default
   if (options.useProfessionalFormat !== false) {
     return await generateProfessionalMedicalPdf(textContent, fileName, location, options);
@@ -568,7 +1094,7 @@ export const generatePdfFromText = async (textContent, fileName = "document.pdf"
     line-height: ${lineHeight};
     color: black;
     background: white;
-    padding: ${margins.top}mm ${margins.right}mm ${margins.bottom}mm ${margins.left}mm;
+    padding: ${margins.top}mm ${margins.right}mm ${margins.bottom + 20}mm ${margins.left}mm;
     width: 794px;
     box-sizing: border-box;
     position: absolute;
@@ -647,9 +1173,9 @@ export const generatePdfFromText = async (textContent, fileName = "document.pdf"
       actualHeight 
     });
 
-    // Generate canvas from HTML with proper height
+    // Generate canvas from HTML with higher quality for crisp text
     const canvas = await html2canvas(container, {
-      scale: 2,
+      scale: 1.5, // Increased to 1.5 for better text quality
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#ffffff',
@@ -665,31 +1191,39 @@ export const generatePdfFromText = async (textContent, fileName = "document.pdf"
       format: 'a4'
     });
 
-    const imgData = canvas.toDataURL('image/png');
+    const imgData = canvas.toDataURL('image/jpeg', 0.92); // High quality JPEG with 1.5x scale
     const imgWidth = 210; // A4 width in mm
     const pageHeight = 297; // A4 height in mm
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
     
     console.log("PDF dimensions:", { imgWidth, imgHeight, pageHeight });
 
-    let yPosition = 0;
+    // Check if content fits on one page
+    if (imgHeight <= pageHeight) {
+      // Single page - just add the image
+      pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight);
+    } else {
+      // Multiple pages needed
+      let yPosition = 0;
+      let pageCount = 0;
 
-    // Add pages as needed
-    while (yPosition < imgHeight) {
-      if (yPosition > 0) {
-        pdf.addPage();
+      while (yPosition < imgHeight) {
+        if (pageCount > 0) {
+          pdf.addPage();
+        }
+
+        pdf.addImage(
+          imgData,
+          'JPEG',
+          0,
+          -yPosition,
+          imgWidth,
+          imgHeight
+        );
+
+        yPosition += pageHeight;
+        pageCount++;
       }
-
-      pdf.addImage(
-        imgData,
-        'PNG',
-        0,
-        -yPosition,
-        imgWidth,
-        imgHeight
-      );
-
-      yPosition += pageHeight;
     }
 
     // Save the PDF
@@ -792,24 +1326,30 @@ export const convertFormattedTextToHtml = (content) => {
         width: 100%;
         border-collapse: collapse;
         margin: 15px 0;
-        font-family: monospace;
-        font-size: 10px;
-        border: 1px solid #ddd;
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+        font-size: 11px;
+        font-weight: 500;
+        border: 1px solid #000;
+        background: transparent;
+        table-layout: fixed;
       ">
     `;
     
     // Add header if exists
     if (headerRow) {
+      const colWidth = Math.floor(100 / headerRow.length);
       tableHtml += '<thead><tr>';
-      headerRow.forEach(cell => {
+      headerRow.forEach((cell, cellIndex) => {
         tableHtml += `
           <th style="
-            border: 1px solid #ddd;
-            padding: 8px 6px;
-            background-color: #f5f5f5;
-            font-weight: bold;
-            text-align: left;
-            font-size: 9px;
+            border: 1px solid #000;
+            padding: 6px 8px;
+            background-color: #d6cdb5;
+            font-weight: 700;
+            text-align: ${cellIndex === 0 ? 'left' : 'center'};
+            font-size: 11px;
+            color: #000;
+            width: ${colWidth}%;
           ">${cell}</th>
         `;
       });
@@ -820,13 +1360,18 @@ export const convertFormattedTextToHtml = (content) => {
     tableHtml += '<tbody>';
     rows.forEach(row => {
       tableHtml += '<tr>';
-      row.forEach(cell => {
+      row.forEach((cell, cellIndex) => {
+        // First column gets left alignment, others center
+        const textAlign = cellIndex === 0 ? 'left' : 'center';
         tableHtml += `
           <td style="
-            border: 1px solid #ddd;
-            padding: 6px;
-            font-size: 9px;
-            vertical-align: top;
+            border: 1px solid #000;
+            padding: 6px 8px;
+            font-size: 11px;
+            font-weight: 500;
+            vertical-align: middle;
+            text-align: ${textAlign};
+            color: #000;
           ">${cell}</td>
         `;
       });
@@ -872,7 +1417,7 @@ export const convertFormattedTextToHtml = (content) => {
     if (markdownMatch || headerMatch) {
       const match = markdownMatch || headerMatch;
       const [, header, content] = match;
-      htmlContent += `<p style="margin: 15px 0 8px 0;"><strong>${header}</strong>`;
+      htmlContent += `<p style="margin: 10px 0 5px 0; font-weight: 700; font-size: 13px;"><strong>${header}</strong>`;
       if (content) {
         htmlContent += ` ${parseInlineFormatting(content)}`;
       }
@@ -889,7 +1434,7 @@ export const convertFormattedTextToHtml = (content) => {
       htmlContent += '<br>';
     } else {
       // Regular content line
-      htmlContent += `<p style="margin: 5px 0;">${parseInlineFormatting(line)}</p>`;
+      htmlContent += `<p style="margin: 3px 0; font-weight: 500;">${parseInlineFormatting(line)}</p>`;
     }
     
     i++;
