@@ -18,9 +18,9 @@ SPEECHMATICS_API_KEY = os.getenv("SPEECHMATICS_API_KEY")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-async def handle_speechmatics_websocket(websocket: WebSocket, get_user_settings_func: callable):
-    await websocket.accept()
-    logger.info(f"Speechmatics WebSocket connection accepted from: {websocket.client.host}:{websocket.client.port}")
+async def handle_speechmatics_websocket(websocket: WebSocket, get_user_settings_func: callable, authenticated_user_id: str = None):
+    # WebSocket is already accepted in the main endpoint after auth
+    logger.info(f"Speechmatics WebSocket connection accepted from: {websocket.client.host}:{websocket.client.port} for user: {authenticated_user_id}")
 
     session_id = datetime.now().strftime("%Y%m%d%H%M%S%f")
     

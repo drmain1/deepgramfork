@@ -23,9 +23,9 @@ DEEPGRAM_API_KEY = os.getenv("deepgram_api_key")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func: callable):
-    await websocket.accept()
-    logger.info(f"WebSocket connection accepted from: {websocket.client.host}:{websocket.client.port}")
+async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func: callable, authenticated_user_id: str = None):
+    # WebSocket is already accepted in the main endpoint after auth
+    logger.info(f"WebSocket connection accepted from: {websocket.client.host}:{websocket.client.port} for user: {authenticated_user_id}")
 
     session_id = datetime.now().strftime("%Y%m%d%H%M%S%f")
     
@@ -179,10 +179,11 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
             if target_language:
                 logger.info(f"Target language specified: {target_language}")
 
-            if user_id_from_client and selected_profile_id_from_client:
-                logger.info(f"Updating settings for user: {user_id_from_client}, profile: {selected_profile_id_from_client}")
+            # Use authenticated user_id instead of client-provided one for security
+            if authenticated_user_id and selected_profile_id_from_client:
+                logger.info(f"Updating settings for authenticated user: {authenticated_user_id}, profile: {selected_profile_id_from_client}")
                 try:
-                    user_settings = await get_user_settings_func(user_id_from_client)
+                    user_settings = await get_user_settings_func(authenticated_user_id)
                     if user_settings and user_settings.transcriptionProfiles:
                         selected_profile = next((p for p in user_settings.transcriptionProfiles if p.id == selected_profile_id_from_client), None)
                         if selected_profile:
@@ -194,11 +195,14 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
                         else:
                             logger.warning(f"Profile ID {selected_profile_id_from_client} not found.")
                     else:
-                        logger.warning(f"No transcription profiles for user {user_id_from_client}.")
+                        logger.warning(f"No transcription profiles for user {authenticated_user_id}.")
                 except Exception as e_settings:
                     logger.error(f"Error fetching/processing user settings: {e_settings}")
             else:
-                logger.warning("user_id or profile_id missing in configuration message.")
+                if not authenticated_user_id:
+                    logger.error("No authenticated user_id available - this is a security issue!")
+                if not selected_profile_id_from_client:
+                    logger.warning("profile_id missing in configuration message.")
         except Exception as e:
             logger.error(f"Error processing configuration message: {e}")
 

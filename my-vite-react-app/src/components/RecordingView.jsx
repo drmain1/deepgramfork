@@ -112,10 +112,13 @@ function RecordingView({
         webSocketRef.current = null;
       }
 
+      // Get the access token for WebSocket authentication
+      const accessToken = await getAccessTokenSilently();
+      
       // Choose the correct WebSocket endpoint based on multilingual setting
       const wsEndpoint = isMultilingual 
-        ? 'ws://localhost:8000/stream/multilingual'  // Speechmatics for multilingual
-        : 'ws://localhost:8000/stream';              // Deepgram for monolingual medical
+        ? `ws://localhost:8000/stream/multilingual?token=${encodeURIComponent(accessToken)}`  // Speechmatics for multilingual
+        : `ws://localhost:8000/stream?token=${encodeURIComponent(accessToken)}`;              // Deepgram for monolingual medical
 
       console.log(`[WebSocket] Attempting to connect to ${wsEndpoint} for ${isMultilingual ? 'multilingual (Speechmatics)' : 'monolingual medical (Deepgram)'} transcription...`);
       webSocketRef.current = new WebSocket(wsEndpoint);

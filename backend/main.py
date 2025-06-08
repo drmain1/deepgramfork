@@ -1,6 +1,6 @@
 import uvicorn
 import asyncio
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 import os
@@ -117,25 +117,53 @@ deepgram_client = AsyncLiveClient(config)
 import tempfile
 
 @app.websocket("/stream")
-async def websocket_stream_endpoint(websocket: WebSocket):
+async def websocket_stream_endpoint(websocket: WebSocket, token: str = Query(...)):
     """
     Handles the primary WebSocket streaming connection for Deepgram transcription.
     This endpoint delegates to handle_deepgram_websocket for monolingual medical transcription.
     For multilingual support, clients should use the /stream/multilingual endpoint.
     """
-    # The get_user_settings function from this file is passed as a callable
-    # to handle_deepgram_websocket, allowing it to fetch user-specific settings.
-    await handle_deepgram_websocket(websocket, get_user_settings)
+    # Verify JWT token before accepting WebSocket connection
+    try:
+        # Use the existing token verifier from auth_middleware
+        from auth_middleware import token_verifier
+        user_payload = token_verifier.verify_token(token)
+        user_id = user_payload.get('sub')
+        
+        # Accept the WebSocket connection
+        await websocket.accept()
+        
+        # Pass the authenticated user_id to the handler
+        await handle_deepgram_websocket(websocket, get_user_settings, user_id)
+    except HTTPException as e:
+        # Close WebSocket with policy violation code for auth failures
+        await websocket.close(code=1008, reason=f"Authentication failed: {e.detail}")
+    except Exception as e:
+        await websocket.close(code=1011, reason=f"Server error: {str(e)}")
 
 @app.websocket("/stream/multilingual")
-async def websocket_multilingual_stream_endpoint(websocket: WebSocket):
+async def websocket_multilingual_stream_endpoint(websocket: WebSocket, token: str = Query(...)):
     """
     Handles WebSocket streaming connection for Speechmatics multilingual transcription.
     This endpoint provides Spanish/English code-switching and translation capabilities.
     """
-    # The get_user_settings function from this file is passed as a callable
-    # to handle_speechmatics_websocket, allowing it to fetch user-specific settings.
-    await handle_speechmatics_websocket(websocket, get_user_settings)
+    # Verify JWT token before accepting WebSocket connection
+    try:
+        # Use the existing token verifier from auth_middleware
+        from auth_middleware import token_verifier
+        user_payload = token_verifier.verify_token(token)
+        user_id = user_payload.get('sub')
+        
+        # Accept the WebSocket connection
+        await websocket.accept()
+        
+        # Pass the authenticated user_id to the handler
+        await handle_speechmatics_websocket(websocket, get_user_settings, user_id)
+    except HTTPException as e:
+        # Close WebSocket with policy violation code for auth failures
+        await websocket.close(code=1008, reason=f"Authentication failed: {e.detail}")
+    except Exception as e:
+        await websocket.close(code=1011, reason=f"Server error: {str(e)}")
 
 class TranscriptionProfileItem(BaseModel):
     id: str = Field(..., description="Unique identifier for the profile")
