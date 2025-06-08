@@ -256,8 +256,9 @@ async def save_session_data_endpoint(
     current_user_id: str = Depends(get_user_id)
 ):
     # Verify that the user_id in the request matches the authenticated user
+    print(f"Save session - Request user_id: {request_data.user_id}, Auth user_id: {current_user_id}")
     if request_data.user_id != current_user_id:
-        raise HTTPException(status_code=403, detail="You can only save your own session data")
+        raise HTTPException(status_code=403, detail=f"You can only save your own session data. Request user: {request_data.user_id}, Auth user: {current_user_id}")
     session_id = request_data.session_id
     original_transcript = request_data.final_transcript_text
     user_id = request_data.user_id 
@@ -641,12 +642,15 @@ async def get_s3_object_content(
     current_user: dict = Depends(get_current_user)
 ):
     # Extract user_id from the S3 key to verify ownership
-    # S3 keys are in format: user_transcripts/{user_id}/session_{session_id}/...
+    # S3 keys are in format: {user_id}/transcripts/... or {user_id}/metadata/...
     key_parts = s3_key.split('/')
-    if len(key_parts) < 2 or not key_parts[0] in ['user_transcripts', 'user_settings']:
+    if len(key_parts) < 3:
         raise HTTPException(status_code=400, detail="Invalid S3 key format")
     
-    key_user_id = key_parts[1]
+    # The user_id is the first part of the key
+    key_user_id = key_parts[0]
+    
+    # Verify that the user can only access their own content
     if key_user_id != current_user['sub']:
         raise HTTPException(status_code=403, detail="You can only access your own content")
     if not s3_client:

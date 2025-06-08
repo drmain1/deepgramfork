@@ -38,7 +38,7 @@ function RecordingView({
   userSettings,
   onClose
 }) {
-  const { user } = useAuth();
+  const { user, getAccessTokenSilently } = useAuth();
   const { startPendingRecording, updateRecording, removeRecording, fetchUserRecordings } = useRecordings();
 
   const [isRecording, setIsRecording] = useState(false);
@@ -351,7 +351,8 @@ function RecordingView({
     console.log("[RecordingView] Saving session with ID:", sessionId);
     
     try {
-      const url = '/api/v1/save_session_data';
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      const url = `${API_BASE_URL}/api/v1/save_session_data`;
       
       // Get the active transcription profile and its LLM instructions
       const activeProfile = userSettings.transcriptionProfiles?.find(p => p.id === selectedProfileId);
@@ -390,10 +391,12 @@ function RecordingView({
         transcriptWithLocation = locationHeader + finalTranscriptContent;
       }
       
+      const accessToken = await getAccessTokenSilently();
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           session_id: sessionId,
