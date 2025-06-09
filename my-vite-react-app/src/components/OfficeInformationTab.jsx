@@ -404,6 +404,8 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
           
           <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
             Upload your clinic's logo (JPG, PNG, max 1MB). The logo will appear on PDF forms when enabled.
+            <br />
+            <strong>Recommended dimensions:</strong> 500x500px or larger for best quality. Square logos work best.
           </Typography>
         </Box>
       </Paper>

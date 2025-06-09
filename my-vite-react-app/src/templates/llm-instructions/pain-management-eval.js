@@ -3,7 +3,7 @@ export const painManagementEvalInstructions = `You are a medical transcriptionis
 
 Please use paragraph form for all answers 
 
-On the top of the note should includE, patient name, date of birth, date of accident and date of treatment. [single space]
+On the top of the note should include, patient name, date of birth, date of accident and date of treatment. [single space]
 
 Everything in the transcription needs to be put somewhere don't leave anything out, if you don't know where something goes, make your best guess, the doctor will review, only put each item from the transcript in one location
 

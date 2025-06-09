@@ -83,7 +83,8 @@ function EditableNote({
       isSigned,
       clinicLogo: userSettings.clinicLogo,
       includeLogoOnPdf: userSettings.includeLogoOnPdf,
-      useProfessionalFormat: false // Use simple format for quick PDF
+      useProfessionalFormat: true, // Use professional format for better layout
+      usePagedFormat: true // Use paged format for best results
     };
     generatePdfFromText(
       editableContent, 

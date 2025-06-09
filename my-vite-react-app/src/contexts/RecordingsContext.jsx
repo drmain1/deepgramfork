@@ -204,34 +204,6 @@ export function RecordingsProvider({ children }) {
     setRecordings(prevRecordings => prevRecordings.filter(rec => rec.id !== sessionId));
   }, []);
 
-  const deletePersistedRecording = useCallback(async (sessionId) => {
-    if (!user || !user.sub) {
-      console.error('User not authenticated, cannot delete recording.');
-      return;
-    }
-    try {
-      const accessToken = await getAccessTokenSilently();
-      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-      const response = await fetch(`${API_BASE_URL}/api/v1/recordings/${user.sub}/${sessionId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: 'Failed to delete recording from server.' }));
-        throw new Error(errorData.detail || `Server error: ${response.status}`);
-      }
-
-      removeRecording(sessionId);
-      console.log(`Recording ${sessionId} deleted successfully.`);
-    } catch (error) {
-      console.error('Error deleting recording:', error);
-      throw error;
-    }
-  }, [user, getAccessTokenSilently, removeRecording]);
-
   const addRecording = (recording) => {
     setRecordings(prevRecordings =>
       [recording, ...prevRecordings.filter(r => r.id !== recording.id)].sort((a,b) => new Date(b.date) - new Date(a.date))
@@ -288,6 +260,40 @@ export function RecordingsProvider({ children }) {
       setIsLoadingSelectedTranscript(false);
     }
   }, [selectedRecordingId]);
+
+  const deletePersistedRecording = useCallback(async (sessionId) => {
+    if (!user || !user.sub) {
+      console.error('User not authenticated, cannot delete recording.');
+      return;
+    }
+    try {
+      const accessToken = await getAccessTokenSilently();
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_BASE_URL}/api/v1/recordings/${user.sub}/${sessionId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Failed to delete recording from server.' }));
+        throw new Error(errorData.detail || `Server error: ${response.status}`);
+      }
+
+      removeRecording(sessionId);
+      
+      // If the deleted recording was selected, clear the selection
+      if (selectedRecordingId === sessionId) {
+        selectRecording(null);
+      }
+      
+      console.log(`Recording ${sessionId} deleted successfully.`);
+    } catch (error) {
+      console.error('Error deleting recording:', error);
+      throw error;
+    }
+  }, [user, getAccessTokenSilently, removeRecording, selectedRecordingId, selectRecording]);
 
   // Effect to handle recording selection changes (initial load)
   useEffect(() => {

@@ -53,36 +53,49 @@ export const generateOptimizedPdf = async (textContent, fileName = "document.pdf
     const contentWidth = pageWidth - margins.left - margins.right;
     let yPosition = margins.top;
 
-    // Add clinic logo if available and enabled
-    if (includeLogoOnPdf && clinicLogo) {
-      try {
-        // Add logo image to PDF
-        const logoWidth = 40; // mm
-        const logoHeight = 40; // mm
-        pdf.addImage(clinicLogo, 'PNG', pageWidth / 2 - logoWidth / 2, yPosition, logoWidth, logoHeight);
-        yPosition += logoHeight + 10;
-      } catch (error) {
-        console.error('Error adding logo to PDF:', error);
-      }
-    }
-
-    // Add location header if available
-    if (finalLocation && finalLocation.trim()) {
-      pdf.setFontSize(12);
-      pdf.setFont("helvetica", "bold");
-      const locationLines = pdf.splitTextToSize(finalLocation, contentWidth);
-      locationLines.forEach(line => {
-        if (yPosition > pageHeight - margins.bottom) {
-          pdf.addPage();
-          yPosition = margins.top;
+    // Add header with logo on left and location on right
+    if ((includeLogoOnPdf && clinicLogo) || (finalLocation && finalLocation.trim())) {
+      const headerYStart = yPosition;
+      
+      // Logo on the left - positioned closer to corner
+      if (includeLogoOnPdf && clinicLogo) {
+        try {
+          const logoWidth = 45; // mm (increased for better visibility)
+          const logoHeight = 45; // mm
+          // Position logo closer to top-left corner
+          pdf.addImage(clinicLogo, 'PNG', 10, 10, logoWidth, logoHeight);
+        } catch (error) {
+          console.error('Error adding logo to PDF:', error);
         }
-        pdf.text(line, pageWidth / 2, yPosition, { align: 'center' });
-        yPosition += 6;
-      });
+      }
+      
+      // Location on the right - Professional formatting
+      if (finalLocation && finalLocation.trim()) {
+        const locationLines = finalLocation.split('\n').filter(line => line.trim());
+        let rightTextY = 15; // Align with top of logo
+        
+        locationLines.forEach((line, index) => {
+          // First line (office name) in bold and slightly larger
+          if (index === 0) {
+            pdf.setFontSize(12);
+            pdf.setFont("helvetica", "bold");
+          } else {
+            // Address lines in normal font
+            pdf.setFontSize(10);
+            pdf.setFont("helvetica", "normal");
+          }
+          
+          pdf.text(line.trim(), pageWidth - margins.right, rightTextY, { align: 'right' });
+          rightTextY += (index === 0) ? 6 : 5; // More space after office name
+        });
+      }
+      
+      // Move yPosition past the header (increased for larger logo)
+      yPosition = headerYStart + 50;
       
       // Add separator line
       pdf.setLineWidth(0.5);
-      pdf.line(margins.left, yPosition + 2, pageWidth - margins.right, yPosition + 2);
+      pdf.line(margins.left, yPosition, pageWidth - margins.right, yPosition);
       yPosition += 10;
     }
 
@@ -351,37 +364,90 @@ export const createMedicalDocumentTemplate = (content, metadata = {}, options = 
   // Parse the content into sections
   const { sections, unstructuredContent } = parseTranscriptSections(content);
 
-  // Header section with logo
+  // Header section with logo on left and location on right using table layout
   let headerHTML = '';
-  if (includeLogoOnPdf && clinicLogo) {
+  if ((includeLogoOnPdf && clinicLogo) || location) {
     headerHTML += `
-      <div style="
-        text-align: center;
+      <table style="
+        width: 100%;
         margin-bottom: 20px;
+        border-collapse: collapse;
+        margin-top: -10px;
       ">
-        <img src="${clinicLogo}" alt="Clinic Logo" style="
-          max-width: 150px;
-          max-height: 150px;
-          object-fit: contain;
-        " />
-      </div>
+        <tr>
+          <td style="
+            width: 50%;
+            vertical-align: top;
+            padding: 0;
+            padding-left: 0;
+          ">
     `;
-  }
-  
-  if (location) {
+    
+    // Logo on the left
+    if (includeLogoOnPdf && clinicLogo) {
+      headerHTML += `
+        <img src="${clinicLogo}" alt="Clinic Logo" style="
+          max-width: 180px;
+          max-height: 180px;
+          object-fit: contain;
+          display: block;
+        " />
+      `;
+    }
+    
     headerHTML += `
+          </td>
+          <td style="
+            width: 50%;
+            vertical-align: top;
+            text-align: right;
+            padding: 0;
+          ">
+    `;
+    
+    // Location on the right - Professional formatting
+    if (location) {
+      const locationLines = location.split('\n').filter(line => line.trim());
+      headerHTML += `
+        <div style="
+          text-align: right;
+          color: #000;
+          line-height: 1.4;
+        ">
+      `;
+      
+      locationLines.forEach((line, index) => {
+        if (index === 0) {
+          // Office name - bold and larger
+          headerHTML += `
+            <div style="
+              font-size: ${headerFontSize}px;
+              font-weight: bold;
+              margin-bottom: 4px;
+            ">${line.trim()}</div>
+          `;
+        } else {
+          // Address lines - normal weight
+          headerHTML += `
+            <div style="
+              font-size: ${headerFontSize - 2}px;
+              font-weight: normal;
+            ">${line.trim()}</div>
+          `;
+        }
+      });
+      
+      headerHTML += `</div>`;
+    }
+    
+    headerHTML += `
+          </td>
+        </tr>
+      </table>
       <div style="
-        text-align: center;
-        padding-bottom: 15px;
-        margin-bottom: 20px;
         border-bottom: 2px solid #2c3e50;
-        font-size: ${headerFontSize}px;
-        font-weight: bold;
-        color: #2c3e50;
-        line-height: 1.3;
-      ">
-        ${location.split('\n').join('<br>')}
-      </div>
+        margin-bottom: 20px;
+      "></div>
     `;
   }
 
@@ -620,7 +686,7 @@ export const generateProfessionalMedicalPdf = async (textContent, fileName = "me
       left: -9999px;
       width: 794px;
       background: white;
-      padding: 20px;
+      padding: 40px 40px 40px 40px;
       box-sizing: border-box;
     `;
     container.innerHTML = htmlTemplate;
@@ -816,6 +882,10 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
     // Function to create page container with headers/footers
     const createPageContainer = (pageContent, pageNum, totalPageCount) => {
       const container = document.createElement('div');
+      // Use minimal padding for first page to allow logo to be close to corner
+      const topPadding = pageNum === 1 ? 20 : margins.top * 3.77;
+      const leftPadding = pageNum === 1 ? 20 : margins.left * 3.77;
+      
       container.style.cssText = `
         width: 794px;
         height: 1123px;
@@ -828,7 +898,7 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
         box-sizing: border-box;
-        padding: ${margins.top * 3.77}px ${margins.right * 3.77}px ${margins.bottom * 3.77}px ${margins.left * 3.77}px;
+        padding: ${topPadding}px ${margins.right * 3.77}px ${margins.bottom * 3.77}px ${leftPadding}px;
       `;
 
       let html = '';
@@ -848,7 +918,7 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
             padding-bottom: 8px;
             text-align: center;
           ">
-            ${finalLocation ? finalLocation.split('\n')[0] : ''}
+            ${finalLocation ? finalLocation.split('\n').filter(line => line.trim())[0] : ''}
           </div>
         `;
       }
@@ -856,7 +926,7 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
       // Main content
       html += `
         <div style="
-          margin-top: ${pageNum === 1 ? '10px' : includeHeaderOnAllPages ? '70px' : '20px'};
+          margin-top: ${pageNum === 1 ? '5px' : includeHeaderOnAllPages ? '70px' : '20px'};
           margin-bottom: 30px;
           font-size: ${fontSize}px;
           line-height: ${lineHeight};
@@ -1011,24 +1081,28 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
       if (pageIndex === 0) {
         let headerContent = '';
         
-        // Add logo placeholder if enabled (will be rendered as HTML)
-        if (includeLogoOnPdf && clinicLogo) {
-          headerContent += '[CLINIC_LOGO]\n\n';
-        }
-        
         if (finalLocation && !pageContent.includes(finalLocation.split('\n')[0])) {
-          // Build header info
+          // Build header info with special formatting marker
+          headerContent += '[HEADER_START]\n';
+          
+          if (includeLogoOnPdf && clinicLogo) {
+            headerContent += '[CLINIC_LOGO]\n';
+          }
+          
+          headerContent += '[LOCATION_RIGHT]\n';
           const locationLines = finalLocation.split('\n').filter(line => line.trim());
           locationLines.forEach(line => {
             headerContent += `${line.trim()}\n`;
           });
+          headerContent += '[/LOCATION_RIGHT]\n';
+          headerContent += '[HEADER_END]\n\n';
           
           if (patientName || dateOfBirth || dateOfAccident || dateOfConsultation) {
-            headerContent += '\n';
             if (patientName) headerContent += `Patient Name: ${patientName}\n`;
             if (dateOfBirth) headerContent += `Date of Birth: ${dateOfBirth}\n`;
             if (dateOfAccident) headerContent += `Date of Accident: ${dateOfAccident}\n`;
             if (dateOfConsultation) headerContent += `Date of Treatment: ${dateOfConsultation}\n`;
+            headerContent += '\n';
           }
         }
         
@@ -1147,7 +1221,7 @@ export const generatePdfFromText = async (textContent, fileName = "document.pdf"
     line-height: ${lineHeight};
     color: black;
     background: white;
-    padding: ${margins.top}mm ${margins.right}mm ${margins.bottom + 20}mm ${margins.left}mm;
+    padding: 40px 40px ${margins.bottom + 20}mm 40px;
     width: 794px;
     box-sizing: border-box;
     position: absolute;
@@ -1157,15 +1231,70 @@ export const generatePdfFromText = async (textContent, fileName = "document.pdf"
   
   let content = '';
   
-  // Add location if available
-  if (finalLocation && finalLocation.trim()) {
-    content += `<div style="
-      font-size: ${locationFontSize}px;
-      font-weight: normal;
-      margin-bottom: 8px;
-      white-space: pre-line;
-      line-height: 1.3;
-    ">${finalLocation.trim()}</div>`;
+  // Add header with location on right (and optionally logo on left) using table layout
+  if ((options.includeLogoOnPdf && options.clinicLogo) || (finalLocation && finalLocation.trim())) {
+    content += `
+      <table style="width: calc(100% + 40px); margin-left: -20px; margin-bottom: 15px; border-collapse: collapse;">
+        <tr>
+          <td style="width: 50%; vertical-align: top; padding: 0; padding-left: 0;">
+    `;
+    
+    // Logo on left if available
+    if (options.includeLogoOnPdf && options.clinicLogo) {
+      content += `
+        <img src="${options.clinicLogo}" alt="Clinic Logo" style="
+          max-width: 150px;
+          max-height: 150px;
+          object-fit: contain;
+          display: block;
+        " />
+      `;
+    } else {
+      content += `&nbsp;`; // Non-breaking space for empty cell
+    }
+    
+    content += `
+          </td>
+          <td style="width: 50%; vertical-align: top; text-align: right; padding: 0;">
+    `;
+    
+    // Location on right - Professional formatting
+    if (finalLocation && finalLocation.trim()) {
+      const locationLines = finalLocation.split('\n').filter(line => line.trim());
+      content += `<div style="text-align: right; line-height: 1.3;">`;
+      
+      locationLines.forEach((line, index) => {
+        if (index === 0) {
+          // Office name - bold and larger
+          content += `
+            <div style="
+              font-size: ${locationFontSize + 2}px;
+              font-weight: bold;
+              margin-bottom: 2px;
+            ">${line.trim()}</div>
+          `;
+        } else {
+          // Address lines
+          content += `
+            <div style="
+              font-size: ${locationFontSize}px;
+              font-weight: normal;
+            ">${line.trim()}</div>
+          `;
+        }
+      });
+      
+      content += `</div>`;
+    } else {
+      content += `&nbsp;`;
+    }
+    
+    content += `
+          </td>
+        </tr>
+      </table>
+      <div style="border-bottom: 1px solid #ccc; margin-bottom: 15px;"></div>
+    `;
   }
   
   // Add main content (cleaned of location header if it was extracted)
@@ -1470,17 +1599,71 @@ export const convertFormattedTextToHtml = (content, options = {}) => {
   while (i < lines.length) {
     const line = lines[i];
     
-    // Check for logo placeholder
-    if (line.trim() === '[CLINIC_LOGO]' && clinicLogo) {
-      htmlContent += `
-        <div style="text-align: center; margin-bottom: 20px;">
-          <img src="${clinicLogo}" alt="Clinic Logo" style="
-            max-width: 150px;
-            max-height: 150px;
-            object-fit: contain;
-          " />
-        </div>
+    // Check for special header section
+    if (line.trim() === '[HEADER_START]') {
+      let logoHTML = '';
+      let locationHTML = '';
+      
+      i++; // Move past [HEADER_START]
+      
+      while (i < lines.length && lines[i].trim() !== '[HEADER_END]') {
+        const headerLine = lines[i].trim();
+        
+        if (headerLine === '[CLINIC_LOGO]' && clinicLogo) {
+          logoHTML = `
+            <img src="${clinicLogo}" alt="Clinic Logo" style="
+              max-width: 200px;
+              max-height: 200px;
+              object-fit: contain;
+              display: block;
+              margin: 0;
+              padding: 0;
+            " />
+          `;
+        } else if (headerLine === '[LOCATION_RIGHT]') {
+          locationHTML = `<div style="text-align: right; line-height: 1.4;">`;
+          i++;
+          let lineIndex = 0;
+          while (i < lines.length && lines[i].trim() !== '[/LOCATION_RIGHT]') {
+            if (lines[i].trim()) {
+              if (lineIndex === 0) {
+                // First line (office name) - bold and larger
+                locationHTML += `<div style="font-size: 14px; font-weight: bold; color: #000; margin-bottom: 2px;">${lines[i].trim()}</div>`;
+              } else {
+                // Address lines
+                locationHTML += `<div style="font-size: 11px; color: #2c3e50;">${lines[i].trim()}</div>`;
+              }
+              lineIndex++;
+            }
+            i++;
+          }
+          locationHTML += '</div>';
+        }
+        i++;
+      }
+      
+      // Build table-based header
+      let headerHTML = `
+        <table style="width: calc(100% + 20px); margin-left: -10px; margin-top: -10px; margin-bottom: 20px; border-collapse: collapse;">
+          <tr>
+            <td style="width: 50%; vertical-align: top; padding: 0;">
+              ${logoHTML || '&nbsp;'}
+            </td>
+            <td style="width: 50%; vertical-align: top; text-align: right; padding: 0; padding-right: 10px;">
+              ${locationHTML || '&nbsp;'}
+            </td>
+          </tr>
+        </table>
+        <div style="border-bottom: 2px solid #2c3e50; margin-bottom: 20px; margin-left: -10px; margin-right: -10px; margin-top: 10px;"></div>
       `;
+      
+      htmlContent += headerHTML;
+      i++; // Move past [HEADER_END]
+      continue;
+    }
+    
+    // Skip standalone [CLINIC_LOGO] - only process it within [HEADER_START]/[HEADER_END]
+    if (line.trim() === '[CLINIC_LOGO]' && clinicLogo) {
       i++;
       continue;
     }
