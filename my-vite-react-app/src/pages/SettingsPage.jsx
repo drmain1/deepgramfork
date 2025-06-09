@@ -54,7 +54,6 @@ function SettingsPage() {
   };
 
   const tabs = [
-    'Standard Templates',
     'Narrative Templates', 
     'Macro Phrases',
     'Custom Vocabulary',

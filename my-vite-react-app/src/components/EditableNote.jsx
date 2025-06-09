@@ -3,6 +3,7 @@ import { TextField, Button, Box, IconButton, Tooltip, Snackbar, Alert } from '@m
 import { ContentCopy, Check, Edit as EditIcon, Save as SaveIcon } from '@mui/icons-material';
 import { generatePdfFromText } from './pdfUtils';
 import FormattedMedicalText from './FormattedMedicalText';
+import { useUserSettings } from '../contexts/UserSettingsContext';
 
 function EditableNote({ 
   content, 
@@ -26,6 +27,9 @@ function EditableNote({
   const [copySuccess, setCopySuccess] = useState(false);
   const [showCopyFeedback, setShowCopyFeedback] = useState(false);
   const isInitialMount = useRef(true);
+  
+  // Get user settings for logo
+  const { userSettings } = useUserSettings();
 
   // Initialize content when it changes from outside (only if not editing)
   useEffect(() => {
@@ -77,6 +81,8 @@ function EditableNote({
       doctorName,
       doctorSignature,
       isSigned,
+      clinicLogo: userSettings.clinicLogo,
+      includeLogoOnPdf: userSettings.includeLogoOnPdf,
       useProfessionalFormat: false // Use simple format for quick PDF
     };
     generatePdfFromText(

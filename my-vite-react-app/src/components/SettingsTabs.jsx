@@ -20,12 +20,13 @@ function SettingsTabs({
 }) { 
   return (
     <>
-      {tabValue === 0 && <NoteStructureTab settingsLoading={settingsLoading} />} 
-      {tabValue === 1 && <NarrativeTemplatesTab addTranscriptionProfile={addTranscriptionProfile} settingsLoading={settingsLoading} />} 
-      {tabValue === 2 && <MacroPhrasesTab macroPhrases={macroPhrases} saveMacroPhrases={saveMacroPhrases} settingsLoading={settingsLoading} />}
-      {tabValue === 3 && <CustomVocabularyTab customVocabulary={customVocabulary} saveCustomVocabulary={saveCustomVocabulary} settingsLoading={settingsLoading} />}
-      {tabValue === 4 && <OfficeInformationTab officeInformation={officeInformation} saveOfficeInformation={saveOfficeInformation} settingsLoading={settingsLoading} />}
-      {tabValue === 5 && <TranscriptionProfilesTab transcriptionProfiles={transcriptionProfiles} deleteTranscriptionProfile={deleteTranscriptionProfile} settingsLoading={settingsLoading} />} 
+      {/* Standard Templates tab hidden but functionality preserved */}
+      {/* {tabValue === -1 && <NoteStructureTab settingsLoading={settingsLoading} />} */}
+      {tabValue === 0 && <NarrativeTemplatesTab addTranscriptionProfile={addTranscriptionProfile} settingsLoading={settingsLoading} />} 
+      {tabValue === 1 && <MacroPhrasesTab macroPhrases={macroPhrases} saveMacroPhrases={saveMacroPhrases} settingsLoading={settingsLoading} />}
+      {tabValue === 2 && <CustomVocabularyTab customVocabulary={customVocabulary} saveCustomVocabulary={saveCustomVocabulary} settingsLoading={settingsLoading} />}
+      {tabValue === 3 && <OfficeInformationTab officeInformation={officeInformation} saveOfficeInformation={saveOfficeInformation} settingsLoading={settingsLoading} />}
+      {tabValue === 4 && <TranscriptionProfilesTab transcriptionProfiles={transcriptionProfiles} deleteTranscriptionProfile={deleteTranscriptionProfile} settingsLoading={settingsLoading} />} 
     </>
   );
 }

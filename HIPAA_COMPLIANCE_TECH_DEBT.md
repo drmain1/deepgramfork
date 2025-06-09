@@ -31,14 +31,18 @@ This document tracks remaining HIPAA compliance requirements that need to be add
 
 ### 3. S3 Encryption Verification
 **Priority: HIGH**
-- **Current State**: Encryption not verified in code
+- **Current State**: Basic encryption verification added to startup routine
 - **Required**: All PHI must be encrypted at rest and in transit
-- **Implementation Needed**:
-  - Enable S3 server-side encryption (AES-256)
-  - Verify encryption settings programmatically
+- **Implementation Status**:
+  - ✅ S3 encryption verification on startup (checks AES-256)
+  - ✅ S3 versioning check for audit trails
+  - ⚠️  CORS configuration requires manual setup (IAM user lacks s3:PutBucketCORS permission)
+  - ✅ Using base64 data URLs for logo storage (avoids CORS issues)
+- **Still Needed**:
   - Consider client-side encryption for sensitive fields
   - Implement key rotation policies
   - Document encryption standards
+  - Enable CloudTrail for S3 bucket access logging
 
 ## Important Issues (Should Fix Soon)
 
@@ -55,15 +59,19 @@ This document tracks remaining HIPAA compliance requirements that need to be add
 
 ### 5. Security Headers and Rate Limiting
 **Priority: MEDIUM**
-- **Current State**: Basic CORS configuration only
-- **Required**: Comprehensive security headers
-- **Implementation Needed**:
-  - HSTS (Strict-Transport-Security)
-  - CSP (Content-Security-Policy)
-  - X-Frame-Options
-  - X-Content-Type-Options
-  - Rate limiting per user/IP
-  - DDoS protection
+- **Current State**: Security headers middleware implemented
+- **Required**: Comprehensive security headers and rate limiting
+- **Implementation Status**:
+  - ✅ HSTS (Strict-Transport-Security) - 1 year with subdomains
+  - ✅ CSP (Content-Security-Policy) - configured for app needs
+  - ✅ X-Frame-Options - set to DENY
+  - ✅ X-Content-Type-Options - set to nosniff
+  - ✅ X-XSS-Protection - enabled
+  - ✅ Referrer-Policy - strict-origin-when-cross-origin
+- **Still Needed**:
+  - Rate limiting per user/IP (consider using slowapi or similar)
+  - DDoS protection (AWS WAF or CloudFlare)
+  - Request size limits for file uploads
 
 ### 6. Session Management
 **Priority: MEDIUM**
@@ -136,5 +144,48 @@ Before handling real PHI:
 - [NIST 800-66](https://csrc.nist.gov/publications/detail/sp/800-66/rev-1/final)
 
 ---
-*Last Updated: December 2024*
+## Current Implementation Notes (January 2025)
+
+### Recent Updates:
+1. **S3 Bucket Security**:
+   - Added encryption verification on startup
+   - Checks for bucket versioning (audit trails)
+   - CORS configuration must be done manually in AWS Console due to IAM permissions
+   - Switched to base64 image storage to avoid CORS issues with logos
+
+2. **Security Headers**:
+   - Implemented comprehensive security headers middleware
+   - Includes HSTS, CSP, X-Frame-Options, etc.
+   - Ready for HTTPS deployment
+
+3. **Audit Logging**:
+   - Basic S3 access logging exists
+   - Need to implement structured application-level audit logging
+   - Consider AWS CloudTrail for comprehensive audit trails
+
+### Manual AWS Console Tasks Required:
+1. **S3 Bucket CORS Configuration**:
+   ```json
+   {
+     "CORSRules": [{
+       "ID": "AllowWebAccess",
+       "AllowedOrigins": ["http://localhost:5173", "http://localhost:5174", "https://yourdomain.com"],
+       "AllowedMethods": ["GET", "HEAD"],
+       "AllowedHeaders": ["*"],
+       "ExposeHeaders": ["ETag"],
+       "MaxAgeSeconds": 3600
+     }]
+   }
+   ```
+
+2. **S3 Bucket Encryption**:
+   - Ensure AES-256 encryption is enabled
+   - Consider enabling AWS KMS for key management
+
+3. **IAM Policy Updates**:
+   - Current user lacks s3:PutBucketCORS permission (this is fine for security)
+   - Review and apply principle of least privilege
+
+---
+*Last Updated: January 2025*
 *Next Review: Before production deployment*

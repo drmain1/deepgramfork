@@ -1,20 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, TextField, Button, List, ListItem, ListItemText, IconButton, Paper, Divider } from '@mui/material';
+import { Box, Typography, TextField, Button, List, ListItem, ListItemText, IconButton, Paper, Divider, Switch, FormControlLabel } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import { useUserSettings } from '../contexts/UserSettingsContext';
+import { useAuth } from '../contexts/AuthContext';
 import SignaturePad from './SignaturePad';
 
 function OfficeInformationTab({ officeInformation, saveOfficeInformation, settingsLoading }) {
   const [newOfficeText, setNewOfficeText] = useState('');
   const { userSettings, updateDoctorInformation } = useUserSettings();
+  const { getAccessTokenSilently } = useAuth();
   const [doctorName, setDoctorName] = useState('');
   const [showSignaturePad, setShowSignaturePad] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [clinicLogo, setClinicLogo] = useState(null);
+  const [includeLogoOnPdf, setIncludeLogoOnPdf] = useState(false);
+  const [logoPreview, setLogoPreview] = useState('');
 
-  // Sync doctor name with userSettings
+  // Sync doctor name and logo with userSettings
   useEffect(() => {
     setDoctorName(userSettings.doctorName || '');
-  }, [userSettings.doctorName]);
+    setLogoPreview(userSettings.clinicLogo || '');
+    setIncludeLogoOnPdf(userSettings.includeLogoOnPdf || false);
+  }, [userSettings.doctorName, userSettings.clinicLogo, userSettings.includeLogoOnPdf]);
 
   const handleInputChange = (e) => {
     setNewOfficeText(e.target.value);
@@ -68,6 +76,138 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
       alert('Failed to save signature. Please try again.');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleLogoUpload = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      if (file.size > 1 * 1024 * 1024) { // 1MB limit for base64 storage
+        alert('Logo file size must be less than 1MB');
+        return;
+      }
+      
+      // Store the file for upload
+      setClinicLogo(file);
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setLogoPreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleLogoSave = async () => {
+    if (!clinicLogo) {
+      alert('Please upload a logo first');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // First, upload the logo to S3
+      const formData = new FormData();
+      formData.append('file', clinicLogo);
+      
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      const accessToken = await getAccessTokenSilently();
+      
+      const uploadResponse = await fetch(`${API_BASE_URL}/api/v1/upload_logo`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: formData
+      });
+      
+      if (!uploadResponse.ok) {
+        const error = await uploadResponse.json();
+        throw new Error(error.detail || 'Failed to upload logo');
+      }
+      
+      const { logoUrl } = await uploadResponse.json();
+      
+      // The logoUrl is now a base64 data URL
+      // Update user settings
+      await updateDoctorInformation(
+        userSettings.doctorName, 
+        userSettings.doctorSignature,
+        logoUrl,
+        includeLogoOnPdf
+      );
+      
+      alert('Logo saved successfully!');
+      setClinicLogo(null);
+    } catch (error) {
+      console.error('Error saving logo:', error);
+      alert('Failed to save logo. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    if (window.confirm('Are you sure you want to remove the clinic logo?')) {
+      setIsSaving(true);
+      try {
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+        const accessToken = await getAccessTokenSilently();
+        
+        // Call delete endpoint
+        const deleteResponse = await fetch(`${API_BASE_URL}/api/v1/delete_logo`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+          }
+        });
+        
+        if (!deleteResponse.ok) {
+          const error = await deleteResponse.json();
+          throw new Error(error.detail || 'Failed to delete logo');
+        }
+        
+        // Update local state
+        await updateDoctorInformation(
+          userSettings.doctorName, 
+          userSettings.doctorSignature,
+          null,
+          false
+        );
+        
+        setLogoPreview('');
+        setClinicLogo(null);
+        setIncludeLogoOnPdf(false);
+        alert('Logo removed successfully!');
+      } catch (error) {
+        console.error('Error removing logo:', error);
+        alert('Failed to remove logo. Please try again.');
+      } finally {
+        setIsSaving(false);
+      }
+    }
+  };
+
+  const handleIncludeLogoToggle = async (event) => {
+    const newValue = event.target.checked;
+    setIncludeLogoOnPdf(newValue);
+    
+    if (userSettings.clinicLogo) {
+      setIsSaving(true);
+      try {
+        await updateDoctorInformation(
+          userSettings.doctorName, 
+          userSettings.doctorSignature,
+          userSettings.clinicLogo,
+          newValue
+        );
+      } catch (error) {
+        console.error('Error updating logo preference:', error);
+        setIncludeLogoOnPdf(!newValue); // Revert on error
+      } finally {
+        setIsSaving(false);
+      }
     }
   };
 
@@ -175,6 +315,97 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
             )}
           </Box>
         )}
+      </Paper>
+
+      {/* Clinic Logo Section */}
+      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Clinic Logo
+        </Typography>
+        
+        <Box sx={{ mb: 2 }}>
+          {logoPreview ? (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Current logo:
+              </Typography>
+              <img 
+                src={logoPreview} 
+                alt="Clinic logo" 
+                style={{ 
+                  maxWidth: '200px', 
+                  maxHeight: '200px', 
+                  border: '1px solid #ccc',
+                  borderRadius: '4px',
+                  marginBottom: '8px'
+                }} 
+              />
+              <Box>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={includeLogoOnPdf}
+                      onChange={handleIncludeLogoToggle}
+                      disabled={isSaving}
+                    />
+                  }
+                  label="Include logo on PDF forms"
+                />
+              </Box>
+            </Box>
+          ) : (
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              No logo uploaded yet
+            </Typography>
+          )}
+          
+          <Box sx={{ mt: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleLogoUpload}
+              style={{ display: 'none' }}
+              id="logo-upload-input"
+            />
+            <label htmlFor="logo-upload-input">
+              <Button
+                variant="outlined"
+                component="span"
+                startIcon={<CloudUploadIcon />}
+                disabled={isSaving}
+              >
+                {logoPreview ? 'Change Logo' : 'Upload Logo'}
+              </Button>
+            </label>
+            
+            {clinicLogo && (
+              <Button
+                variant="contained"
+                onClick={handleLogoSave}
+                disabled={isSaving}
+                size="small"
+              >
+                Save Logo
+              </Button>
+            )}
+            
+            {logoPreview && !clinicLogo && (
+              <Button
+                variant="outlined"
+                color="error"
+                onClick={handleRemoveLogo}
+                disabled={isSaving}
+                size="small"
+              >
+                Remove Logo
+              </Button>
+            )}
+          </Box>
+          
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+            Upload your clinic's logo (JPG, PNG, max 1MB). The logo will appear on PDF forms when enabled.
+          </Typography>
+        </Box>
       </Paper>
 
       {/* Office Locations Section */}

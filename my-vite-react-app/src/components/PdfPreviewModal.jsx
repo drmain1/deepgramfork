@@ -21,6 +21,7 @@ import {
   parseTranscriptSections,
   createMedicalDocumentTemplate 
 } from './pdfUtils';
+import { useUserSettings } from '../contexts/UserSettingsContext';
 
 function PdfPreviewModal({ 
   open, 
@@ -46,6 +47,9 @@ function PdfPreviewModal({
     useProfessionalFormat: true
   });
   const [parsedSections, setParsedSections] = useState({ sections: [], unstructuredContent: '' });
+  
+  // Get user settings for logo
+  const { userSettings } = useUserSettings();
 
   // Parse content when it changes
   useEffect(() => {
@@ -63,13 +67,15 @@ function PdfPreviewModal({
         doctorName,
         doctorSignature,
         isSigned,
+        clinicLogo: userSettings.clinicLogo,
+        includeLogoOnPdf: userSettings.includeLogoOnPdf,
         ...options
       };
       
       const htmlTemplate = createMedicalDocumentTemplate(content, metadata, options);
       setPreviewHtml(htmlTemplate);
     }
-  }, [content, options, location, doctorName, doctorSignature, isSigned, open]);
+  }, [content, options, location, doctorName, doctorSignature, isSigned, open, userSettings.clinicLogo, userSettings.includeLogoOnPdf]);
 
   const handleOptionChange = (field) => (event) => {
     const value = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
@@ -89,6 +95,8 @@ function PdfPreviewModal({
         doctorName,
         doctorSignature,
         isSigned,
+        clinicLogo: userSettings.clinicLogo,
+        includeLogoOnPdf: userSettings.includeLogoOnPdf,
         ...options
       };
 

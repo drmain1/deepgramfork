@@ -14,6 +14,8 @@ export const UserSettingsProvider = ({ children }) => {
     transcriptionProfiles: [],
     doctorName: '',
     doctorSignature: null,
+    clinicLogo: null,
+    includeLogoOnPdf: false,
   });
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [settingsError, setSettingsError] = useState(null);
@@ -56,6 +58,8 @@ export const UserSettingsProvider = ({ children }) => {
           transcriptionProfiles: data.transcriptionProfiles || [],
           doctorName: data.doctorName || '',
           doctorSignature: data.doctorSignature || null,
+          clinicLogo: data.clinicLogo || null,
+          includeLogoOnPdf: data.includeLogoOnPdf || false,
         });
       }
     } catch (error) {
@@ -136,9 +140,20 @@ export const UserSettingsProvider = ({ children }) => {
         const updatedSettings = { ...userSettings, macroPhrases: newMacros };
         return saveUserSettings(updatedSettings);
     },
-    updateDoctorInformation: (doctorName, doctorSignature) => {
-        console.log('updateDoctorInformation called with:', { doctorName, doctorSignature: doctorSignature ? 'present' : 'null' });
-        const updatedSettings = { ...userSettings, doctorName, doctorSignature };
+    updateDoctorInformation: (doctorName, doctorSignature, clinicLogo, includeLogoOnPdf) => {
+        console.log('updateDoctorInformation called with:', { 
+          doctorName, 
+          doctorSignature: doctorSignature ? 'present' : 'null',
+          clinicLogo: clinicLogo ? 'present' : 'null',
+          includeLogoOnPdf 
+        });
+        const updatedSettings = { 
+          ...userSettings, 
+          doctorName, 
+          doctorSignature,
+          clinicLogo: clinicLogo !== undefined ? clinicLogo : userSettings.clinicLogo,
+          includeLogoOnPdf: includeLogoOnPdf !== undefined ? includeLogoOnPdf : userSettings.includeLogoOnPdf
+        };
         console.log('updateDoctorInformation - Updated settings:', updatedSettings);
         return saveUserSettings(updatedSettings);
     },

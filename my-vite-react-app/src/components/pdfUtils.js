@@ -30,7 +30,9 @@ export const generateOptimizedPdf = async (textContent, fileName = "document.pdf
     dateOfBirth = "",
     dateOfAccident = "",
     dateOfConsultation = "",
-    phoneNumber = ""
+    phoneNumber = "",
+    clinicLogo = "",
+    includeLogoOnPdf = false
   } = options;
 
   try {
@@ -50,6 +52,19 @@ export const generateOptimizedPdf = async (textContent, fileName = "document.pdf
     const margins = { top: 20, right: 20, bottom: 20, left: 20 };
     const contentWidth = pageWidth - margins.left - margins.right;
     let yPosition = margins.top;
+
+    // Add clinic logo if available and enabled
+    if (includeLogoOnPdf && clinicLogo) {
+      try {
+        // Add logo image to PDF
+        const logoWidth = 40; // mm
+        const logoHeight = 40; // mm
+        pdf.addImage(clinicLogo, 'PNG', pageWidth / 2 - logoWidth / 2, yPosition, logoWidth, logoHeight);
+        yPosition += logoHeight + 10;
+      } catch (error) {
+        console.error('Error adding logo to PDF:', error);
+      }
+    }
 
     // Add location header if available
     if (finalLocation && finalLocation.trim()) {
@@ -318,7 +333,9 @@ export const createMedicalDocumentTemplate = (content, metadata = {}, options = 
     dateOfBirth = '',
     dateOfAccident = '',
     dateOfConsultation = '',
-    phoneNumber = ''
+    phoneNumber = '',
+    clinicLogo = '',
+    includeLogoOnPdf = false
   } = metadata;
 
   const {
@@ -334,10 +351,25 @@ export const createMedicalDocumentTemplate = (content, metadata = {}, options = 
   // Parse the content into sections
   const { sections, unstructuredContent } = parseTranscriptSections(content);
 
-  // Header section
+  // Header section with logo
   let headerHTML = '';
+  if (includeLogoOnPdf && clinicLogo) {
+    headerHTML += `
+      <div style="
+        text-align: center;
+        margin-bottom: 20px;
+      ">
+        <img src="${clinicLogo}" alt="Clinic Logo" style="
+          max-width: 150px;
+          max-height: 150px;
+          object-fit: contain;
+        " />
+      </div>
+    `;
+  }
+  
   if (location) {
-    headerHTML = `
+    headerHTML += `
       <div style="
         text-align: center;
         padding-bottom: 15px;
@@ -557,6 +589,8 @@ export const generateProfessionalMedicalPdf = async (textContent, fileName = "me
     dateOfAccident = "",
     dateOfConsultation = "",
     phoneNumber = "",
+    clinicLogo = "",
+    includeLogoOnPdf = false,
     ...styleOptions
   } = options;
 
@@ -569,7 +603,9 @@ export const generateProfessionalMedicalPdf = async (textContent, fileName = "me
     dateOfBirth,
     dateOfAccident,
     dateOfConsultation,
-    phoneNumber
+    phoneNumber,
+    clinicLogo,
+    includeLogoOnPdf
   };
 
   try {
@@ -746,6 +782,8 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
     dateOfAccident = "",
     dateOfConsultation = "",
     phoneNumber = "",
+    clinicLogo = "",
+    includeLogoOnPdf = false,
     fontSize = 12,
     headerFontSize = 11,
     footerFontSize = 10,
@@ -968,30 +1006,40 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
         pdf.addPage();
       }
 
-      // For first page, prepend clinic and patient info if not already in content
+      // For first page, prepend clinic logo, location and patient info if not already in content
       let pageContent = contentPerPage[pageIndex];
-      if (pageIndex === 0 && finalLocation && !pageContent.includes(finalLocation.split('\n')[0])) {
-        // Build header info
+      if (pageIndex === 0) {
         let headerContent = '';
-        const locationLines = finalLocation.split('\n').filter(line => line.trim());
-        locationLines.forEach(line => {
-          headerContent += `${line.trim()}\n`;
-        });
         
-        if (patientName || dateOfBirth || dateOfAccident || dateOfConsultation) {
-          headerContent += '\n';
-          if (patientName) headerContent += `Patient Name: ${patientName}\n`;
-          if (dateOfBirth) headerContent += `Date of Birth: ${dateOfBirth}\n`;
-          if (dateOfAccident) headerContent += `Date of Accident: ${dateOfAccident}\n`;
-          if (dateOfConsultation) headerContent += `Date of Treatment: ${dateOfConsultation}\n`;
+        // Add logo placeholder if enabled (will be rendered as HTML)
+        if (includeLogoOnPdf && clinicLogo) {
+          headerContent += '[CLINIC_LOGO]\n\n';
         }
         
-        pageContent = headerContent + '\n' + pageContent;
+        if (finalLocation && !pageContent.includes(finalLocation.split('\n')[0])) {
+          // Build header info
+          const locationLines = finalLocation.split('\n').filter(line => line.trim());
+          locationLines.forEach(line => {
+            headerContent += `${line.trim()}\n`;
+          });
+          
+          if (patientName || dateOfBirth || dateOfAccident || dateOfConsultation) {
+            headerContent += '\n';
+            if (patientName) headerContent += `Patient Name: ${patientName}\n`;
+            if (dateOfBirth) headerContent += `Date of Birth: ${dateOfBirth}\n`;
+            if (dateOfAccident) headerContent += `Date of Accident: ${dateOfAccident}\n`;
+            if (dateOfConsultation) headerContent += `Date of Treatment: ${dateOfConsultation}\n`;
+          }
+        }
+        
+        if (headerContent) {
+          pageContent = headerContent + '\n' + pageContent;
+        }
       }
 
       // Create page container
       const pageContainer = createPageContainer(
-        convertFormattedTextToHtml(pageContent),
+        convertFormattedTextToHtml(pageContent, { clinicLogo }),
         pageIndex + 1,
         contentPerPage.length
       );
@@ -1249,9 +1297,10 @@ export const generatePdfFromText = async (textContent, fileName = "document.pdf"
  * @param {string} content - The medical transcript content with markdown formatting
  * @returns {string} - HTML formatted content with tables and styling
  */
-export const convertFormattedTextToHtml = (content) => {
+export const convertFormattedTextToHtml = (content, options = {}) => {
   if (!content) return '';
 
+  const { clinicLogo = '' } = options;
   const lines = content.split('\n');
   let htmlContent = '';
   let i = 0;
@@ -1420,6 +1469,21 @@ export const convertFormattedTextToHtml = (content) => {
 
   while (i < lines.length) {
     const line = lines[i];
+    
+    // Check for logo placeholder
+    if (line.trim() === '[CLINIC_LOGO]' && clinicLogo) {
+      htmlContent += `
+        <div style="text-align: center; margin-bottom: 20px;">
+          <img src="${clinicLogo}" alt="Clinic Logo" style="
+            max-width: 150px;
+            max-height: 150px;
+            object-fit: contain;
+          " />
+        </div>
+      `;
+      i++;
+      continue;
+    }
     
     // Check for table at current position
     const tableResult = detectTable(i);

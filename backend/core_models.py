@@ -20,6 +20,8 @@ class UserSettingsData(BaseModel):
     transcriptionProfiles: List[TranscriptionProfileItem] = Field(default_factory=list)
     doctorName: Optional[str] = Field(default="", description="Doctor's name for signatures")
     doctorSignature: Optional[str] = Field(default=None, description="Base64 encoded doctor's signature image")
+    clinicLogo: Optional[str] = Field(default=None, description="Base64 encoded clinic logo image")
+    includeLogoOnPdf: bool = Field(default=False, description="Include clinic logo on PDF forms")
 
 # Default user settings structure
 DEFAULT_USER_SETTINGS = UserSettingsData(

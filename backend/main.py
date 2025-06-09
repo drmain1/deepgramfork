@@ -1,8 +1,10 @@
 import uvicorn
 import asyncio
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 import os
 from dotenv import load_dotenv
 from deepgram import AsyncLiveClient, DeepgramClientOptions, LiveOptions, LiveTranscriptionEvents
@@ -12,6 +14,8 @@ import boto3
 from datetime import datetime
 import json
 import tempfile
+import time
+from typing import Callable
 from pydantic import BaseModel, Field
 from fastapi import HTTPException
 from typing import Optional, List, Dict, Any, Union
@@ -68,6 +72,32 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "*"], # Allow common and custom headers
 )
 
+# Security Headers Middleware for HIPAA Compliance
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        
+        # HIPAA-compliant security headers
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        
+        # Content Security Policy (adjust as needed for your application)
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com data:; "
+            "img-src 'self' data: blob: https:; "
+            "connect-src 'self' wss: https://cognito-idp.*.amazonaws.com https://*.auth0.com;"
+        )
+        
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
 # Global placeholders for clients, to be initialized in startup event
 s3_client = None
 bedrock_runtime_client = None
@@ -86,6 +116,45 @@ async def startup_event():
                 region_name=AWS_REGION
             )
             print("S3 client initialized successfully during startup.")
+            
+            # HIPAA Compliance: Verify S3 bucket encryption (see HIPAA_COMPLIANCE_TECH_DEBT.md #3)
+            try:
+                # Check if bucket encryption is enabled
+                encryption = s3_client.get_bucket_encryption(Bucket=AWS_S3_BUCKET_NAME)
+                sse_algorithm = encryption['ServerSideEncryptionConfiguration']['Rules'][0]['ApplyServerSideEncryptionByDefault']['SSEAlgorithm']
+                if sse_algorithm == 'aws:kms':
+                    print(f"✓ S3 bucket encryption verified: AWS KMS encryption (even better than AES-256!)")
+                else:
+                    print(f"✓ S3 bucket encryption verified: {sse_algorithm}")
+            except ClientError as e:
+                if e.response['Error']['Code'] == 'ServerSideEncryptionConfigurationNotFoundError':
+                    print("⚠️  WARNING: S3 bucket encryption not enabled! This is required for HIPAA compliance.")
+                    print("   Please enable AES-256 encryption on your S3 bucket.")
+                else:
+                    print(f"⚠️  Could not verify bucket encryption: {e}")
+            
+            # Check versioning for audit trail purposes
+            try:
+                versioning = s3_client.get_bucket_versioning(Bucket=AWS_S3_BUCKET_NAME)
+                versioning_status = versioning.get('Status', 'Disabled')
+                if versioning_status == 'Enabled':
+                    print(f"✓ S3 bucket versioning enabled (good for audit trails)")
+                else:
+                    print(f"ℹ️  S3 bucket versioning is {versioning_status} (consider enabling for better audit trails)")
+            except Exception as e:
+                print(f"Could not check bucket versioning: {e}")
+            
+            # Note about CORS configuration
+            print("\n📋 CORS Configuration Note:")
+            print("   Since the IAM user lacks s3:PutBucketCORS permission, you need to manually configure CORS in the AWS Console.")
+            print("   This is actually a security best practice - bucket-level policies should be managed separately from the application.")
+            print("\n   Required CORS configuration for your S3 bucket:")
+            print("   - Allowed Origins: http://localhost:5173, http://localhost:5174, https://yourdomain.com")
+            print("   - Allowed Methods: GET, HEAD")
+            print("   - Allowed Headers: *")
+            print("   - Expose Headers: ETag")
+            print("   - Max Age: 3600\n")
+                
         except Exception as e:
             print(f"Failed to initialize S3 client during startup: {e}")
             s3_client = None # Ensure it's None if init fails
@@ -186,12 +255,23 @@ class UserSettingsData(BaseModel):
     transcriptionProfiles: List[TranscriptionProfileItem] = Field(default_factory=list)
     doctorName: Optional[str] = Field(default="", description="Doctor's name for signatures")
     doctorSignature: Optional[str] = Field(default=None, description="Base64 encoded doctor's signature image")
+    clinicLogo: Optional[str] = Field(default=None, description="URL to clinic logo in S3")
+    includeLogoOnPdf: bool = Field(default=False, description="Include clinic logo on PDF forms")
 
 class SaveUserSettingsRequest(BaseModel):
     user_id: str # This should ideally come from a validated token in the future
     settings: UserSettingsData
 
-DEFAULT_USER_SETTINGS = UserSettingsData().model_dump()
+DEFAULT_USER_SETTINGS = UserSettingsData(
+    macroPhrases=[],
+    customVocabulary=[],
+    officeInformation=[],
+    transcriptionProfiles=[],
+    doctorName='',
+    doctorSignature=None,
+    clinicLogo=None,
+    includeLogoOnPdf=False
+).model_dump()
 
 @app.get("/api/v1/user_settings/{user_id}", response_model=UserSettingsData)
 async def get_user_settings(
@@ -299,6 +379,155 @@ async def save_user_settings(
     except Exception as e:
         print(f"Unexpected error saving settings for user {request.user_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Unexpected error saving user settings: {str(e)}")
+
+# Logo upload endpoint
+@app.post("/api/v1/upload_logo")
+async def upload_logo(
+    file: UploadFile = File(...),
+    current_user_id: str = Depends(get_user_id)
+):
+    """Upload a clinic logo - stores as base64 in user settings"""
+    import base64
+    
+    if not s3_client:
+        raise HTTPException(status_code=503, detail="S3 client not initialized")
+    if not AWS_S3_BUCKET_NAME:
+        raise HTTPException(status_code=503, detail="S3 bucket name not configured")
+    
+    # Debug logging
+    print(f"Logo upload - User: {current_user_id}, File: {file.filename}, Content-Type: {file.content_type}, Size: {file.size}")
+    
+    # Validate file type
+    allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/jpg"]
+    
+    # Handle case where content_type might be None or empty
+    if not file.content_type or file.content_type not in allowed_types:
+        # Try to infer from filename
+        file_ext = file.filename.lower().split('.')[-1] if '.' in file.filename else ''
+        ext_to_mime = {
+            'jpg': 'image/jpeg',
+            'jpeg': 'image/jpeg',
+            'png': 'image/png',
+            'gif': 'image/gif',
+            'webp': 'image/webp'
+        }
+        
+        if file_ext in ext_to_mime:
+            file.content_type = ext_to_mime[file_ext]
+            print(f"Inferred content type from extension: {file.content_type}")
+        else:
+            print(f"Invalid content type: {file.content_type}")
+            raise HTTPException(status_code=400, detail=f"Invalid file type: {file.content_type}. Allowed types: {allowed_types}")
+    
+    # Validate file size (1MB limit for base64 storage)
+    max_size = 1 * 1024 * 1024  # 1MB
+    contents = await file.read()
+    if len(contents) > max_size:
+        raise HTTPException(status_code=400, detail="File size exceeds 1MB limit")
+    
+    try:
+        # Convert to base64 data URL
+        base64_data = base64.b64encode(contents).decode('utf-8')
+        logo_data_url = f"data:{file.content_type};base64,{base64_data}"
+        print(f"Logo converted to base64, size: {len(logo_data_url)} characters")
+        
+        # Update user settings with the base64 logo
+        settings_key = f"user_settings/{current_user_id}/settings.json"
+        
+        # Get current settings
+        try:
+            response = s3_client.get_object(Bucket=AWS_S3_BUCKET_NAME, Key=settings_key)
+            current_settings = json.loads(response['Body'].read().decode('utf-8'))
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchKey':
+                current_settings = DEFAULT_USER_SETTINGS
+            else:
+                raise
+        
+        # Update with base64 logo data
+        current_settings['clinicLogo'] = logo_data_url
+        
+        # Save updated settings
+        s3_client.put_object(
+            Bucket=AWS_S3_BUCKET_NAME,
+            Key=settings_key,
+            Body=json.dumps(current_settings),
+            ContentType='application/json'
+        )
+        
+        return {"logoUrl": logo_data_url, "message": "Logo uploaded successfully"}
+        
+    except Exception as e:
+        print(f"Error uploading logo for user {current_user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload logo: {str(e)}")
+
+@app.delete("/api/v1/delete_logo")
+async def delete_logo(
+    current_user_id: str = Depends(get_user_id)
+):
+    """Delete clinic logo from user settings"""
+    if not s3_client:
+        raise HTTPException(status_code=503, detail="S3 client not initialized")
+    if not AWS_S3_BUCKET_NAME:
+        raise HTTPException(status_code=503, detail="S3 bucket name not configured")
+    
+    try:
+        
+        # Update user settings to remove logo URL
+        settings_key = f"user_settings/{current_user_id}/settings.json"
+        
+        # Get current settings
+        try:
+            response = s3_client.get_object(Bucket=AWS_S3_BUCKET_NAME, Key=settings_key)
+            current_settings = json.loads(response['Body'].read().decode('utf-8'))
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchKey':
+                current_settings = DEFAULT_USER_SETTINGS
+            else:
+                raise
+        
+        # Remove logo URL and reset flag
+        current_settings['clinicLogo'] = None
+        current_settings['includeLogoOnPdf'] = False
+        
+        # Save updated settings
+        s3_client.put_object(
+            Bucket=AWS_S3_BUCKET_NAME,
+            Key=settings_key,
+            Body=json.dumps(current_settings),
+            ContentType='application/json'
+        )
+        
+        return {"message": "Logo deleted successfully"}
+        
+    except Exception as e:
+        print(f"Error deleting logo for user {current_user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete logo: {str(e)}")
+
+@app.get("/api/v1/debug_logo/{user_id}")
+async def debug_logo(
+    user_id: str,
+    current_user_id: str = Depends(get_user_id)
+):
+    """Debug endpoint to check logo status"""
+    if user_id != current_user_id:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    settings_key = f"user_settings/{user_id}/settings.json"
+    
+    try:
+        response = s3_client.get_object(Bucket=AWS_S3_BUCKET_NAME, Key=settings_key)
+        settings = json.loads(response['Body'].read().decode('utf-8'))
+        
+        return {
+            "clinicLogo": settings.get('clinicLogo'),
+            "includeLogoOnPdf": settings.get('includeLogoOnPdf'),
+            "hasLogo": bool(settings.get('clinicLogo'))
+        }
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'NoSuchKey':
+            return {"error": "No settings found", "clinicLogo": None}
+        raise
 
 # --- End User Settings --- #
 
