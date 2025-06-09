@@ -594,12 +594,12 @@ async def save_session_data_endpoint(
     
     # Fallback to basic custom instructions if no profile instructions found
     if not custom_instructions:
-        custom_instructions = f"Patient Context: {patient_context}\nEncounter Type: {encounter_type}\nTemplate: {llm_template}"
+        custom_instructions = f"Patient Name: {patient_name}\nPatient Context: {patient_context}\nEncounter Type: {encounter_type}\nTemplate: {llm_template}"
         print(f"Using fallback LLM instructions for session {session_id}")
         print(f"Fallback reason: No profile instructions found. Template ID: {llm_template_id}, Template Name: {llm_template}")
     else:
         # Append context information to the profile instructions
-        custom_instructions += f"\n\nAdditional Context:\nPatient Context: {patient_context}\nEncounter Type: {encounter_type}"
+        custom_instructions += f"\n\nAdditional Context:\nPatient Name: {patient_name}\nPatient Context: {patient_context}\nEncounter Type: {encounter_type}"
         print(f"Final instructions length after adding context: {len(custom_instructions)}") 
 
     print(f"Received save request for session: {session_id}, user: {user_id}")
