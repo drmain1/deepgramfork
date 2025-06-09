@@ -1326,37 +1326,50 @@ export const convertFormattedTextToHtml = (content) => {
       }
     });
     
+    // Determine column widths based on content type
+    let columnWidths = [];
+    if (headerRow && headerRow.length === 3) {
+      // For 3-column tables (like MUSCLE GROUP | RIGHT | LEFT)
+      columnWidths = ['60%', '20%', '20%'];
+    } else if (headerRow && headerRow.length === 2) {
+      // For 2-column tables
+      columnWidths = ['60%', '40%'];
+    } else {
+      // Default equal width
+      const colWidth = Math.floor(100 / (headerRow?.length || 1));
+      columnWidths = Array(headerRow?.length || 1).fill(`${colWidth}%`);
+    }
+    
     let tableHtml = `
       <table style="
         width: 100%;
         border-collapse: collapse;
-        margin: 15px 0;
-        font-family: 'Helvetica Neue', Arial, sans-serif;
-        font-size: 11px;
-        font-weight: 500;
-        border: 1px solid #000;
-        background: transparent;
+        margin: 20px 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+        background: #faf9f5;
         table-layout: fixed;
       ">
     `;
     
     // Add header if exists
     if (headerRow) {
-      const colWidth = Math.floor(100 / headerRow.length);
       tableHtml += '<thead><tr>';
       headerRow.forEach((cell, cellIndex) => {
+        // Clean cell content - remove ** formatting
+        const cleanCell = cell.replace(/\*\*/g, '');
         tableHtml += `
           <th style="
-            border: 1px solid #333;
-            padding: 8px 10px;
-            background-color: #e8e4dc;
-            font-weight: 900;
+            border: 1px solid #d4d2cd;
+            padding: 10px 12px;
+            background-color: #f0ede6;
+            font-weight: bold;
             text-align: ${cellIndex === 0 ? 'left' : 'center'};
             font-size: 12px;
             color: #000;
-            letter-spacing: -0.02em;
-            width: ${colWidth}%;
-          ">${cell}</th>
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            width: ${columnWidths[cellIndex]};
+          ">${cleanCell}</th>
         `;
       });
       tableHtml += '</tr></thead>';
@@ -1364,21 +1377,29 @@ export const convertFormattedTextToHtml = (content) => {
     
     // Add body rows
     tableHtml += '<tbody>';
-    rows.forEach(row => {
-      tableHtml += '<tr>';
+    rows.forEach((row, rowIndex) => {
+      // Subtle alternating rows
+      const backgroundColor = rowIndex % 2 === 0 ? '#faf9f5' : '#f7f5f0';
+      tableHtml += `<tr style="background-color: ${backgroundColor};">`;
+      
       row.forEach((cell, cellIndex) => {
-        // First column gets left alignment, others center
+        // Clean cell content - remove ** formatting
+        const cleanCell = cell.replace(/\*\*/g, '');
+        // First column gets left alignment and bold, others center
         const textAlign = cellIndex === 0 ? 'left' : 'center';
+        const fontWeight = cellIndex === 0 ? 'normal' : 'normal';
+        
         tableHtml += `
           <td style="
-            border: 1px solid #000;
-            padding: 6px 8px;
+            border: 1px solid #d4d2cd;
+            padding: 8px 12px;
             font-size: 11px;
-            font-weight: 500;
+            font-weight: ${fontWeight};
             vertical-align: middle;
             text-align: ${textAlign};
-            color: #000;
-          ">${cell}</td>
+            color: #1a1a1a;
+            text-transform: ${cellIndex === 0 ? 'uppercase' : 'none'};
+          ">${cleanCell}</td>
         `;
       });
       tableHtml += '</tr>';
@@ -1390,8 +1411,11 @@ export const convertFormattedTextToHtml = (content) => {
 
   // Function to parse inline markdown formatting
   const parseInlineFormatting = (text) => {
-    // Convert **text** to <strong>text</strong>
-    return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    // Convert **text** to <strong>text</strong> for bold
+    let formatted = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    // Convert *text* to <em>text</em> for italic (but not if it's part of **)
+    formatted = formatted.replace(/(?<!\*)\*(?!\*)([^*]+)\*(?!\*)/g, '<em>$1</em>');
+    return formatted;
   };
 
   while (i < lines.length) {
