@@ -1,0 +1,179 @@
+/* Container for the entire authentication page */
+.auth-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  padding: 2rem;
+}
+
+/* Custom header styling */
+.auth-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.auth-logo {
+  width: 80px;
+  height: 80px;
+  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+}
+
+.auth-logo .material-icons {
+  font-size: 40px;
+  color: white;
+}
+
+.auth-title {
+  font-size: 2rem;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 0.5rem;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.auth-subtitle {
+  font-size: 1.125rem;
+  color: #6c757d;
+  margin: 0;
+}
+
+/* Custom footer styling */
+.auth-footer {
+  text-align: center;
+  margin-top: 2rem;
+  color: #6c757d;
+  font-size: 0.875rem;
+}
+
+/* Override Amplify UI styles for better appearance */
+[data-amplify-authenticator] {
+  max-width: 400px;
+  width: 100%;
+}
+
+[data-amplify-router] {
+  border-radius: 12px;
+  padding: 2.5rem;
+  background: white;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+/* Form styling */
+[data-amplify-form] {
+  margin-top: 1.5rem;
+}
+
+/* Input field styling */
+.amplify-input,
+.amplify-field-group__control {
+  border-radius: 8px;
+  border: 1.5px solid #e5e7eb;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+.amplify-input:focus,
+.amplify-field-group__control:focus {
+  border-color: #2c3e50;
+  box-shadow: 0 0 0 3px rgba(44, 62, 80, 0.1);
+  outline: none;
+}
+
+/* Label styling */
+.amplify-label {
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 0.5rem;
+}
+
+/* Button styling */
+.amplify-button--primary {
+  background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+  border: none;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 500;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  margin-top: 1rem;
+}
+
+.amplify-button--primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  background: linear-gradient(135deg, #1a252f 0%, #2c3e50 100%);
+}
+
+.amplify-button--primary:active {
+  transform: translateY(0);
+}
+
+/* Link button styling */
+.amplify-button--link {
+  color: #2c3e50;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.amplify-button--link:hover {
+  color: #1a252f;
+  text-decoration: underline;
+}
+
+/* Tab styling */
+.amplify-tabs-item {
+  font-weight: 500;
+  color: #6c757d;
+  transition: all 0.2s ease;
+}
+
+.amplify-tabs-item[data-state="active"] {
+  color: #2c3e50;
+  border-bottom-color: #2c3e50;
+}
+
+/* Error message styling */
+.amplify-alert {
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.amplify-alert--error {
+  background-color: #fee;
+  border: 1px solid #fcc;
+  color: #c33;
+}
+
+/* Loading state */
+.amplify-loader {
+  color: #2c3e50;
+}
+
+/* Responsive design */
+@media (max-width: 640px) {
+  .auth-container {
+    padding: 1rem;
+  }
+  
+  [data-amplify-router] {
+    padding: 1.5rem;
+  }
+  
+  .auth-title {
+    font-size: 1.5rem;
+  }
+  
+  .auth-subtitle {
+    font-size: 1rem;
+  }
+}
