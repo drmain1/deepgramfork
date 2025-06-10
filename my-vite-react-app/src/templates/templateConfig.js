@@ -1,5 +1,9 @@
 import { painManagementEvalInstructions } from './llm-instructions/pain-management-eval.js';
 import { orthoSpineConsultInstructions } from './llm-instructions/ortho-spine-consult.js';
+import { chiropracticInitialInstructions } from './llm-instructions/chiropractic-initial.js';
+import { chiropracticFollowupInstructions } from './llm-instructions/chiropractic-followup.js';
+import { chiropracticFollowupCodesInstructions } from './llm-instructions/chiropractic-followup-codes.js';
+import { chiropracticMultipleVisitsInstructions } from './llm-instructions/chiropractic-multiple-visits.js';
 
 export const medicalSpecialties = [
   'Ortho Spine',
@@ -197,10 +201,28 @@ CA License #A123456`
   ],
   'Chiropractic': [
     { 
-      id: 'chiro_adjust', 
-      name: 'Adjustment Note', 
-      llmInstructions: 'LLM for Chiro Adjust...', 
-      sampleNarrative: 'Sample for Chiropractic Adjustment Note: Details of spinal segments adjusted and patient response.' 
+      id: 'chiro_initial', 
+      name: 'Initial Consultation', 
+      llmInstructions: chiropracticInitialInstructions, 
+      sampleNarrative: 'Sample for Chiropractic Initial Consultation: Comprehensive new patient evaluation including history, examination, and treatment plan.' 
+    },
+    { 
+      id: 'chiro_followup', 
+      name: 'Follow-up Visit', 
+      llmInstructions: chiropracticFollowupInstructions, 
+      sampleNarrative: 'Sample for Chiropractic Follow-up Visit: Progress assessment, treatment provided, and ongoing care plan.' 
+    },
+    { 
+      id: 'chiro_followup_codes', 
+      name: 'Follow-up with Codes Assisted Paragraph', 
+      llmInstructions: chiropracticFollowupCodesInstructions, 
+      sampleNarrative: 'Sample for Chiropractic Follow-up with integrated billing codes in paragraph format.' 
+    },
+    { 
+      id: 'chiro_multiple', 
+      name: 'Multiple Visits', 
+      llmInstructions: chiropracticMultipleVisitsInstructions, 
+      sampleNarrative: 'Sample for documenting multiple chiropractic visits in a single comprehensive note.' 
     },
   ],
   'Acupuncture': [
