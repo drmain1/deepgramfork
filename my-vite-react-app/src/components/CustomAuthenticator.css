@@ -1,3 +1,10 @@
+/* Remove any iframe-like borders from Amplify Authenticator */
+[data-amplify-authenticator] {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
 /* Container for the entire authentication page */
 .auth-container {
   min-height: 100vh;
@@ -6,6 +13,14 @@
   justify-content: center;
   background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
   padding: 2rem;
+}
+
+/* When authenticated, remove all container styling */
+.auth-container:has([data-amplify-authenticator-signout]) {
+  min-height: auto;
+  background: transparent;
+  padding: 0;
+  display: block;
 }
 
 /* Custom header styling */

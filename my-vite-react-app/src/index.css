@@ -339,3 +339,24 @@ select.input-field {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--gray-500);
 }
+
+/* Remove Amplify Authenticator container styling when authenticated */
+[data-amplify-authenticator][data-variation="default"] {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* Ensure the app takes full height without any wrapper interference */
+#root > [data-amplify-authenticator] {
+  height: 100%;
+  display: contents;
+}
+
+/* Remove any themeprovider wrapper styling */
+[data-amplify-theme-provider] {
+  height: 100%;
+  display: contents;
+}

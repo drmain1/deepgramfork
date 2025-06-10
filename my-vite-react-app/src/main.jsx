@@ -15,7 +15,7 @@ Amplify.configure(amplifyConfig);
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <CustomAuthenticator>
-      {() => (
+      {({ signOut, user }) => (
         <AuthProvider>
           <UserSettingsProvider>
             <App />

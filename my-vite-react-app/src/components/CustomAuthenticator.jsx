@@ -104,8 +104,7 @@ const authenticatorTheme = {
 const CustomAuthenticator = ({ children }) => {
   return (
     <ThemeProvider theme={authenticatorTheme}>
-      <div className="auth-container">
-        <Authenticator
+      <Authenticator
           signUpAttributes={['email']}
           socialProviders={[]}
           formFields={{
@@ -154,9 +153,14 @@ const CustomAuthenticator = ({ children }) => {
             }
           }}
         >
-          {({ signOut, user }) => children}
+          {({ signOut, user }) => (
+            user ? (
+              children({ signOut, user })
+            ) : (
+              <div className="auth-container" />
+            )
+          )}
         </Authenticator>
-      </div>
     </ThemeProvider>
   );
 };
