@@ -16,6 +16,7 @@ export const UserSettingsProvider = ({ children }) => {
     doctorSignature: null,
     clinicLogo: null,
     includeLogoOnPdf: false,
+    medicalSpecialty: '',
   });
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [settingsError, setSettingsError] = useState(null);
@@ -60,6 +61,7 @@ export const UserSettingsProvider = ({ children }) => {
           doctorSignature: data.doctorSignature || null,
           clinicLogo: data.clinicLogo || null,
           includeLogoOnPdf: data.includeLogoOnPdf || false,
+          medicalSpecialty: data.medicalSpecialty || '',
         });
       }
     } catch (error) {
@@ -71,12 +73,14 @@ export const UserSettingsProvider = ({ children }) => {
     }
   };
 
-  const saveUserSettings = async (newSettings) => {
+  const saveUserSettings = async (newSettings, skipLoadingState = false) => {
     if (!isAuthenticated || !user || !user.sub) {
       throw new Error('User not authenticated. Cannot save settings.');
     }
     console.log('UserSettingsContext - Attempting to save settings:', newSettings);
-    setSettingsLoading(true); // Indicate saving process
+    if (!skipLoadingState) {
+      setSettingsLoading(true); // Indicate saving process
+    }
     setSettingsError(null);
     try {
       const accessToken = await getAccessTokenSilently();
@@ -106,7 +110,9 @@ export const UserSettingsProvider = ({ children }) => {
       setSettingsError(error.message);
       throw error; // Re-throw to be caught by calling component
     } finally {
-      setSettingsLoading(false);
+      if (!skipLoadingState) {
+        setSettingsLoading(false);
+      }
     }
   };
   
@@ -140,22 +146,32 @@ export const UserSettingsProvider = ({ children }) => {
         const updatedSettings = { ...userSettings, macroPhrases: newMacros };
         return saveUserSettings(updatedSettings);
     },
-    updateDoctorInformation: (doctorName, doctorSignature, clinicLogo, includeLogoOnPdf) => {
+    updateDoctorInformation: (doctorName, doctorSignature, clinicLogo, includeLogoOnPdf, medicalSpecialty) => {
         console.log('updateDoctorInformation called with:', { 
           doctorName, 
           doctorSignature: doctorSignature ? 'present' : 'null',
           clinicLogo: clinicLogo ? 'present' : 'null',
-          includeLogoOnPdf 
+          includeLogoOnPdf,
+          medicalSpecialty 
         });
         const updatedSettings = { 
           ...userSettings, 
           doctorName, 
           doctorSignature,
           clinicLogo: clinicLogo !== undefined ? clinicLogo : userSettings.clinicLogo,
-          includeLogoOnPdf: includeLogoOnPdf !== undefined ? includeLogoOnPdf : userSettings.includeLogoOnPdf
+          includeLogoOnPdf: includeLogoOnPdf !== undefined ? includeLogoOnPdf : userSettings.includeLogoOnPdf,
+          medicalSpecialty: medicalSpecialty !== undefined ? medicalSpecialty : userSettings.medicalSpecialty
         };
         console.log('updateDoctorInformation - Updated settings:', updatedSettings);
         return saveUserSettings(updatedSettings);
+    },
+    updateMedicalSpecialty: (medicalSpecialty) => {
+        // Dedicated method for updating just medical specialty
+        console.log('updateMedicalSpecialty called with:', medicalSpecialty);
+        console.log('Current userSettings:', userSettings);
+        const updatedSettings = { ...userSettings, medicalSpecialty };
+        console.log('Updated settings to save:', updatedSettings);
+        return saveUserSettings(updatedSettings, true); // Skip loading state to prevent UI refresh
     },
   };
 

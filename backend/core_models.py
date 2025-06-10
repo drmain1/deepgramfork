@@ -22,6 +22,7 @@ class UserSettingsData(BaseModel):
     doctorSignature: Optional[str] = Field(default=None, description="Base64 encoded doctor's signature image")
     clinicLogo: Optional[str] = Field(default=None, description="Base64 encoded clinic logo image")
     includeLogoOnPdf: bool = Field(default=False, description="Include clinic logo on PDF forms")
+    medicalSpecialty: Optional[str] = Field(default="", description="Medical specialty of the doctor")
 
 # Default user settings structure
 DEFAULT_USER_SETTINGS = UserSettingsData(

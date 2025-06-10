@@ -257,6 +257,7 @@ class UserSettingsData(BaseModel):
     doctorSignature: Optional[str] = Field(default=None, description="Base64 encoded doctor's signature image")
     clinicLogo: Optional[str] = Field(default=None, description="URL to clinic logo in S3")
     includeLogoOnPdf: bool = Field(default=False, description="Include clinic logo on PDF forms")
+    medicalSpecialty: Optional[str] = Field(default="", description="Medical specialty of the doctor")
 
 class SaveUserSettingsRequest(BaseModel):
     user_id: str # This should ideally come from a validated token in the future
@@ -270,7 +271,8 @@ DEFAULT_USER_SETTINGS = UserSettingsData(
     doctorName='',
     doctorSignature=None,
     clinicLogo=None,
-    includeLogoOnPdf=False
+    includeLogoOnPdf=False,
+    medicalSpecialty=''
 ).model_dump()
 
 @app.get("/api/v1/user_settings/{user_id}", response_model=UserSettingsData)
@@ -293,10 +295,12 @@ async def get_user_settings(
         response = s3_client.get_object(Bucket=AWS_S3_BUCKET_NAME, Key=s3_key)
         settings_data_json = response['Body'].read().decode('utf-8')
         settings_data = json.loads(settings_data_json)
+        print(f"Loaded settings from S3 - medicalSpecialty: {settings_data.get('medicalSpecialty', 'NOT FOUND')}")
         # Ensure all default keys are present if the loaded data is partial
         # This also helps in migrating older structures if new keys are added to UserSettingsData
         loaded_settings_with_defaults = DEFAULT_USER_SETTINGS.copy()
         loaded_settings_with_defaults.update(settings_data) 
+        print(f"After merging with defaults - medicalSpecialty: {loaded_settings_with_defaults.get('medicalSpecialty', 'NOT FOUND')}")
         return UserSettingsData(**loaded_settings_with_defaults)
     except ClientError as e:
         if e.response['Error']['Code'] == 'NoSuchKey':
@@ -363,15 +367,21 @@ async def save_user_settings(
 
     s3_key = f"user_settings/{request.user_id}/settings.json"
     print(f"Attempting to save settings to S3: {AWS_S3_BUCKET_NAME}/{s3_key}")
+    
+    # Log the incoming settings
+    settings_dict = request.settings.model_dump()
+    print(f"Settings to save - medicalSpecialty: {settings_dict.get('medicalSpecialty', 'NOT FOUND')}")
+    print(f"Full settings: {json.dumps(settings_dict, indent=2)}")
 
     try:
         s3_client.put_object(
             Bucket=AWS_S3_BUCKET_NAME,
             Key=s3_key,
-            Body=json.dumps(request.settings.model_dump()),
+            Body=json.dumps(settings_dict),
             ContentType='application/json'
         )
         # Return the saved settings object directly
+        print(f"Settings saved successfully - returning medicalSpecialty: {request.settings.medicalSpecialty}")
         return request.settings
     except ClientError as e:
         print(f"S3 ClientError saving settings to S3 for user {request.user_id}: {e}")

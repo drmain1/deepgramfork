@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, TextField, Button, List, ListItem, ListItemText, IconButton, Paper, Divider, Switch, FormControlLabel } from '@mui/material';
+import { Box, Typography, TextField, Button, List, ListItem, ListItemText, IconButton, Paper, Divider, Switch, FormControlLabel, FormControl, Select, MenuItem } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import { useUserSettings } from '../contexts/UserSettingsContext';
 import { useAuth } from '../contexts/AuthContext';
 import SignaturePad from './SignaturePad';
+import { medicalSpecialties } from '../templates/templateConfig';
 
 function OfficeInformationTab({ officeInformation, saveOfficeInformation, settingsLoading }) {
   const [newOfficeText, setNewOfficeText] = useState('');
-  const { userSettings, updateDoctorInformation } = useUserSettings();
+  const { userSettings, updateDoctorInformation, updateMedicalSpecialty } = useUserSettings();
   const { getAccessTokenSilently } = useAuth();
   const [doctorName, setDoctorName] = useState('');
   const [showSignaturePad, setShowSignaturePad] = useState(false);
@@ -16,13 +17,27 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
   const [clinicLogo, setClinicLogo] = useState(null);
   const [includeLogoOnPdf, setIncludeLogoOnPdf] = useState(false);
   const [logoPreview, setLogoPreview] = useState('');
+  const [medicalSpecialty, setMedicalSpecialty] = useState('');
+  const [isSavingSpecialty, setIsSavingSpecialty] = useState(false);
 
-  // Sync doctor name and logo with userSettings
+  // Sync with userSettings
   useEffect(() => {
-    setDoctorName(userSettings.doctorName || '');
-    setLogoPreview(userSettings.clinicLogo || '');
-    setIncludeLogoOnPdf(userSettings.includeLogoOnPdf || false);
-  }, [userSettings.doctorName, userSettings.clinicLogo, userSettings.includeLogoOnPdf]);
+    console.log('OfficeInformationTab - userSettings changed:', {
+      medicalSpecialty: userSettings.medicalSpecialty,
+      localMedicalSpecialty: medicalSpecialty
+    });
+    if (userSettings) {
+      setDoctorName(userSettings.doctorName || '');
+      setLogoPreview(userSettings.clinicLogo || '');
+      setIncludeLogoOnPdf(userSettings.includeLogoOnPdf || false);
+      // Only update medical specialty if local state is empty (initial load)
+      // This prevents overwriting user's selection while they're using the dropdown
+      if (!medicalSpecialty && userSettings.medicalSpecialty) {
+        console.log('Setting medical specialty from userSettings:', userSettings.medicalSpecialty);
+        setMedicalSpecialty(userSettings.medicalSpecialty);
+      }
+    }
+  }, [userSettings.doctorName, userSettings.clinicLogo, userSettings.includeLogoOnPdf, userSettings.medicalSpecialty]);
 
   const handleInputChange = (e) => {
     setNewOfficeText(e.target.value);
@@ -52,7 +67,13 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
     setIsSaving(true);
     try {
       console.log('Saving doctor name:', doctorName);
-      const result = await updateDoctorInformation(doctorName.trim(), userSettings.doctorSignature);
+      const result = await updateDoctorInformation(
+        doctorName.trim(), 
+        userSettings.doctorSignature, 
+        userSettings.clinicLogo,
+        userSettings.includeLogoOnPdf,
+        medicalSpecialty || userSettings.medicalSpecialty  // Use local state if available
+      );
       console.log('Doctor name save result:', result);
       alert('Doctor name saved successfully!');
     } catch (error) {
@@ -63,11 +84,43 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
     }
   };
 
+  const handleMedicalSpecialtyChange = (event) => {
+    const newSpecialty = event.target.value;
+    console.log('Medical specialty changed to:', newSpecialty);
+    setMedicalSpecialty(newSpecialty);
+    
+    // Debounce the save to prevent rapid updates
+    if (window.medicalSpecialtyTimeout) {
+      clearTimeout(window.medicalSpecialtyTimeout);
+    }
+    
+    window.medicalSpecialtyTimeout = setTimeout(async () => {
+      setIsSavingSpecialty(true);
+      try {
+        console.log('Saving medical specialty:', newSpecialty);
+        const result = await updateMedicalSpecialty(newSpecialty);
+        console.log('Medical specialty saved successfully, result:', result);
+      } catch (error) {
+        console.error('Error saving medical specialty:', error);
+        alert('Failed to save medical specialty. Please try again.');
+        setMedicalSpecialty(userSettings.medicalSpecialty || ''); // Revert on error
+      } finally {
+        setIsSavingSpecialty(false);
+      }
+    }, 500); // Reduced to 500ms for better UX
+  };
+
   const handleSignatureSave = async (signatureData) => {
     setIsSaving(true);
     try {
       console.log('Saving signature for doctor:', userSettings.doctorName);
-      const result = await updateDoctorInformation(userSettings.doctorName, signatureData);
+      const result = await updateDoctorInformation(
+        userSettings.doctorName, 
+        signatureData,
+        userSettings.clinicLogo,
+        userSettings.includeLogoOnPdf,
+        medicalSpecialty || userSettings.medicalSpecialty  // Use local state if available
+      );
       console.log('Signature save result:', result);
       setShowSignaturePad(false);
       alert('Signature saved successfully!');
@@ -135,7 +188,8 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
         userSettings.doctorName, 
         userSettings.doctorSignature,
         logoUrl,
-        includeLogoOnPdf
+        includeLogoOnPdf,
+        medicalSpecialty || userSettings.medicalSpecialty  // Use local state if available
       );
       
       alert('Logo saved successfully!');
@@ -173,7 +227,8 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
           userSettings.doctorName, 
           userSettings.doctorSignature,
           null,
-          false
+          false,
+          medicalSpecialty || userSettings.medicalSpecialty  // Use local state if available
         );
         
         setLogoPreview('');
@@ -200,7 +255,8 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
           userSettings.doctorName, 
           userSettings.doctorSignature,
           userSettings.clinicLogo,
-          newValue
+          newValue,
+          medicalSpecialty || userSettings.medicalSpecialty  // Use local state if available
         );
       } catch (error) {
         console.error('Error updating logo preference:', error);
@@ -240,6 +296,49 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
             sx={{ mb: 2 }}
             disabled={isSaving}
           />
+          
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+              <Typography variant="body2" color="text.secondary">
+                Medical Specialty
+              </Typography>
+              {isSavingSpecialty && (
+                <Typography variant="caption" color="primary.main">
+                  Saving...
+                </Typography>
+              )}
+            </Box>
+            <Select
+              value={medicalSpecialty}
+              onChange={handleMedicalSpecialtyChange}
+              displayEmpty
+              size="small"
+              disabled={false} // Never disable to prevent UI refresh
+              sx={{ 
+                backgroundColor: 'background.paper',
+                '& .MuiSelect-select': {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1
+                }
+              }}
+              renderValue={(selected) => {
+                if (!selected) {
+                  return <Typography color="text.secondary">Choose your Medical Specialty</Typography>;
+                }
+                return selected;
+              }}
+            >
+              <MenuItem value="">
+                <Typography color="text.secondary">Choose your Medical Specialty</Typography>
+              </MenuItem>
+              {medicalSpecialties.map((specialty) => (
+                <MenuItem key={specialty} value={specialty}>
+                  {specialty}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           
           {isDoctorNameSaved ? (
             <Box sx={{ mb: 2 }}>

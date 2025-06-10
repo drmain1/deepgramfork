@@ -81,47 +81,118 @@ PLAN:
       id: 'pm_eval', 
       name: 'New Patient Evaluation', 
       llmInstructions: painManagementEvalInstructions, 
-      sampleNarrative: `Sample for Pain Management New Patient Evaluation:
+      sampleNarrative: `MEDLEGALDOC PAIN MANAGEMENT CLINIC
+634 West E Street, Suite 200
+Painville, CA 90210
+Tel: (310) 522-5811 | Fax: (310) 634-0443
 
-ABC Pain management
-634 west E st
-Painville, ca 
-310 522 -5811
-310-634-0443
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-patient name: [Patient Name]
-date of birth: [DOB]
-date of accident: [Date of Accident]
-date of consultation: [Date of Consultation]
+COMPREHENSIVE PAIN MANAGEMENT EVALUATION
 
-**CHIEF COMPLAINT**: 
+Patient Name: Sarah Johnson
+Date of Birth: 03/15/1975
+Date of Accident: 08/22/2024
+Date of Consultation: 01/06/2025
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CHIEF COMPLAINT:
 1. Lower back pain, 8/10 severity, radiating down left leg
 2. Neck pain, 6/10 severity, with associated headaches
+3. Bilateral shoulder pain, 5/10 severity
 
-**HISTORY OF PRESENT ILLNESS**: The patient presents with chronic lower back pain that began following a motor vehicle accident six months ago. The pain is described as constant, aching, and sharp with movement, rated 8/10 at its worst. The pain radiates down the posterior aspect of the left leg to the knee level. The patient also reports associated neck pain rated 6/10, with intermittent headaches occurring 2-3 times per week.
+HISTORY OF PRESENT ILLNESS:
+The patient is a 49-year-old female who presents with chronic lower back pain that began following a motor vehicle accident approximately 4 months ago. She was a restrained driver when her vehicle was rear-ended at a traffic light. The patient reports immediate onset of neck and back pain following the collision.
 
-**PAST MEDICAL HISTORY**: Hypertension, well-controlled on medication. No other significant medical history noted.
+The lower back pain is described as constant, aching, and sharp with movement, rated 8/10 at its worst. The pain radiates down the posterior aspect of the left leg to the knee level, consistent with L5 radiculopathy. Pain is exacerbated by prolonged sitting, standing, and bending activities. The patient also reports associated neck pain rated 6/10, with intermittent headaches occurring 2-3 times per week, primarily occipital in location.
 
-**CURRENT MEDICATIONS**: 
+Previous treatments include physical therapy (20 sessions) with minimal improvement, chiropractic care (discontinued due to increased pain), and oral medications including NSAIDs and muscle relaxants with partial relief.
+
+PAST MEDICAL HISTORY:
+- Hypertension, well-controlled on medication
+- Type 2 Diabetes Mellitus, diet-controlled
+- Hypothyroidism
+- No previous history of chronic pain conditions
+
+CURRENT MEDICATIONS:
 - Lisinopril 10mg daily
-- Ibuprofen 600mg as needed for pain
+- Levothyroxine 75mcg daily
+- Ibuprofen 600mg TID PRN
+- Cyclobenzaprine 10mg at bedtime
+- Metformin 500mg BID
 
-**PAST SURGICAL HISTORY**: None disclosed.
+PAST SURGICAL HISTORY:
+- Cholecystectomy (2018)
+- Cesarean section x2 (1998, 2001)
 
-**FAMILY HISTORY**: No significant family history of chronic pain or musculoskeletal disorders disclosed.
+FAMILY HISTORY:
+- Mother: Rheumatoid arthritis
+- Father: Degenerative disc disease
+- No family history of fibromyalgia or other chronic pain syndromes
 
-**ALLERGIES**: No known drug allergies.
+ALLERGIES: NKDA (No Known Drug Allergies)
 
-**SOCIAL HISTORY**: The patient is a non-smoker and consumes alcohol occasionally on weekends. Currently employed as an office manager but has been on modified duty since the accident. Married with two children.
+SOCIAL HISTORY:
+The patient is a non-smoker and denies alcohol or illicit drug use. She is married with two adult children. Currently employed as an office manager but has been on modified duty since the accident, working reduced hours due to pain limitations. The patient reports significant functional impairment affecting her activities of daily living and quality of life.
 
-**PHYSICAL EXAMINATION**: The patient appears in mild distress due to pain but is cooperative throughout the examination.
+PHYSICAL EXAMINATION:
+General: Well-developed, well-nourished female in mild distress due to pain. Vital signs stable.
 
-**Lumbopelvic**: Tenderness noted over the L4-L5 paraspinal muscles bilaterally. Range of motion is limited in flexion and extension due to pain. Straight leg raise test is positive on the left at 45 degrees.
+CERVICO-THORACIC:
+Inspection reveals normal cervical lordosis. Palpation demonstrates significant tenderness over the C5-C7 paraspinal muscles bilaterally, more pronounced on the right. Cervical range of motion is limited to 30 degrees flexion, 20 degrees extension, and 25 degrees lateral rotation bilaterally. Spurling's test is positive on the right. Cervical compression test reproduces neck pain without radicular symptoms.
 
-**ASSESSMENT**: 
-1. Chronic lumbar radiculopathy - M54.16
-2. Cervicalgia - M54.2
-3. Post-traumatic headache - G44.309` 
+LUMBOPELVIC:
+Normal lumbar lordosis noted. Significant tenderness palpated over the L4-L5 and L5-S1 paraspinal muscles bilaterally. Lumbar flexion limited to 40 degrees with pain. Extension limited to 10 degrees. Straight leg raise test positive on the left at 45 degrees reproducing radicular symptoms. Negative on the right at 70 degrees. FABER test negative bilaterally. No sacroiliac joint tenderness noted.
+
+NEUROLOGIC ASSESSMENT: MOTOR EXAMINATION
+
+Upper Extremity
+| MUSCLE GROUP | RIGHT | LEFT |
+|--------------|-------|------|
+| DELTOID | 5/5 | 5/5 |
+| BICEPS | 5/5 | 5/5 |
+| TRICEPS | 5/5 | 5/5 |
+| WRIST EXT | 5/5 | 5/5 |
+| FINGER FLEX | 5/5 | 5/5 |
+
+Lower Extremity
+| MUSCLE GROUP | RIGHT | LEFT |
+|--------------|-------|------|
+| ILIOPSOAS | 5/5 | 5/5 |
+| QUAD | 5/5 | 5/5 |
+| HAMSTRINGS | 5/5 | 4/5 |
+| ANTERIOR TIBIALIS | 5/5 | 4/5 |
+| EXT HALLUCIS LONGUS | 5/5 | 5/5 |
+
+Deep Tendon Reflexes:
+- Biceps: 2+ bilaterally
+- Triceps: 2+ bilaterally
+- Patellar: 2+ bilaterally
+- Achilles: 2+ right, 1+ left
+
+Sensory: Diminished sensation to light touch over left L5 dermatome
+
+ASSESSMENT/DIAGNOSIS:
+1. Lumbar radiculopathy, L5 - M54.16
+2. Cervicalgia with cervicogenic headaches - M54.2
+3. Lumbar disc displacement with radiculopathy - M51.16
+4. Myofascial pain syndrome - M79.3
+5. Post-traumatic headache - G44.309
+
+TREATMENT PLAN:
+1. MRI lumbar spine without contrast to evaluate for disc herniation
+2. MRI cervical spine to rule out disc pathology
+3. Lumbar epidural steroid injection at L5-S1 level
+4. Continue current oral medications
+5. Referral to physical therapy for core strengthening and McKenzie exercises
+6. Follow-up in 2 weeks to review imaging and assess response to treatment
+7. Consider cervical medial branch blocks if headaches persist
+
+Electronically signed by:
+Dr. Michael Chen, MD
+Board Certified Pain Management
+CA License #A123456` 
     },
   ],
   'Chiropractic': [
