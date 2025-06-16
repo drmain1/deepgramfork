@@ -17,6 +17,9 @@ env/
 # Secrets
 .env
 *.env
+credentials/
+*.json
+service-account-*.json
 
 # Node.js / Vite / React
 node_modules/

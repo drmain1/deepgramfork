@@ -32,6 +32,9 @@ from speechmatics_utils import handle_speechmatics_websocket
 # Import the new AWS utility functions
 from aws_utils import polish_transcript_with_bedrock, save_text_to_s3, delete_s3_object
 
+# Import GCP utility functions
+from gcp_utils import polish_transcript_with_gemini
+
 # Import authentication middleware
 from auth_middleware import get_current_user, get_user_id
 
@@ -352,6 +355,43 @@ async def debug_transcription_profiles(
     except Exception as e:
         return {"error": str(e)}
 
+@app.get("/api/v1/test-gcp")
+async def test_gcp_connection(current_user_id: str = Depends(get_user_id)):
+    """Test endpoint to verify GCP Vertex AI connection"""
+    try:
+        from gcp_utils import test_gemini_connection
+        success, message = test_gemini_connection()
+        return {
+            "success": success,
+            "message": message,
+            "provider": "Google Cloud Platform - Vertex AI"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Failed to test GCP connection: {str(e)}",
+            "provider": "Google Cloud Platform - Vertex AI"
+        }
+
+@app.get("/api/v1/test-gcp-noauth")
+async def test_gcp_connection_noauth():
+    """Test endpoint to verify GCP Vertex AI connection (no auth for testing)"""
+    try:
+        from gcp_utils import test_gemini_connection
+        success, message = test_gemini_connection()
+        return {
+            "success": success,
+            "message": message,
+            "provider": "Google Cloud Platform - Vertex AI",
+            "note": "This is a temporary endpoint without auth - remove in production!"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Failed to test GCP connection: {str(e)}",
+            "provider": "Google Cloud Platform - Vertex AI"
+        }
+
 @app.post("/api/v1/user_settings")
 async def save_user_settings(
     request: SaveUserSettingsRequest,
@@ -570,20 +610,25 @@ async def save_session_data_endpoint(
     llm_template = request_data.llm_template  
     llm_template_id = request_data.llm_template_id
     location = request_data.location  # Extract location
+    
+    # Debug logging for template routing
+    print(f"DEBUG: Received template - ID: '{llm_template_id}', Name: '{llm_template}'")
+    print(f"DEBUG: Will use GCP: {llm_template_id == 'test_gcp_template'}")
 
     # Get user settings to retrieve the actual LLM instructions from the profile
     custom_instructions = None
+    selected_profile = None  # Define it outside the try block
     try:
         user_settings = await get_user_settings(user_id, current_user_id=user_id)  # Pass the user_id as current_user_id
         if user_settings and user_settings.transcriptionProfiles:
             # First try to find by ID (more reliable), then fallback to name
-            selected_profile = None
             if llm_template_id:
                 selected_profile = next((p for p in user_settings.transcriptionProfiles if p.id == llm_template_id), None)
             if not selected_profile and llm_template:
                 selected_profile = next((p for p in user_settings.transcriptionProfiles if p.name == llm_template), None)
             if selected_profile:
                 print(f"Found profile '{selected_profile.name}' (ID: {selected_profile.id}) for session {session_id}")
+                print(f"DEBUG: Profile originalTemplateId: '{selected_profile.originalTemplateId}'")
                 print(f"Profile has llmInstructions: {bool(selected_profile.llmInstructions)}")
                 print(f"Profile has llmPrompt: {bool(selected_profile.llmPrompt)}")
                 if selected_profile.llmInstructions:
@@ -651,14 +696,47 @@ async def save_session_data_endpoint(
         print(message)
         errors.append(message)
 
-    if bedrock_runtime_client and s3_client:
+    # Determine if we should use GCP based on template ID or originalTemplateId
+    use_gcp = llm_template_id == 'test_gcp_template'
+    
+    # Also check originalTemplateId from the selected profile
+    if not use_gcp and selected_profile and hasattr(selected_profile, 'originalTemplateId') and selected_profile.originalTemplateId:
+        use_gcp = selected_profile.originalTemplateId == 'test_gcp_template'
+        if use_gcp:
+            print(f"DEBUG: Routing to GCP based on originalTemplateId: {selected_profile.originalTemplateId}")
+    
+    if s3_client and (bedrock_runtime_client or use_gcp):
         print(f"Attempting to polish transcript for session_id: {session_id}, user_id: {user_id}")
+        print(f"Using provider: {'GCP' if use_gcp else 'AWS Bedrock'}")
+        
         try:
-            polished_result = await polish_transcript_with_bedrock(
-                transcript=original_transcript,
-                bedrock_client=bedrock_runtime_client,
-                custom_instructions=custom_instructions 
-            )
+            if use_gcp:
+                # Use Google Gemini for polishing
+                polished_result_dict = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    polish_transcript_with_gemini,
+                    original_transcript,
+                    patient_name,
+                    patient_context,
+                    encounter_type,
+                    custom_instructions,
+                    location
+                )
+                
+                if polished_result_dict['success']:
+                    polished_result = polished_result_dict['polished_transcript']
+                    print(f"Transcript polished successfully with Gemini for session_id: {session_id}")
+                else:
+                    polished_result = None
+                    errors.append(f"Gemini polishing error: {polished_result_dict.get('error', 'Unknown error')}")
+            else:
+                # Use AWS Bedrock for polishing
+                polished_result = await polish_transcript_with_bedrock(
+                    transcript=original_transcript,
+                    bedrock_client=bedrock_runtime_client,
+                    custom_instructions=custom_instructions 
+                )
+            
             if polished_result and polished_result.strip() != original_transcript.strip():
                 polished_transcript_content = polished_result.strip()
                 print(f"Transcript polished successfully for session_id: {session_id}")
@@ -683,7 +761,7 @@ async def save_session_data_endpoint(
         except Exception as e:
             print(f"Error polishing transcript for {session_id}: {e}")
             errors.append(f"Error polishing transcript: {str(e)}")
-    elif not bedrock_runtime_client:
+    elif not bedrock_runtime_client and not use_gcp:
         print(f"Bedrock client not configured for session_id {session_id}. Skipping transcript polishing.")
     elif not s3_client:
         print(f"S3 client not configured for session_id {session_id}. Skipping transcript polishing as polished note cannot be saved.")

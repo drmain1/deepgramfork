@@ -7,3 +7,4 @@ deepgram-sdk
 speechmatics-python
 python-jose[cryptography]
 httpx
+google-cloud-aiplatform>=1.38.0

@@ -5,6 +5,7 @@ import { chiropracticFollowupInstructions } from './llm-instructions/chiropracti
 import { chiropracticFollowupCodesInstructions } from './llm-instructions/chiropractic-followup-codes.js';
 import { chiropracticMultipleVisitsInstructions } from './llm-instructions/chiropractic-multiple-visits.js';
 import { chiropracticSOAPImprovedInstructions } from './llm-instructions/chiropractic-soap-improved.js';
+import { testGCPTemplateInstructions } from './llm-instructions/test-gcp-template.js';
 
 export const medicalSpecialties = [
   'Ortho Spine',
@@ -230,6 +231,13 @@ CA License #A123456`
       name: 'SOAP Enhanced', 
       llmInstructions: chiropracticSOAPImprovedInstructions, 
       sampleNarrative: 'Enhanced SOAP note generation with intelligent auto-expansion from minimal input, ensuring comprehensive documentation and billing compliance.' 
+    },
+    { 
+      id: 'test_gcp_template', 
+      name: 'TEST GCP Template', 
+      llmInstructions: testGCPTemplateInstructions, 
+      sampleNarrative: 'Test template for Google Cloud Platform Gemini Pro integration.',
+      provider: 'gcp'  // Mark this template to use GCP instead of AWS
     },
   ],
   'Acupuncture': [
