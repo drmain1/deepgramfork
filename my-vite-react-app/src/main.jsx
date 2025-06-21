@@ -3,25 +3,33 @@ import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import './index.css';
 import './styles.css';
-import CustomAuthenticator from './components/CustomAuthenticator.jsx';
-import { Amplify } from 'aws-amplify';
-import { amplifyConfig } from './amplifyconfigure.js';
-import { AuthProvider } from './contexts/AuthContext.jsx';
-import { UserSettingsProvider } from './contexts/UserSettingsContext.jsx'; 
+import { AuthProvider } from './contexts/FirebaseAuthContext.jsx';
+import { UserSettingsProvider } from './contexts/UserSettingsContext.jsx';
+import FirebaseAuthenticator from './components/FirebaseAuthenticator.jsx';
+import { useAuth } from './contexts/FirebaseAuthContext.jsx';
 
-// Configure Amplify
-Amplify.configure(amplifyConfig);
+function AuthenticatedApp() {
+  const { currentUser, loading } = useAuth();
+
+  if (loading) {
+    return <div className="flex items-center justify-center h-screen">Loading...</div>;
+  }
+
+  if (!currentUser) {
+    return <FirebaseAuthenticator />;
+  }
+
+  return (
+    <UserSettingsProvider>
+      <App />
+    </UserSettingsProvider>
+  );
+}
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <CustomAuthenticator>
-      {({ signOut, user }) => (
-        <AuthProvider>
-          <UserSettingsProvider>
-            <App />
-          </UserSettingsProvider>
-        </AuthProvider>
-      )}
-    </CustomAuthenticator>
+    <AuthProvider>
+      <AuthenticatedApp />
+    </AuthProvider>
   </React.StrictMode>
 );

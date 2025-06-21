@@ -33,7 +33,7 @@ Everything in the transcription needs to be put somewhere don't leave anything o
 
 **VITALS**: [document any of the following here height, weight, blood pressure, temperature and respiratory rate](only include if explicitly mentioned else omit entire section)
 
-**PHYSICAL EXAMINATION**: [document the general physical examination findings, including the patient's general appearance, level of distress, and cooperation] . 
+**PHYSICAL EXAMINATION**: [document the general physical examination findings, including the patient's general appearance, level of distress, and cooperation.  do not put Height, weight, blood pressure pulse, oxygen here] . 
 
 **CERVICO-THORACIC**: [document findings related to the neck and mid back only(cervical and thoracic spine)] (Only include if explicitly mentioned in transcript, context or clinical note, else omit section entirely. Write in paragraphs of full sentences. do not use bullet points)Tests that belong in this section are Spurling’s test. Halstead maneuver , Radial pulse, cervical compression, jacksons, cervical (or neck) distraction, lhermitte’s test, 
 

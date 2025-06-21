@@ -17,6 +17,7 @@
     "@mui/icons-material": "^7.1.0",
     "@mui/material": "^7.1.0",
     "aws-amplify": "^6.15.0",
+    "firebase": "^11.9.1",
     "framer-motion": "^6.5.1",
     "html2canvas": "^1.4.1",
     "html2pdf.js": "^0.10.3",

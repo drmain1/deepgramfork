@@ -1,10 +1,10 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { useAuth } from './AuthContext';
+import { useAuth } from './FirebaseAuthContext';
 
 const RecordingsContext = createContext();
 
 export function RecordingsProvider({ children }) {
-  const { getAccessTokenSilently, user, isAuthenticated, isLoading } = useAuth();
+  const { getToken, currentUser, loading } = useAuth();
   const [recordings, setRecordings] = useState(() => {
     return []; 
   });
@@ -20,26 +20,26 @@ export function RecordingsProvider({ children }) {
 
 
   useEffect(() => {
-    if (isAuthenticated && user && user.sub) {
-      localStorage.setItem(`recordings_${user.sub}`, JSON.stringify(recordings));
+    if (currentUser && currentUser.uid) {
+      localStorage.setItem(`recordings_${currentUser.uid}`, JSON.stringify(recordings));
     } else {
-      const currentUserId = user?.sub; 
+      const currentUserId = currentUser?.uid; 
       if (currentUserId) {
         localStorage.removeItem(`recordings_${currentUserId}`);
       }
     }
-  }, [recordings, isAuthenticated, user]);
+  }, [recordings, currentUser]);
 
   const fetchUserRecordings = useCallback(async () => {
-    if (!isAuthenticated || !user || !user.sub || isFetchingRecordings) {
+    if (!currentUser || !currentUser.uid || isFetchingRecordings) {
       return;
     }
     console.log("Attempting to fetch user recordings...");
     setIsFetchingRecordings(true);
     try {
-      const accessToken = await getAccessTokenSilently();
-      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-      const response = await fetch(`${API_BASE_URL}/api/v1/user_recordings/${user.sub}`, {
+      const accessToken = await getToken();
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_BASE_URL}/api/v1/user_recordings/${currentUser.uid}`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
@@ -126,11 +126,11 @@ export function RecordingsProvider({ children }) {
     } finally {
       setIsFetchingRecordings(false);
     }
-  }, [isAuthenticated, user, getAccessTokenSilently]);
+  }, [currentUser]);
 
   useEffect(() => {
-    if (isAuthenticated && user && user.sub) {
-      const savedLocalRecordings = localStorage.getItem(`recordings_${user.sub}`);
+    if (currentUser && currentUser.uid) {
+      const savedLocalRecordings = localStorage.getItem(`recordings_${currentUser.uid}`);
       if (savedLocalRecordings) {
         try {
           const parsed = JSON.parse(savedLocalRecordings);
@@ -146,18 +146,18 @@ export function RecordingsProvider({ children }) {
         }
       }
       fetchUserRecordings();
-    } else if (!isLoading && !isAuthenticated) {
+    } else if (!loading && !currentUser) {
       const currentUserId = user?.sub; 
       if (currentUserId) {
         localStorage.removeItem(`recordings_${currentUserId}`);
       }
       setRecordings([]);
     }
-  }, [isAuthenticated, user, isLoading, fetchUserRecordings]);
+  }, [currentUser, loading, fetchUserRecordings]);
 
   // Periodic check for recordings with 'saving' status to auto-refresh when processing completes
   useEffect(() => {
-    if (!isAuthenticated || !user || !user.sub) return;
+    if (!currentUser || !currentUser.uid) return;
 
     const hasSavingRecordings = recordings.some(rec => rec.status === 'saving');
     if (!hasSavingRecordings) return;
@@ -173,7 +173,7 @@ export function RecordingsProvider({ children }) {
       console.log('Clearing periodic refresh interval');
       clearInterval(intervalId);
     };
-  }, [recordings, isAuthenticated, user, fetchUserRecordings]);
+  }, [recordings, currentUser, fetchUserRecordings]);
 
   const startPendingRecording = useCallback((sessionId, recordingName) => {
     const now = new Date();
@@ -225,7 +225,7 @@ export function RecordingsProvider({ children }) {
       
       // Ensure VITE_API_BASE_URL is correctly configured in your .env file for production
       const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-      const accessToken = await getAccessTokenSilently();
+      const accessToken = await getToken();
       const response = await fetch(`${apiUrl}/api/v1/s3_object_content?s3_key=${encodeURIComponent(cleanS3Key)}`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -262,14 +262,14 @@ export function RecordingsProvider({ children }) {
   }, [selectedRecordingId]);
 
   const deletePersistedRecording = useCallback(async (sessionId) => {
-    if (!user || !user.sub) {
+    if (!currentUser || !currentUser.uid) {
       console.error('User not authenticated, cannot delete recording.');
       return;
     }
     try {
-      const accessToken = await getAccessTokenSilently();
-      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-      const response = await fetch(`${API_BASE_URL}/api/v1/recordings/${user.sub}/${sessionId}`, {
+      const accessToken = await getToken();
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_BASE_URL}/api/v1/recordings/${currentUser.uid}/${sessionId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -293,7 +293,7 @@ export function RecordingsProvider({ children }) {
       console.error('Error deleting recording:', error);
       throw error;
     }
-  }, [user, getAccessTokenSilently, removeRecording, selectedRecordingId, selectRecording]);
+  }, [currentUser, getToken, removeRecording, selectedRecordingId, selectRecording]);
 
   // Effect to handle recording selection changes (initial load)
   useEffect(() => {

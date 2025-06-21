@@ -1,12 +1,12 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { useAuth } from './AuthContext';
+import { useAuth } from './FirebaseAuthContext';
 
 const UserSettingsContext = createContext();
 
 export const useUserSettings = () => useContext(UserSettingsContext);
 
 export const UserSettingsProvider = ({ children }) => {
-  const { isAuthenticated, getAccessTokenSilently, user } = useAuth();
+  const { currentUser, getToken } = useAuth();
   const [userSettings, setUserSettings] = useState({
     macroPhrases: [],
     customVocabulary: [],
@@ -21,18 +21,18 @@ export const UserSettingsProvider = ({ children }) => {
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [settingsError, setSettingsError] = useState(null);
 
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
   const fetchUserSettings = async () => {
-    if (!isAuthenticated || !user || !user.sub) {
+    if (!currentUser || !currentUser.uid) {
       setSettingsLoading(false);
       return;
     }
     setSettingsLoading(true);
     setSettingsError(null);
     try {
-      const accessToken = await getAccessTokenSilently();
-      const response = await fetch(`${API_BASE_URL}/api/v1/user_settings/${user.sub}`,
+      const accessToken = await getToken();
+      const response = await fetch(`${API_BASE_URL}/api/v1/user_settings/${currentUser.uid}`,
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -74,7 +74,7 @@ export const UserSettingsProvider = ({ children }) => {
   };
 
   const saveUserSettings = async (newSettings, skipLoadingState = false) => {
-    if (!isAuthenticated || !user || !user.sub) {
+    if (!currentUser || !currentUser.uid) {
       throw new Error('User not authenticated. Cannot save settings.');
     }
     console.log('UserSettingsContext - Attempting to save settings:', newSettings);
@@ -83,7 +83,7 @@ export const UserSettingsProvider = ({ children }) => {
     }
     setSettingsError(null);
     try {
-      const accessToken = await getAccessTokenSilently();
+      const accessToken = await getToken();
       console.log('UserSettingsContext - Got access token, making API call...');
       const response = await fetch(`${API_BASE_URL}/api/v1/user_settings`,
         {
@@ -92,7 +92,7 @@ export const UserSettingsProvider = ({ children }) => {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${accessToken}`,
           },
-          body: JSON.stringify({ user_id: user.sub, settings: newSettings }),
+          body: JSON.stringify({ user_id: currentUser.uid, settings: newSettings }),
         }
       );
       console.log('UserSettingsContext - API response status:', response.status);
@@ -118,10 +118,10 @@ export const UserSettingsProvider = ({ children }) => {
   
   // Effect to load settings when auth state changes
   useEffect(() => {
-    if (isAuthenticated && user) {
+    if (currentUser) {
       fetchUserSettings();
     }
-  }, [isAuthenticated, user, getAccessTokenSilently]);
+  }, [currentUser]);
 
   const value = {
     userSettings,

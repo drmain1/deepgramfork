@@ -1,0 +1,35 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    
+    // Helper function to check if user owns the resource
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // User-specific data (transcripts, metadata, recordings)
+    match /{userId}/{allPaths=**} {
+      // Users can only read/write their own files
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId) && request.resource.size < 100 * 1024 * 1024; // 100MB limit
+      allow delete: if isOwner(userId);
+    }
+    
+    // User settings
+    match /user_settings/{userId}/{allPaths=**} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId) && request.resource.size < 1 * 1024 * 1024; // 1MB limit
+      allow delete: if isOwner(userId);
+    }
+    
+    // Deny all other access
+    match /{allPaths=**} {
+      allow read: if false;
+      allow write: if false;
+    }
+  }
+}

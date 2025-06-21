@@ -1,0 +1,55 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isValidTimestamp(field) {
+      return request.resource.data[field] is timestamp;
+    }
+    
+    // User profiles
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidTimestamp('createdAt');
+      allow update: if isOwner(userId) && isValidTimestamp('updatedAt');
+      allow delete: if false; // Soft delete only for compliance
+    }
+    
+    // User settings
+    match /users/{userId}/settings/{document=**} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId);
+    }
+    
+    // Transcription sessions
+    match /users/{userId}/sessions/{sessionId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidTimestamp('createdAt');
+      allow update: if isOwner(userId) && isValidTimestamp('updatedAt');
+      allow delete: if isOwner(userId);
+    }
+    
+    // Audit logs (write-only for users, read-only for admins)
+    match /audit_logs/{logId} {
+      allow read: if false; // Admin access only via server
+      allow create: if isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid &&
+        isValidTimestamp('timestamp');
+      allow update: if false;
+      allow delete: if false;
+    }
+    
+    // Deny all other access
+    match /{document=**} {
+      allow read: if false;
+      allow write: if false;
+    }
+  }
+}

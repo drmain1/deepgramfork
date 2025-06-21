@@ -2,9 +2,22 @@ fastapi
 uvicorn[standard]
 python-dotenv
 websockets
-boto3
 deepgram-sdk
 speechmatics-python
-python-jose[cryptography]
 httpx
+
+# Google Cloud dependencies
+google-cloud-storage
 google-cloud-aiplatform>=1.38.0
+google-api-python-client
+google-auth
+google-auth-httplib2
+google-auth-oauthlib
+firebase-admin
+
+# For rate limiting
+slowapi
+
+# Keep for migration period (remove later)
+boto3
+python-jose[cryptography]
