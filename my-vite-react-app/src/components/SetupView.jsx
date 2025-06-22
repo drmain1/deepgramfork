@@ -19,12 +19,13 @@ function SetupView({
   onStartEncounter
 }) {
   // Debug logging
-  console.log('SetupView props debug:', {
-    targetLanguage,
-    setTargetLanguage: typeof setTargetLanguage,
-    isMultilingual,
-    setIsMultilingual: typeof setIsMultilingual
-  });
+  // TEMPORARILY DISABLED FOR DEBUGGING
+  // console.log('SetupView props debug:', {
+  //   targetLanguage,
+  //   setTargetLanguage: typeof setTargetLanguage,
+  //   isMultilingual,
+  //   setIsMultilingual: typeof setIsMultilingual
+  // });
 
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
@@ -138,9 +139,10 @@ function SetupView({
       setMicLevel(normalizedLevel);
       
       // Log for debugging (remove this once it's working)
-      if (normalizedLevel > 5) {
-        console.log('🔊 Audio detected:', normalizedLevel.toFixed(1));
-      }
+      // TEMPORARILY DISABLED FOR DEBUGGING
+      // if (normalizedLevel > 5) {
+      //   console.log('🔊 Audio detected:', normalizedLevel.toFixed(1));
+      // }
       
       // Continue the animation loop
       if (isMonitoringRef.current) {

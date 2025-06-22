@@ -750,6 +750,55 @@ async def save_session_data_endpoint(
         "processing_errors": errors if errors else None
     }
 
+class SaveDraftRequest(BaseModel):
+    session_id: str
+    transcript: str
+    patient_name: str
+    profile_id: Optional[str] = None
+    user_id: str
+
+@app.post("/api/v1/save_draft")
+async def save_draft_endpoint(
+    request_data: SaveDraftRequest,
+    current_user_id: str = Depends(get_user_id)
+):
+    """Save a draft recording to GCS for later resumption."""
+    # Verify user authorization
+    if request_data.user_id != current_user_id:
+        raise HTTPException(status_code=403, detail="You can only save your own drafts")
+    
+    global gcs_client
+    if gcs_client is None:
+        raise HTTPException(status_code=500, detail="GCS client not available")
+    
+    # Create draft metadata
+    draft_metadata = {
+        "session_id": request_data.session_id,
+        "patient_name": request_data.patient_name,
+        "profile_id": request_data.profile_id,
+        "transcript": request_data.transcript,
+        "status": "draft",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    # Save draft to GCS
+    try:
+        success = gcs_client.save_data_to_gcs(
+            user_id=request_data.user_id,
+            data_type="drafts",
+            session_id=request_data.session_id,
+            content=json.dumps(draft_metadata)
+        )
+        
+        if success:
+            return {"message": "Draft saved successfully", "session_id": request_data.session_id}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to save draft")
+    except Exception as e:
+        print(f"Error saving draft: {e}")
+        raise HTTPException(status_code=500, detail=f"Error saving draft: {str(e)}")
+
 @app.delete("/api/v1/recordings/{user_id}/{session_id}", status_code=200)
 async def delete_session_recording(
     user_id: str = Path(..., description="The ID of the user who owns the recording"),
@@ -767,6 +816,7 @@ async def delete_session_recording(
     original_transcript_key = f"{user_id}/transcripts/original/{session_id}.txt"
     polished_transcript_key = f"{user_id}/transcripts/polished/{session_id}.txt"
     metadata_key = f"{user_id}/metadata/{session_id}.txt"
+    draft_key = f"{user_id}/drafts/{session_id}.txt"
 
     deleted_count = 0
 
@@ -794,6 +844,14 @@ async def delete_session_recording(
     else:
         print(f"  Failed to delete or metadata not found: {metadata_key}")
 
+    # --- Delete Draft ---
+    print(f"  Attempting to delete draft: {draft_key}")
+    if gcs_client.delete_gcs_object(draft_key):
+        deleted_count += 1
+        print(f"  Successfully deleted draft: {draft_key}")
+    else:
+        print(f"  Failed to delete or draft not found: {draft_key}")
+
     if deleted_count > 0:
         return {"message": f"Successfully deleted {deleted_count} associated file(s) for session {session_id}."}
     else:
@@ -804,7 +862,7 @@ class RecordingInfo(BaseModel):
     id: str # session_id
     name: str # Derived name, e.g., from patient context or session title
     date: datetime # Last modified date of the metadata file or a date from metadata
-    status: str = "saved" # This endpoint returns saved recordings
+    status: str = "saved" # Can be "saved", "draft", "pending", "saving", "failed"
     s3PathTranscript: Optional[str] = None
     s3PathPolished: Optional[str] = None
     s3PathMetadata: Optional[str] = None # S3 key for the session_metadata.json file itself, now optional
@@ -813,6 +871,9 @@ class RecordingInfo(BaseModel):
     llmTemplateName: Optional[str] = None # Name of the LLM template/profile used
     location: Optional[str] = None
     durationSeconds: Optional[int] = None
+    # Draft-specific fields
+    transcript: Optional[str] = None
+    profileId: Optional[str] = None
     # Add any other relevant fields that might be in session_metadata.json and useful for display
 
 @app.get("/api/v1/user_recordings/{user_id}", response_model=List[RecordingInfo])
@@ -829,17 +890,17 @@ async def get_user_recordings(
         raise HTTPException(status_code=503, detail="GCS service not available")
 
     recordings_info = []
-    # Prefix targeting the original transcript files
-    prefix = f"{user_id}/transcripts/original/"
-    print(f"Attempting to list recordings for user: '{user_id}' with prefix: '{prefix}'")
-
     fifteen_days_ago = datetime.now(timezone.utc) - timedelta(days=15)
     print(f"Filtering for recordings newer than: {fifteen_days_ago.isoformat()}")
+
+    # First, fetch all saved recordings
+    prefix = f"{user_id}/transcripts/original/"
+    print(f"Attempting to list recordings for user: '{user_id}' with prefix: '{prefix}'")
 
     try:
         # Use GCS to list objects
         objects = gcs_client.list_gcs_objects(prefix=prefix, max_results=1000)
-        print(f"Found {len(objects)} objects in GCS")
+        print(f"Found {len(objects)} saved recording objects in GCS")
         
         for obj in objects:
             obj_name = obj['name']  # Full object path
@@ -925,9 +986,101 @@ async def get_user_recordings(
                 except Exception as e:
                     print(f"Unexpected error processing transcript file {obj_name}: {e}")
                     
-        # Sort recordings by date, most recent first
-        recordings_info.sort(key=lambda r: r.date, reverse=True)
-        print(f"Found {len(recordings_info)} recordings for user {user_id} within the last 15 days.")
+        # Now fetch draft recordings
+        draft_prefix = f"{user_id}/drafts/"
+        print(f"Attempting to list drafts for user: '{user_id}' with prefix: '{draft_prefix}'")
+        
+        try:
+            draft_objects = gcs_client.list_gcs_objects(prefix=draft_prefix, max_results=1000)
+            print(f"Found {len(draft_objects)} draft objects in GCS")
+            
+            for obj in draft_objects:
+                obj_name = obj['name']
+                print(f"Processing draft object: {obj_name}")
+                
+                # Parse the updated timestamp
+                if obj['updated']:
+                    try:
+                        last_modified = datetime.fromisoformat(obj['updated'].replace('Z', '+00:00'))
+                    except:
+                        last_modified = datetime.now(timezone.utc)
+                else:
+                    continue
+                    
+                # Filter by date
+                if last_modified < fifteen_days_ago:
+                    print(f"FILTERED OUT draft (too old): {obj_name}")
+                    continue
+                
+                if obj_name.endswith('.txt'):
+                    try:
+                        # Extract session_id from the filename
+                        filename_with_extension = obj_name.split('/')[-1]
+                        session_id = filename_with_extension.rsplit('.', 1)[0]
+                        
+                        # Fetch draft content
+                        draft_content = gcs_client.get_gcs_object_content(obj_name)
+                        if draft_content:
+                            draft_data = json.loads(draft_content)
+                            
+                            # Create RecordingInfo for draft
+                            draft_info = RecordingInfo(
+                                id=session_id,
+                                name=f"Draft: {draft_data.get('patient_name', 'Untitled')}",
+                                date=last_modified,
+                                status="draft",
+                                s3PathTranscript=None,
+                                s3PathPolished=None,
+                                s3PathMetadata=obj_name,
+                                patientContext=None,
+                                encounterType=None,
+                                llmTemplateName=None,
+                                location=None,
+                                durationSeconds=None,
+                                # Include transcript and profileId for drafts
+                                transcript=draft_data.get('transcript', ''),
+                                profileId=draft_data.get('profile_id')
+                            )
+                            # Debug log to verify draft status
+                            print(f"[DEBUG] Created draft RecordingInfo - ID: {draft_info.id}, Status: {draft_info.status}, Name: {draft_info.name}")
+                            recordings_info.append(draft_info)
+                    except Exception as e:
+                        print(f"Error processing draft {obj_name}: {e}")
+        except Exception as e:
+            print(f"Error fetching drafts: {e}")
+            
+        # Remove duplicates - if a session has both a saved/pending recording and a draft, keep the draft
+        seen_ids = {}
+        deduplicated_recordings = []
+        
+        # First pass - collect all recordings by ID
+        for rec in recordings_info:
+            if rec.id not in seen_ids:
+                seen_ids[rec.id] = []
+            seen_ids[rec.id].append(rec)
+        
+        # Second pass - for each ID, prefer draft > saved > pending
+        status_priority = {'draft': 3, 'saved': 2, 'saving': 1, 'pending': 0, 'failed': -1}
+        for session_id, recs in seen_ids.items():
+            if len(recs) == 1:
+                deduplicated_recordings.append(recs[0])
+            else:
+                # Multiple records for same ID - pick the one with highest priority status
+                best_rec = max(recs, key=lambda r: status_priority.get(r.status, -2))
+                print(f"[DEDUP] Session {session_id} has {len(recs)} records. Keeping status='{best_rec.status}' over {[r.status for r in recs if r != best_rec]}")
+                deduplicated_recordings.append(best_rec)
+        
+        # Sort deduplicated recordings by date, most recent first
+        deduplicated_recordings.sort(key=lambda r: r.date, reverse=True)
+        print(f"Found {len(deduplicated_recordings)} recordings after deduplication (was {len(recordings_info)}) for user {user_id}")
+        
+        # Debug: Log the status of each recording being returned
+        print("[DEBUG] Recordings being returned:")
+        for rec in deduplicated_recordings[:5]:  # Show first 5
+            print(f"  - ID: {rec.id}, Status: {rec.status}, Name: {rec.name}")
+        
+        recordings_info = deduplicated_recordings
+        
         return recordings_info
 
     except Exception as e:

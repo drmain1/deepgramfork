@@ -290,6 +290,27 @@ select.input-field {
   box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
 }
 
+.status-indicator.draft {
+  background-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.status-indicator.saved {
+  background-color: var(--success);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+}
+
+.status-indicator.saving {
+  background-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
+  animation: pulse 1.5s infinite;
+}
+
+.status-indicator.failed {
+  background-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+}
+
 /* Animations */
 @keyframes fadeIn {
   from {
@@ -299,6 +320,15 @@ select.input-field {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
   }
 }
 

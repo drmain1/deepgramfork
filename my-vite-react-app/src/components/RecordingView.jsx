@@ -11,7 +11,12 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Chip
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle
 } from '@mui/material';
 
 
@@ -23,21 +28,23 @@ function RecordingView({
   isMultilingual,
   targetLanguage,
   userSettings,
-  onClose
+  onClose,
+  resumeData
 }) {
   const { user, getToken } = useAuth();
   const { startPendingRecording, updateRecording, removeRecording, fetchUserRecordings } = useRecordings();
 
   const [isRecording, setIsRecording] = useState(false);
-  const [hasStreamedOnce, setHasStreamedOnce] = useState(false);
+  const [hasStreamedOnce, setHasStreamedOnce] = useState(!!resumeData);
   const [error, setError] = useState(null);
-  const [finalTranscript, setFinalTranscript] = useState('');
+  const [finalTranscript, setFinalTranscript] = useState(resumeData?.savedTranscript || '');
   const [currentInterimTranscript, setCurrentInterimTranscript] = useState('');
-  const [combinedTranscript, setCombinedTranscript] = useState('');
-  const [sessionId, setSessionId] = useState(null);
+  const [combinedTranscript, setCombinedTranscript] = useState(resumeData?.savedTranscript || '');
+  const [sessionId, setSessionId] = useState(resumeData?.sessionId || null);
   const [isSessionSaved, setIsSessionSaved] = useState(false);
   const [saveStatusMessage, setSaveStatusMessage] = useState('');
-  const [currentProfileId, setCurrentProfileId] = useState(selectedProfileId);
+  const [currentProfileId, setCurrentProfileId] = useState(resumeData?.profileId || selectedProfileId);
+  const [showCloseConfirmation, setShowCloseConfirmation] = useState(false);
 
   const mediaRecorderRef = useRef(null);
   const webSocketRef = useRef(null);
@@ -51,6 +58,15 @@ function RecordingView({
   useEffect(() => {
     setCombinedTranscript(finalTranscript + currentInterimTranscript);
   }, [finalTranscript, currentInterimTranscript]);
+
+  // Handle resuming a draft session
+  useEffect(() => {
+    if (resumeData && resumeData.sessionId) {
+      // Don't update the status when resuming - keep it as draft until actually saved
+      // This prevents the race condition where draft status gets overwritten
+      console.log('[RecordingView] Resuming draft session:', resumeData.sessionId);
+    }
+  }, [resumeData]);
 
   useEffect(() => {
     return () => {
@@ -186,7 +202,17 @@ function RecordingView({
               
               // Create the pending recording with the backend's session ID
               console.log('[WebSocket] Creating pending recording with backend session ID:', backendSessionId);
-              startPendingRecording(backendSessionId, patientDetails || 'New Session');
+              // Only create a new pending recording if we're not resuming a draft
+              if (!resumeData || resumeData.sessionId !== backendSessionId) {
+                startPendingRecording(backendSessionId, patientDetails || 'New Session');
+              } else {
+                // If resuming a draft, update status to pending now that we're actively recording
+                updateRecording(backendSessionId, {
+                  status: 'pending',
+                  name: patientDetails || 'Resumed Session',
+                  transcript: undefined // Clear the saved transcript since it's in component state
+                });
+              }
             } else if (parsedMessage.type === 'transcript') {
               if (parsedMessage.is_final) {
                 setFinalTranscript(prev => (prev ? prev + ' ' : '') + parsedMessage.text);
@@ -460,12 +486,81 @@ function RecordingView({
   };
 
   const handleCloseSession = () => {
+    // If there's unsaved content, show confirmation dialog
+    if (sessionId && !isSessionSaved && combinedTranscript.trim()) {
+      setShowCloseConfirmation(true);
+    } else {
+      // No unsaved content, close immediately
+      if (isRecording) {
+        stopRecording();
+      }
+      onClose();
+    }
+  };
+
+  const handleConfirmClose = async (saveAsDraft) => {
     if (isRecording) {
       stopRecording();
     }
-    if (sessionId && !isSessionSaved) {
+    
+    if (saveAsDraft && sessionId) {
+      // Update local recording to draft status
+      console.log('[DRAFT SAVE] Updating local recording to draft status:', {
+        sessionId,
+        status: 'draft',
+        name: `Draft: ${patientDetails || 'Untitled Session'}`,
+        profileId: currentProfileId,
+        transcriptLength: combinedTranscript?.length
+      });
+      
+      updateRecording(sessionId, { 
+        status: 'draft',
+        transcript: combinedTranscript,
+        name: `Draft: ${patientDetails || 'Untitled Session'}`,
+        profileId: currentProfileId,
+        lastUpdated: new Date().toISOString() // Ensure lastUpdated is set
+      });
+      
+      // Save draft to backend
+      try {
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+        const accessToken = await getToken();
+        
+        console.log('[DRAFT SAVE] Calling backend save_draft endpoint...');
+        const response = await fetch(`${API_BASE_URL}/api/v1/save_draft`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            session_id: sessionId,
+            transcript: combinedTranscript,
+            patient_name: patientDetails || 'Untitled Session',
+            profile_id: currentProfileId,
+            user_id: user.uid || user.sub
+          }),
+        });
+        
+        if (!response.ok) {
+          console.error('Failed to save draft to backend:', await response.text());
+        } else {
+          console.log('[DRAFT SAVE] Draft saved successfully to backend');
+          // Force a refresh of recordings to get the draft from backend
+          setTimeout(() => {
+            console.log('[DRAFT SAVE] Triggering fetchUserRecordings...');
+            fetchUserRecordings();
+          }, 500);
+        }
+      } catch (error) {
+        console.error('Error saving draft to backend:', error);
+      }
+    } else if (sessionId && !isSessionSaved) {
+      // User chose to discard - remove the recording
       removeRecording(sessionId);
     }
+    
+    setShowCloseConfirmation(false);
     onClose();
   };
 
@@ -479,6 +574,7 @@ function RecordingView({
             <h1 className="text-4xl font-semibold text-gray-900">Recording Session</h1>
             <p className="text-lg text-gray-500 mt-2">
               {patientDetails || 'New Session'} {sessionId && `(${sessionId})`}
+              {resumeData && <span className="text-blue-600 ml-2">[Resumed Draft]</span>}
             </p>
             {currentProfileId && userSettings.transcriptionProfiles && (
               <p className="text-sm text-gray-600 mt-1">
@@ -610,6 +706,35 @@ function RecordingView({
           </Grid>
         </div>
       </div>
+
+      {/* Close Confirmation Dialog */}
+      <Dialog
+        open={showCloseConfirmation}
+        onClose={() => setShowCloseConfirmation(false)}
+        aria-labelledby="close-confirmation-dialog-title"
+        aria-describedby="close-confirmation-dialog-description"
+      >
+        <DialogTitle id="close-confirmation-dialog-title">
+          Unsaved Recording
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="close-confirmation-dialog-description">
+            You have an unsaved recording session with transcript content. 
+            Would you like to save it as a draft to continue later, or discard it?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowCloseConfirmation(false)} color="inherit">
+            Cancel
+          </Button>
+          <Button onClick={() => handleConfirmClose(false)} color="error">
+            Discard
+          </Button>
+          <Button onClick={() => handleConfirmClose(true)} color="primary" variant="contained">
+            Save as Draft
+          </Button>
+        </DialogActions>
+      </Dialog>
     </main>
   );
 }

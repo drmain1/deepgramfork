@@ -9,6 +9,7 @@ export function RecordingsProvider({ children }) {
     return []; 
   });
   const [isFetchingRecordings, setIsFetchingRecordings] = useState(false);
+  const [isDataFresh, setIsDataFresh] = useState(false);
 
   // State for selected recording and its transcript content
   const [selectedRecordingId, setSelectedRecordingId] = useState(null);
@@ -20,15 +21,16 @@ export function RecordingsProvider({ children }) {
 
 
   useEffect(() => {
-    if (currentUser && currentUser.uid) {
+    if (currentUser && currentUser.uid && isDataFresh) {
+      // Only save to localStorage if we have fresh data from backend
       localStorage.setItem(`recordings_${currentUser.uid}`, JSON.stringify(recordings));
-    } else {
+    } else if (!currentUser) {
       const currentUserId = currentUser?.uid; 
       if (currentUserId) {
         localStorage.removeItem(`recordings_${currentUserId}`);
       }
     }
-  }, [recordings, currentUser]);
+  }, [recordings, currentUser, isDataFresh]);
 
   const fetchUserRecordings = useCallback(async () => {
     if (!currentUser || !currentUser.uid || isFetchingRecordings) {
@@ -51,6 +53,12 @@ export function RecordingsProvider({ children }) {
       const fetchedRecordings = await response.json();
       console.log("Fetched recordings from S3:", fetchedRecordings);
       console.log("Raw API Response - First recording full object:", JSON.stringify(fetchedRecordings[0], null, 2));
+      
+      // Debug: Check status of all fetched recordings
+      console.log("[DEBUG] Status of fetched recordings:");
+      fetchedRecordings.forEach((rec, idx) => {
+        console.log(`  ${idx}: ID=${rec.id}, Status="${rec.status}", Name="${rec.name}", Has transcript: ${!!rec.transcript}`);
+      });
       
       // Debug: Check if location exists in fetched recordings
       fetchedRecordings.forEach((recording, index) => {
@@ -85,19 +93,21 @@ export function RecordingsProvider({ children }) {
           const s3Version = s3Map.get(localRec.id);
           if (s3Version) {
             // Recording exists in both local and S3 - use S3 version (it's been processed)
-            console.log(`[MERGE] Found S3 version for local recording ${localRec.id} (was ${localRec.status}, now saved)`);
-            // Preserve any local data that might not be in S3
-            const updatedRec = {
-              ...localRec,
-              ...s3Version,
-              status: 'saved' // Ensure status is updated
-            };
-            merged.push(updatedRec);
+            console.log(`[MERGE] Found S3 version for local recording ${localRec.id} (was ${localRec.status}, now ${s3Version.status || 'saved'})`);
+            // Always prefer the backend version as the source of truth
+            merged.push(s3Version);
             s3Map.delete(localRec.id); // Remove from s3Map so we don't add it again
           } else {
             // Recording only exists locally (still processing or failed)
-            console.log(`[MERGE] Keeping local-only recording ${localRec.id} with status ${localRec.status}`);
-            merged.push(localRec);
+            // Don't include local 'pending' records that might be stale
+            if (localRec.status !== 'pending' || 
+                (Date.now() - new Date(localRec.lastUpdated || localRec.date).getTime() < 60000)) {
+              // Only keep if not pending OR if it was updated recently (within 1 minute)
+              console.log(`[MERGE] Keeping local-only recording ${localRec.id} with status ${localRec.status}`);
+              merged.push(localRec);
+            } else {
+              console.log(`[MERGE] Discarding stale local pending recording ${localRec.id}`);
+            }
           }
         });
         
@@ -114,12 +124,17 @@ export function RecordingsProvider({ children }) {
             name: recording.name,
             location: recording.location,
             status: recording.status,
-            hasLocation: recording.hasOwnProperty('location')
+            hasLocation: recording.hasOwnProperty('location'),
+            transcript: recording.transcript ? recording.transcript.substring(0, 50) + '...' : 'No transcript',
+            profileId: recording.profileId
           });
         });
         
         return merged.sort((a, b) => new Date(b.date) - new Date(a.date));
       });
+      
+      // Mark data as fresh from backend
+      setIsDataFresh(true);
 
     } catch (error) {
       console.error('Error fetching user recordings:', error);
@@ -130,21 +145,10 @@ export function RecordingsProvider({ children }) {
 
   useEffect(() => {
     if (currentUser && currentUser.uid) {
-      const savedLocalRecordings = localStorage.getItem(`recordings_${currentUser.uid}`);
-      if (savedLocalRecordings) {
-        try {
-          const parsed = JSON.parse(savedLocalRecordings);
-          if (Array.isArray(parsed)) {
-            const filteredLocal = parsed.filter(rec => 
-              rec && typeof rec.id === 'string' && 
-              typeof rec.status === 'string' && ['pending', 'saving', 'saved', 'failed'].includes(rec.status)
-            );
-            setRecordings(filteredLocal.sort((a,b) => new Date(b.date) - new Date(a.date)));
-          }
-        } catch (e) {
-          console.error("Error parsing recordings from user-specific localStorage:", e);
-        }
-      }
+      // Clear localStorage to prevent stale data issues
+      // The fresh data will be saved back to localStorage after fetching
+      localStorage.removeItem(`recordings_${currentUser.uid}`);
+      console.log('[INIT] Cleared localStorage to fetch fresh data');
       fetchUserRecordings();
     } else if (!loading && !currentUser) {
       const currentUserId = user?.sub; 
@@ -191,14 +195,21 @@ export function RecordingsProvider({ children }) {
   const updateRecording = useCallback((sessionId, updates) => {
     console.log(`[updateRecording] Updating recording ${sessionId} with:`, updates);
     setRecordings(prevRecordings => {
-      console.log(`[updateRecording] Current recordings:`, prevRecordings.map(r => ({ id: r.id, status: r.status })));
+      console.log(`[updateRecording] Current recordings:`, prevRecordings.map(r => ({ id: r.id, status: r.status, name: r.name })));
       const updated = prevRecordings.map(rec =>
         rec.id === sessionId ? { ...rec, ...updates, date: rec.date, lastUpdated: new Date().toISOString() } : rec 
       );
-      console.log(`[updateRecording] Updated recordings:`, updated.map(r => ({ id: r.id, status: r.status })));
+      console.log(`[updateRecording] Updated recordings:`, updated.map(r => ({ id: r.id, status: r.status, name: r.name })));
+      
+      // If updating to draft status, ensure it persists in localStorage
+      if (updates.status === 'draft' && currentUser?.uid) {
+        localStorage.setItem(`recordings_${currentUser.uid}`, JSON.stringify(updated));
+        console.log(`[updateRecording] Saved draft to localStorage for user ${currentUser.uid}`);
+      }
+      
       return updated;
     });
-  }, []);
+  }, [currentUser]);
 
   const removeRecording = useCallback((sessionId) => {
     setRecordings(prevRecordings => prevRecordings.filter(rec => rec.id !== sessionId));
@@ -306,6 +317,15 @@ export function RecordingsProvider({ children }) {
           setSelectedTranscriptError('Recording is still being processed. Please wait for it to complete.');
           setOriginalTranscriptContent(null);
           setPolishedTranscriptContent(null);
+          return;
+        }
+        
+        // Handle draft recordings separately - they should be resumed, not viewed
+        if (recording.status === 'draft') {
+          // Draft recordings are handled by TranscriptionPage to resume
+          // We don't need to fetch transcript content for drafts
+          setIsLoadingSelectedTranscript(false);
+          setSelectedTranscriptError(null);
           return;
         }
 

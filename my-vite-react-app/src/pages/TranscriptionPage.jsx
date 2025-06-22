@@ -9,7 +9,7 @@ import RecordingView from '../components/RecordingView';
 
 function TranscriptionPage() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
-  const { selectedRecordingId } = useRecordings();
+  const { selectedRecordingId, recordings, selectRecording } = useRecordings();
   const { userSettings, settingsLoading } = useUserSettings();
   const navigate = useNavigate();
   const location = useLocation();
@@ -102,10 +102,66 @@ function TranscriptionPage() {
     // Navigate back to clean transcription URL
     navigate('/transcription', { replace: true });
     setError(null);
+    // Clear selected recording if it was a draft
+    if (selectedRecordingId) {
+      const recording = recordings.find(r => r.id === selectedRecordingId);
+      if (recording && recording.status === 'draft') {
+        selectRecording(null);
+      }
+    }
   };
 
-  // If a recording is selected from the sidebar, show the transcript viewer
+  // If a recording is selected from the sidebar
   if (selectedRecordingId) {
+    const selectedRecording = recordings.find(r => r.id === selectedRecordingId);
+    
+    console.log('=== DRAFT DETECTION DEBUG ===');
+    console.log('selectedRecordingId:', selectedRecordingId);
+    console.log('selectedRecording:', selectedRecording);
+    console.log('selectedRecording status:', selectedRecording?.status);
+    console.log('Is draft?:', selectedRecording?.status === 'draft');
+    console.log('transcript:', selectedRecording?.transcript ? 'Has transcript' : 'No transcript');
+    console.log('profileId:', selectedRecording?.profileId);
+    
+    // Show all recordings to see if there are any actual drafts
+    console.log('ALL RECORDINGS:');
+    recordings.forEach(rec => {
+      console.log(`- ${rec.id}: ${rec.name} (status: ${rec.status})`);
+    });
+    console.log('=============================')
+    
+    // If it's a draft, show the RecordingView to resume
+    if (selectedRecording && selectedRecording.status === 'draft') {
+      // Extract saved data from the draft
+      const draftData = {
+        patientDetails: selectedRecording.name?.replace('Draft: ', '') || patientDetails,
+        savedTranscript: selectedRecording.transcript || '',
+        sessionId: selectedRecording.id,
+        profileId: selectedRecording.profileId || selectedProfileId
+      };
+      
+      // Don't clear the selection here - let handleCloseRecording do it
+      // This prevents re-rendering issues
+      
+      return (
+        <RecordingView
+          patientDetails={draftData.patientDetails}
+          patientContext={patientContext}
+          selectedLocation={selectedLocation}
+          selectedProfileId={draftData.profileId}
+          isMultilingual={isMultilingual}
+          targetLanguage={targetLanguage}
+          userSettings={userSettings}
+          onClose={() => {
+            selectRecording(null); // Clear selection when closing
+            handleCloseRecording();
+          }}
+          resumeData={draftData}
+        />
+      );
+    }
+    
+    // Otherwise show the transcript viewer for saved recordings
     return <TranscriptViewer key={selectedRecordingId} />;
   }
 
