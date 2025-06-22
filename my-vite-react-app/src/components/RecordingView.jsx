@@ -7,26 +7,13 @@ import {
   Typography,
   Stack,
   Grid,
-  Tabs,
-  Tab
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Chip
 } from '@mui/material';
 
-const TabPanel = ({ children, value, index, ...other }) => {
-  return (
-    <div
-      role="tabpanel"
-      id={`recording-tabpanel-${index}`}
-      aria-labelledby={`recording-tab-${index}`}
-      {...other}
-      style={value === index ?
-        { flexGrow: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto', minHeight: 0 } :
-        { display: 'none' }
-      }
-    >
-      {children}
-    </div>
-  );
-};
 
 function RecordingView({
   patientDetails,
@@ -50,7 +37,7 @@ function RecordingView({
   const [sessionId, setSessionId] = useState(null);
   const [isSessionSaved, setIsSessionSaved] = useState(false);
   const [saveStatusMessage, setSaveStatusMessage] = useState('');
-  const [activeTab, setActiveTab] = useState(0);
+  const [currentProfileId, setCurrentProfileId] = useState(selectedProfileId);
 
   const mediaRecorderRef = useRef(null);
   const webSocketRef = useRef(null);
@@ -98,7 +85,7 @@ function RecordingView({
       console.log("[RecordingView] Starting new recording session...");
     }
 
-    const activeProfile = userSettings.transcriptionProfiles?.find(p => p.id === selectedProfileId);
+    const activeProfile = userSettings.transcriptionProfiles?.find(p => p.id === currentProfileId);
     const llmPrompt = activeProfile ? activeProfile.llmPrompt : 'Summarize the following clinical encounter:';
     const profileName = activeProfile ? activeProfile.name : 'General Summary';
 
@@ -128,18 +115,18 @@ function RecordingView({
         setError(null);
 
         // Send initial metadata for profile selection before anything else
-        if (user && (user.uid || user.sub) && selectedProfileId) {
+        if (user && (user.uid || user.sub) && currentProfileId) {
           const initialMetadata = {
             type: 'initial_metadata',
             user_id: user.uid || user.sub,
-            profile_id: selectedProfileId,
+            profile_id: currentProfileId,
             is_multilingual: isMultilingual,
             target_language: targetLanguage
           };
           webSocketRef.current.send(JSON.stringify(initialMetadata));
           console.log('[WebSocket] Sent initial_metadata:', initialMetadata);
         } else {
-          console.warn('[WebSocket] Could not send initial_metadata: user_id or profile_id missing.', { userId: user ? (user.uid || user.sub) : 'undefined', profileId: selectedProfileId });
+          console.warn('[WebSocket] Could not send initial_metadata: user_id or profile_id missing.', { userId: user ? (user.uid || user.sub) : 'undefined', profileId: currentProfileId });
         }
 
         if (audioStreamRef.current) {
@@ -358,7 +345,7 @@ function RecordingView({
       const url = `${API_BASE_URL}/api/v1/save_session_data`;
       
       // Get the active transcription profile and its LLM instructions
-      const activeProfile = userSettings.transcriptionProfiles?.find(p => p.id === selectedProfileId);
+      const activeProfile = userSettings.transcriptionProfiles?.find(p => p.id === currentProfileId);
       const llmTemplate = activeProfile ? activeProfile.name : 'General Summary';
       const llmTemplateId = activeProfile ? activeProfile.id : null;
       const llmInstructions = activeProfile ? (activeProfile.llmInstructions || activeProfile.llmPrompt) : null;
@@ -366,7 +353,7 @@ function RecordingView({
       
       // Comprehensive debug logging
       console.log('=== SAVE SESSION DEBUG ===');
-      console.log('selectedProfileId:', selectedProfileId);
+      console.log('currentProfileId:', currentProfileId);
       console.log('userSettings.transcriptionProfiles:', userSettings.transcriptionProfiles);
       console.log('activeProfile found:', activeProfile);
       if (activeProfile) {
@@ -482,16 +469,6 @@ function RecordingView({
     onClose();
   };
 
-  const a11yProps = (index) => {
-    return {
-      id: `recording-tab-${index}`,
-      'aria-controls': `recording-tabpanel-${index}`,
-    };
-  };
-
-  const handleTabChange = (event, newValue) => {
-    setActiveTab(newValue);
-  };
 
   return (
     <main className="flex-1 overflow-y-auto bg-gray-50">
@@ -503,6 +480,11 @@ function RecordingView({
             <p className="text-lg text-gray-500 mt-2">
               {patientDetails || 'New Session'} {sessionId && `(${sessionId})`}
             </p>
+            {currentProfileId && userSettings.transcriptionProfiles && (
+              <p className="text-sm text-gray-600 mt-1">
+                Profile: {userSettings.transcriptionProfiles.find(p => p.id === currentProfileId)?.name || 'Unknown'}
+              </p>
+            )}
           </div>
           <Button
             variant="outlined"
@@ -579,46 +561,50 @@ function RecordingView({
             {/* Right Column - Transcript */}
             <Grid item xs={12} md={8}>
               <Box className="bg-white rounded-lg shadow-sm border border-gray-200" sx={{ height: '600px', display: 'flex', flexDirection: 'column' }}>
-                <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-                  <Tabs value={activeTab} onChange={handleTabChange} aria-label="recording tabs">
-                    <Tab label="Live Transcript" {...a11yProps(0)} />
-                    <Tab label="Notes" {...a11yProps(1)} disabled />
-                  </Tabs>
+                <Box sx={{ p: 3, borderBottom: 1, borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6">
+                    Live Transcript {isRecording && <span className="text-red-500">● Recording</span>}
+                  </Typography>
+                  
+                  {/* Profile Selection Dropdown */}
+                  <FormControl size="small" sx={{ minWidth: 200 }}>
+                    <InputLabel id="profile-select-label">Transcription Profile</InputLabel>
+                    <Select
+                      labelId="profile-select-label"
+                      id="profile-select"
+                      value={currentProfileId || ''}
+                      label="Transcription Profile"
+                      onChange={(e) => setCurrentProfileId(e.target.value)}
+                      disabled={isRecording}
+                    >
+                      {userSettings.transcriptionProfiles?.map((profile) => (
+                        <MenuItem key={profile.id} value={profile.id}>
+                          {profile.name}
+                          {profile.isDefault && <Chip label="Default" size="small" sx={{ ml: 1 }} />}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
                 </Box>
                 
-                <TabPanel value={activeTab} index={0}>
-                  <Box sx={{ p: 3, flexGrow: 1, overflowY: 'auto' }}>
-                    <Typography variant="h6" className="mb-3">
-                      Live Transcript {isRecording && <span className="text-red-500">● Recording</span>}
-                    </Typography>
-                    
-                    <Box 
-                      sx={{ 
-                        minHeight: '400px',
-                        p: 2,
-                        border: '1px solid #e0e0e0',
-                        borderRadius: 1,
-                        backgroundColor: '#fafafa',
-                        fontFamily: 'monospace',
-                        fontSize: '14px',
-                        lineHeight: 1.5,
-                        whiteSpace: 'pre-wrap',
-                        overflowY: 'auto'
-                      }}
-                    >
-                      {combinedTranscript || 'Transcript will appear here as you speak...'}
-                    </Box>
+                <Box sx={{ p: 3, flexGrow: 1, overflowY: 'auto' }}>
+                  <Box 
+                    sx={{ 
+                      minHeight: '400px',
+                      p: 2,
+                      border: '1px solid #e0e0e0',
+                      borderRadius: 1,
+                      backgroundColor: '#fafafa',
+                      fontFamily: 'monospace',
+                      fontSize: '14px',
+                      lineHeight: 1.5,
+                      whiteSpace: 'pre-wrap',
+                      overflowY: 'auto'
+                    }}
+                  >
+                    {combinedTranscript || 'Transcript will appear here as you speak...'}
                   </Box>
-                </TabPanel>
-
-                <TabPanel value={activeTab} index={1}>
-                  <Box sx={{ p: 3, flexGrow: 1, overflowY: 'auto' }}>
-                    <Typography variant="h6" className="mb-3">Generated Notes</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Notes will be available after generating and saving the session.
-                    </Typography>
-                  </Box>
-                </TabPanel>
+                </Box>
               </Box>
             </Grid>
           </Grid>

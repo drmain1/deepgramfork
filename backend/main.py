@@ -45,14 +45,10 @@ from speechmatics_utils import handle_speechmatics_websocket
 from gcp_utils import polish_transcript_with_gemini
 
 # Import authentication middleware
-# Use Firebase auth for development, GCP auth for production
+# Use Firebase Admin SDK for production authentication
 if os.getenv('FIREBASE_PROJECT_ID'):
-    try:
-        from firebase_auth_simple import get_current_user, get_user_id
-        print("Using Firebase authentication middleware")
-    except ImportError:
-        from gcp_auth_middleware import get_current_user, get_user_id
-        print("Using GCP authentication middleware")
+    from gcp_auth_middleware import get_current_user, get_user_id
+    print("Using Firebase Admin SDK authentication (production-ready)")
 else:
     from auth_middleware import get_current_user, get_user_id
     print("Using AWS Cognito authentication middleware")
@@ -171,13 +167,9 @@ async def websocket_stream_endpoint(websocket: WebSocket, token: str = Query(...
     """
     # Verify Firebase token before accepting WebSocket connection
     try:
-        # Use Firebase token verification based on environment
-        if os.getenv('FIREBASE_PROJECT_ID') and os.getenv('ENVIRONMENT') == 'development':
-            from firebase_auth_simple import validate_firebase_token_simple
-            user_id = await validate_firebase_token_simple(token)
-        else:
-            from gcp_auth_middleware import validate_firebase_token
-            user_id = validate_firebase_token(token)
+        # Always use production Firebase Admin SDK for token verification
+        from gcp_auth_middleware import validate_firebase_token
+        user_id = validate_firebase_token(token)
         
         # Accept the WebSocket connection
         await websocket.accept()
@@ -198,13 +190,9 @@ async def websocket_multilingual_stream_endpoint(websocket: WebSocket, token: st
     """
     # Verify Firebase token before accepting WebSocket connection
     try:
-        # Use Firebase token verification based on environment
-        if os.getenv('FIREBASE_PROJECT_ID') and os.getenv('ENVIRONMENT') == 'development':
-            from firebase_auth_simple import validate_firebase_token_simple
-            user_id = await validate_firebase_token_simple(token)
-        else:
-            from gcp_auth_middleware import validate_firebase_token
-            user_id = validate_firebase_token(token)
+        # Always use production Firebase Admin SDK for token verification
+        from gcp_auth_middleware import validate_firebase_token
+        user_id = validate_firebase_token(token)
         
         # Accept the WebSocket connection
         await websocket.accept()

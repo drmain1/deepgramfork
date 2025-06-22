@@ -42,7 +42,7 @@ def polish_transcript_with_gemini(
     encounter_type: str,
     llm_instructions: str,
     location: Optional[str] = None,
-    model_name: str = "publishers/google/models/gemini-2.5-pro-preview-05-06"
+    model_name: str = "publishers/google/models/gemini-2.5-flash"
 ) -> Dict[str, Any]:
     """
     Polish transcript using Google Gemini Pro via Vertex AI.
