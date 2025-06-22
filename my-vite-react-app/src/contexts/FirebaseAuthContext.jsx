@@ -48,8 +48,8 @@ export const AuthProvider = ({ children }) => {
       setError('');
       const { user } = await signInWithEmailAndPassword(auth, email, password);
       
-      // Check if email is verified
-      if (!user.emailVerified) {
+      // Check if email is verified (skip in development for easier testing)
+      if (!user.emailVerified && import.meta.env.PROD) {
         await signOut(auth);
         throw new Error('Please verify your email before logging in. Check your inbox for the verification link.');
       }
@@ -115,6 +115,12 @@ export const AuthProvider = ({ children }) => {
   // Monitor auth state changes
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      console.log('Auth state changed:', user ? {
+        uid: user.uid,
+        email: user.email,
+        emailVerified: user.emailVerified
+      } : 'No user');
+      
       setCurrentUser(user);
       setLoading(false);
       
@@ -158,7 +164,8 @@ export const AuthProvider = ({ children }) => {
     signIn: login,
     signUp: signup,
     signOut: logout,
-    isAuthenticated: !!currentUser && currentUser.emailVerified
+    isAuthenticated: !!currentUser && (currentUser.emailVerified || import.meta.env.DEV),
+    isLoading: loading  // Add isLoading for compatibility
   };
 
   return (

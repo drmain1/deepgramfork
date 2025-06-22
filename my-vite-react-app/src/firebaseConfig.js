@@ -47,7 +47,7 @@ const resetSessionTimer = () => {
     // Auto-logout after inactivity
     auth.signOut().then(() => {
       console.log('Session expired - user logged out');
-      window.location.href = '/login';
+      // Don't redirect, let the auth state change handle showing login screen
     });
   }, SESSION_TIMEOUT);
 };

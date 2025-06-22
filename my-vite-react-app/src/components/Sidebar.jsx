@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useRecordings } from '../contexts/RecordingsContext';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/FirebaseAuthContext';
 import { useState } from 'react';
 
 function Sidebar() {
@@ -336,14 +336,7 @@ function Sidebar() {
             </>
           ) : (
             <div className="text-center py-4">
-              <p className="text-sm text-gray-400 mb-3">Sign in to get started</p>
-              <button
-                className="btn btn-primary w-full"
-                onClick={() => window.location.href = '/login'}
-              >
-                <span className="material-icons">login</span>
-                <span>Log In</span>
-              </button>
+              <p className="text-sm text-gray-400">Loading authentication...</p>
             </div>
           )}
         </div>

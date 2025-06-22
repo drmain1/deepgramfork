@@ -11,14 +11,19 @@ import { useAuth } from './contexts/FirebaseAuthContext.jsx';
 function AuthenticatedApp() {
   const { currentUser, loading } = useAuth();
 
+  // Debug logging
+  console.log('AuthenticatedApp render:', { currentUser, loading });
+
   if (loading) {
     return <div className="flex items-center justify-center h-screen">Loading...</div>;
   }
 
   if (!currentUser) {
+    console.log('No current user, showing login screen');
     return <FirebaseAuthenticator />;
   }
 
+  console.log('User authenticated, showing app');
   return (
     <UserSettingsProvider>
       <App />

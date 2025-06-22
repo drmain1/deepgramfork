@@ -3,7 +3,7 @@ import { Box, Typography, TextField, Button, List, ListItem, ListItemText, IconB
 import DeleteIcon from '@mui/icons-material/Delete';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import { useUserSettings } from '../contexts/UserSettingsContext';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/FirebaseAuthContext';
 import SignaturePad from './SignaturePad';
 import { medicalSpecialties } from '../templates/templateConfig';
 

@@ -13,15 +13,22 @@ logger = logging.getLogger(__name__)
 # Initialize Firebase Admin SDK once
 if not firebase_admin._apps:
     try:
+        # Get Firebase project ID from environment
+        firebase_project_id = os.getenv('FIREBASE_PROJECT_ID', 'medlegaldoc-b31df')
+        
         # Try to use service account credentials
         cred_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS', 'gcp-credentials.json')
         if os.path.exists(cred_path):
             cred = credentials.Certificate(cred_path)
-            firebase_admin.initialize_app(cred)
+            firebase_admin.initialize_app(cred, {
+                'projectId': firebase_project_id
+            })
         else:
             # Use default credentials (for Cloud Run)
-            firebase_admin.initialize_app()
-        logger.info("Firebase Admin SDK initialized successfully")
+            firebase_admin.initialize_app(options={
+                'projectId': firebase_project_id
+            })
+        logger.info(f"Firebase Admin SDK initialized successfully for project: {firebase_project_id}")
     except Exception as e:
         logger.error(f"Failed to initialize Firebase Admin SDK: {str(e)}")
         raise
@@ -123,12 +130,24 @@ def validate_firebase_token(token: str) -> str:
         logger.error(f"Firebase token validation failed: {str(e)}")
         raise HTTPException(status_code=401, detail=f"Token validation failed: {str(e)}")
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security)) -> str:
+def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security)) -> dict:
     """
     Unified authentication function that works with both IAP and Firebase tokens.
-    Attempts IAP first (for production), falls back to Firebase (for dev/WebSocket).
+    Returns a user dict to maintain compatibility with AWS middleware.
     """
-    return validate_firebase_token(credentials.credentials)
+    user_id = validate_firebase_token(credentials.credentials)
+    
+    # Return user dict for compatibility with existing code
+    return {
+        'sub': user_id,
+        'username': user_id,
+        'email': None,  # Could be populated from Firebase token if needed
+        'token_use': 'id'
+    }
+
+async def get_user_id(current_user: dict = Security(get_current_user)) -> str:
+    """Get just the user ID from the current user (AWS compatibility)"""
+    return current_user['sub']
 
 # Dependency injection functions for different scenarios
 async def require_auth_iap(user_id: str = Depends(get_user_id_from_iap)) -> str:

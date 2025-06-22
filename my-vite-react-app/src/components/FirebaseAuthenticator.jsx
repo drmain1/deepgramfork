@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/FirebaseAuthContext';
 import {
   Box,
@@ -48,7 +47,6 @@ const StyledTextField = styled(TextField)(({ theme }) => ({
 }));
 
 const FirebaseAuthenticator = () => {
-  const navigate = useNavigate();
   const { login, signup, resetPassword, error: authError } = useAuth();
   
   const [isSignUp, setIsSignUp] = useState(false);
@@ -84,7 +82,8 @@ const FirebaseAuthenticator = () => {
         setIsSignUp(false);
       } else {
         await login(email, password);
-        navigate('/');
+        // After successful login, the auth state change will automatically
+        // trigger a re-render and show the main app
       }
     } catch (err) {
       setError(err.message);

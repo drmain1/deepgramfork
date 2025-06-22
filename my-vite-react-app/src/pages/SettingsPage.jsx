@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/FirebaseAuthContext';
 import SettingsTabs from '../components/SettingsTabs';
 import { useUserSettings } from '../contexts/UserSettingsContext';
 

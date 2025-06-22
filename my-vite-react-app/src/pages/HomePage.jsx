@@ -1,5 +1,5 @@
 import React from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/FirebaseAuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useRecordings } from '../contexts/RecordingsContext';
 
@@ -30,25 +30,15 @@ function HomePage() {
     );
   }
 
+  // Authentication is handled at the app level, so this shouldn't happen
+  // But if it does, show a loading state
   if (!isAuthenticated) {
     return (
       <main className="flex-1 overflow-y-auto bg-gray-50">
-        <div className="flex flex-col justify-center items-center min-h-screen px-8">
-          <div className="card max-w-md w-full text-center">
-            <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-primary to-secondary rounded-full flex items-center justify-center">
-              <span className="material-icons text-white text-4xl">mic</span>
-            </div>
-            <h2 className="text-2xl font-semibold text-gray-900 mb-3">Welcome to Dictation App</h2>
-            <p className="text-gray-600 mb-8">
-              Professional medical transcription made simple. Start recording encounters, manage your notes, and streamline your workflow.
-            </p>
-            <button
-              className="btn btn-primary w-full"
-              onClick={() => window.location.href = '/login'}
-            >
-              <span className="material-icons">login</span>
-              <span>Get Started</span>
-            </button>
+        <div className="flex justify-center items-center min-h-screen">
+          <div className="text-center">
+            <div className="spinner mx-auto mb-4"></div>
+            <p className="text-gray-600 font-medium">Checking authentication...</p>
           </div>
         </div>
       </main>
