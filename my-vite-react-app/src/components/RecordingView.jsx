@@ -38,7 +38,7 @@ function RecordingView({
   userSettings,
   onClose
 }) {
-  const { user, getAccessTokenSilently } = useAuth();
+  const { user, getToken } = useAuth();
   const { startPendingRecording, updateRecording, removeRecording, fetchUserRecordings } = useRecordings();
 
   const [isRecording, setIsRecording] = useState(false);
@@ -113,7 +113,7 @@ function RecordingView({
       }
 
       // Get the access token for WebSocket authentication
-      const accessToken = await getAccessTokenSilently();
+      const accessToken = await getToken();
       
       // Choose the correct WebSocket endpoint based on multilingual setting
       const wsEndpoint = isMultilingual 
@@ -128,10 +128,10 @@ function RecordingView({
         setError(null);
 
         // Send initial metadata for profile selection before anything else
-        if (user && user.sub && selectedProfileId) {
+        if (user && (user.uid || user.sub) && selectedProfileId) {
           const initialMetadata = {
             type: 'initial_metadata',
-            user_id: user.sub,
+            user_id: user.uid || user.sub,
             profile_id: selectedProfileId,
             is_multilingual: isMultilingual,
             target_language: targetLanguage
@@ -139,7 +139,7 @@ function RecordingView({
           webSocketRef.current.send(JSON.stringify(initialMetadata));
           console.log('[WebSocket] Sent initial_metadata:', initialMetadata);
         } else {
-          console.warn('[WebSocket] Could not send initial_metadata: user_id or profile_id missing.', { userId: user ? user.sub : 'undefined', profileId: selectedProfileId });
+          console.warn('[WebSocket] Could not send initial_metadata: user_id or profile_id missing.', { userId: user ? (user.uid || user.sub) : 'undefined', profileId: selectedProfileId });
         }
 
         if (audioStreamRef.current) {
@@ -336,7 +336,7 @@ function RecordingView({
       return;
     }
 
-    if (!user || !user.sub) {
+    if (!user || (!user.uid && !user.sub)) {
       setError('User not authenticated or user ID is missing. Cannot save session.');
       setSaveStatusMessage('Error: User authentication issue.');
       return;
@@ -394,7 +394,7 @@ function RecordingView({
         transcriptWithLocation = locationHeader + finalTranscriptContent;
       }
       
-      const accessToken = await getAccessTokenSilently();
+      const accessToken = await getToken();
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -410,7 +410,7 @@ function RecordingView({
           llm_template: llmTemplate,
           llm_template_id: llmTemplateId,
           location: selectedLocation === '__LEAVE_OUT__' ? '' : selectedLocation,
-          user_id: user.sub
+          user_id: user.uid || user.sub
         }),
       });
 

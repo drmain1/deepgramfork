@@ -10,7 +10,7 @@ import { medicalSpecialties } from '../templates/templateConfig';
 function OfficeInformationTab({ officeInformation, saveOfficeInformation, settingsLoading }) {
   const [newOfficeText, setNewOfficeText] = useState('');
   const { userSettings, updateDoctorInformation, updateMedicalSpecialty } = useUserSettings();
-  const { getAccessTokenSilently } = useAuth();
+  const { getToken } = useAuth();
   const [doctorName, setDoctorName] = useState('');
   const [showSignaturePad, setShowSignaturePad] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -165,7 +165,7 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
       formData.append('file', clinicLogo);
       
       const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-      const accessToken = await getAccessTokenSilently();
+      const accessToken = await getToken();
       
       const uploadResponse = await fetch(`${API_BASE_URL}/api/v1/upload_logo`, {
         method: 'POST',
@@ -207,7 +207,7 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
       setIsSaving(true);
       try {
         const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-        const accessToken = await getAccessTokenSilently();
+        const accessToken = await getToken();
         
         // Call delete endpoint
         const deleteResponse = await fetch(`${API_BASE_URL}/api/v1/delete_logo`, {

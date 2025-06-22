@@ -115,6 +115,14 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Security(
     logger.info(f"User authenticated: {user['sub']}")
     return user
 
+async def validate_firebase_token_simple(token: str) -> str:
+    """
+    Validate a Firebase token and return the user ID.
+    Used for WebSocket connections where we have the token directly.
+    """
+    payload = await verifier.verify_token(token)
+    return payload.get('user_id', payload.get('sub'))
+
 async def get_user_id(current_user: dict = Security(get_current_user)) -> str:
     """Get just the user ID from the current user (AWS compatibility)"""
     return current_user['sub']

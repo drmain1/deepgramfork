@@ -59,7 +59,7 @@ else:
 
 # Environment already loaded at the top of the file
 
-deepgram_api_key = os.getenv("deepgram_api_key")
+deepgram_api_key = os.getenv("DEEPGRAM_API_KEY") or os.getenv("deepgram_api_key")
 # AWS variables - keeping for reference during migration
 # AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
 # AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
@@ -169,12 +169,15 @@ async def websocket_stream_endpoint(websocket: WebSocket, token: str = Query(...
     This endpoint delegates to handle_deepgram_websocket for monolingual medical transcription.
     For multilingual support, clients should use the /stream/multilingual endpoint.
     """
-    # Verify JWT token before accepting WebSocket connection
+    # Verify Firebase token before accepting WebSocket connection
     try:
-        # Use the existing token verifier from auth_middleware
-        from auth_middleware import token_verifier
-        user_payload = token_verifier.verify_token(token)
-        user_id = user_payload.get('sub')
+        # Use Firebase token verification based on environment
+        if os.getenv('FIREBASE_PROJECT_ID') and os.getenv('ENVIRONMENT') == 'development':
+            from firebase_auth_simple import validate_firebase_token_simple
+            user_id = await validate_firebase_token_simple(token)
+        else:
+            from gcp_auth_middleware import validate_firebase_token
+            user_id = validate_firebase_token(token)
         
         # Accept the WebSocket connection
         await websocket.accept()
@@ -193,12 +196,15 @@ async def websocket_multilingual_stream_endpoint(websocket: WebSocket, token: st
     Handles WebSocket streaming connection for Speechmatics multilingual transcription.
     This endpoint provides Spanish/English code-switching and translation capabilities.
     """
-    # Verify JWT token before accepting WebSocket connection
+    # Verify Firebase token before accepting WebSocket connection
     try:
-        # Use the existing token verifier from auth_middleware
-        from auth_middleware import token_verifier
-        user_payload = token_verifier.verify_token(token)
-        user_id = user_payload.get('sub')
+        # Use Firebase token verification based on environment
+        if os.getenv('FIREBASE_PROJECT_ID') and os.getenv('ENVIRONMENT') == 'development':
+            from firebase_auth_simple import validate_firebase_token_simple
+            user_id = await validate_firebase_token_simple(token)
+        else:
+            from gcp_auth_middleware import validate_firebase_token
+            user_id = validate_firebase_token(token)
         
         # Accept the WebSocket connection
         await websocket.accept()
