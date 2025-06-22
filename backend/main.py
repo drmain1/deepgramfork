@@ -380,12 +380,10 @@ async def save_user_settings(
     print(f"Full settings: {json.dumps(settings_dict, indent=2)}")
 
     try:
-        # Save to GCS
-        success = gcs_client.save_data_to_gcs(
+        # Save to GCS using the proper method
+        success = gcs_client.save_user_settings(
             user_id=request.user_id,
-            data_type="settings",
-            session_id="user_settings",  # Use a fixed session_id for settings
-            content=json.dumps(settings_dict)
+            settings=settings_dict
         )
         
         if success:

@@ -182,7 +182,7 @@ class GCSClient:
             Success status
         """
         try:
-            object_name = f"user_settings/{user_id}/settings.json"
+            object_name = f"{user_id}/settings/user_settings.json"
             
             bucket = self.storage_client.bucket(self.bucket_name)
             blob = bucket.blob(object_name)
@@ -218,7 +218,7 @@ class GCSClient:
             Settings dictionary or None if not found
         """
         try:
-            object_name = f"user_settings/{user_id}/settings.json"
+            object_name = f"{user_id}/settings/user_settings.json"
             content = self.get_gcs_object_content(object_name)
             
             if content:
