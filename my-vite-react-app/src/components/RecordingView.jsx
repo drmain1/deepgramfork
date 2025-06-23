@@ -248,7 +248,7 @@ function RecordingView({
               setError(`Streaming error: ${parsedMessage.message}`);
             } else if (parsedMessage.type === 'status') {
               console.log('Received status from server (JSON):', parsedMessage.message);
-              if (parsedMessage.message.includes('S3') || parsedMessage.message.includes('Bedrock')) {
+              if (parsedMessage.message.includes('GCS') || parsedMessage.message.includes('Vertex')) {
                 setSaveStatusMessage(prev => prev ? `${prev}\n${parsedMessage.message}` : parsedMessage.message);
               }
             } else {
@@ -462,9 +462,9 @@ function RecordingView({
           status: 'saved',
           name: savedName,
           date: new Date().toISOString(),
-          s3PathTranscript: result.saved_paths?.original_transcript,
-          s3PathPolished: result.saved_paths?.polished_transcript,
-          s3PathAudio: result.saved_paths?.audio,
+          gcsPathTranscript: result.saved_paths?.original_transcript,
+          gcsPathPolished: result.saved_paths?.polished_transcript,
+          gcsPathAudio: result.saved_paths?.audio,
           context: patientContext,
           location: selectedLocation === '__LEAVE_OUT__' ? '' : selectedLocation,
           encounterType: encounterType

@@ -51,7 +51,7 @@ export function RecordingsProvider({ children }) {
         throw new Error(errorData.detail || `Server error: ${response.status}`);
       }
       const fetchedRecordings = await response.json();
-      console.log("Fetched recordings from S3:", fetchedRecordings);
+      console.log("Fetched recordings from GCS:", fetchedRecordings);
       console.log("Raw API Response - First recording full object:", JSON.stringify(fetchedRecordings[0], null, 2));
       
       // Debug: Check names of all recordings
@@ -68,7 +68,7 @@ export function RecordingsProvider({ children }) {
       
       // Debug: Check if location exists in fetched recordings
       fetchedRecordings.forEach((recording, index) => {
-        console.log(`Recording ${index} from S3:`, {
+        console.log(`Recording ${index} from GCS:`, {
           id: recording.id,
           name: recording.name,
           location: recording.location,
@@ -80,11 +80,11 @@ export function RecordingsProvider({ children }) {
         console.log("[fetchUserRecordings] Current local recordings:", prevRecordings.map(r => ({ id: r.id, name: r.name, status: r.status })));
         // Include ALL local recordings for proper merging
         const localRecordings = prevRecordings;
-        const s3Map = new Map(fetchedRecordings.map(r => [r.id, { ...r, date: r.date }])); 
+        const gcsMap = new Map(fetchedRecordings.map(r => [r.id, { ...r, date: r.date }])); 
 
-        // Debug: Check what's in the s3Map
-        console.log("S3 Map entries:");
-        s3Map.forEach((recording, id) => {
+        // Debug: Check what's in the gcsMap
+        console.log("GCS Map entries:");
+        gcsMap.forEach((recording, id) => {
           console.log(`${id}:`, {
             name: recording.name,
             location: recording.location,
@@ -96,22 +96,22 @@ export function RecordingsProvider({ children }) {
         
         // First, handle ALL local recordings
         localRecordings.forEach(localRec => {
-          const s3Version = s3Map.get(localRec.id);
-          if (s3Version) {
-            // Recording exists in both local and S3 - use S3 version (it's been processed)
-            console.log(`[MERGE] Found S3 version for local recording ${localRec.id} (was ${localRec.status}, now ${s3Version.status || 'saved'})`);
+          const gcsVersion = gcsMap.get(localRec.id);
+          if (gcsVersion) {
+            // Recording exists in both local and GCS - use GCS version (it's been processed)
+            console.log(`[MERGE] Found GCS version for local recording ${localRec.id} (was ${localRec.status}, now ${gcsVersion.status || 'saved'})`);
             
-            // Special handling: If local version has a patient name but S3 version has a timestamp-based name,
+            // Special handling: If local version has a patient name but GCS version has a timestamp-based name,
             // preserve the patient name from local version
             if (localRec.name && !localRec.name.startsWith('Transcript ') && 
-                s3Version.name && s3Version.name.startsWith('Transcript ')) {
-              console.log(`[MERGE] Preserving patient name from local: "${localRec.name}" instead of S3's "${s3Version.name}"`);
-              s3Version.name = localRec.name;
+                gcsVersion.name && gcsVersion.name.startsWith('Transcript ')) {
+              console.log(`[MERGE] Preserving patient name from local: "${localRec.name}" instead of GCS's "${gcsVersion.name}"`);
+              gcsVersion.name = localRec.name;
             }
             
             // Always prefer the backend version as the source of truth
-            merged.push(s3Version);
-            s3Map.delete(localRec.id); // Remove from s3Map so we don't add it again
+            merged.push(gcsVersion);
+            gcsMap.delete(localRec.id); // Remove from gcsMap so we don't add it again
           } else {
             // Recording only exists locally (still processing or failed)
             // Don't include local 'pending' records that might be stale
@@ -126,9 +126,9 @@ export function RecordingsProvider({ children }) {
           }
         });
         
-        // Then, add any remaining S3 recordings that weren't in local storage
-        s3Map.forEach((s3Rec, id) => {
-          merged.push(s3Rec);
+        // Then, add any remaining GCS recordings that weren't in local storage
+        gcsMap.forEach((gcsRec, id) => {
+          merged.push(gcsRec);
         });
         
         // Debug: Check final merged recordings
@@ -238,7 +238,7 @@ export function RecordingsProvider({ children }) {
 
   const fetchTranscriptContent = useCallback(async (s3Key, type) => {
     if (!s3Key) {
-      return type === 'original' ? 'Original transcript S3 path not found.' : 'Polished transcript S3 path not found.';
+      return type === 'original' ? 'Original transcript GCS path not found.' : 'Polished transcript GCS path not found.';
     }
     try {
       // Strip the s3://bucket-name/ prefix if present
@@ -252,7 +252,7 @@ export function RecordingsProvider({ children }) {
       // Ensure VITE_API_BASE_URL is correctly configured in your .env file for production
       const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
       const accessToken = await getToken();
-      const response = await fetch(`${apiUrl}/api/v1/s3_object_content?s3_key=${encodeURIComponent(cleanS3Key)}`, {
+      const response = await fetch(`${apiUrl}/api/v1/gcs_object_content?gcs_key=${encodeURIComponent(cleanS3Key)}`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
         },
@@ -353,13 +353,13 @@ export function RecordingsProvider({ children }) {
 
         const fetchAllTranscripts = async () => {
           try {
-            let originalContent = 'Original transcript not available or S3 path missing.';
-            if (recording.s3PathTranscript) {
-              originalContent = await fetchTranscriptContent(recording.s3PathTranscript, 'original');
+            let originalContent = 'Original transcript not available or GCS path missing.';
+            if (recording.gcsPathTranscript) {
+              originalContent = await fetchTranscriptContent(recording.gcsPathTranscript, 'original');
             } else {
               // Check if recording was just saved and might have missing paths
-              if (recording.status === 'saved' && !recording.s3PathTranscript) {
-                originalContent = 'Original transcript S3 path missing. Please refresh the page and try again.';
+              if (recording.status === 'saved' && !recording.gcsPathTranscript) {
+                originalContent = 'Original transcript GCS path missing. Please refresh the page and try again.';
               }
             }
             setOriginalTranscriptContent(originalContent);
@@ -369,15 +369,15 @@ export function RecordingsProvider({ children }) {
             // This field is set by updateRecording when "Save Changes" is clicked in AudioRecorder.
             if (recording && typeof recording.polishedTranscript === 'string') {
               polishedContentToSet = recording.polishedTranscript;
-            } else if (recording && recording.s3PathPolished) {
-              // If no local edit or if we prefer S3, fetch from S3 path.
-              polishedContentToSet = await fetchTranscriptContent(recording.s3PathPolished, 'polished');
+            } else if (recording && recording.gcsPathPolished) {
+              // If no local edit or if we prefer GCS, fetch from GCS path.
+              polishedContentToSet = await fetchTranscriptContent(recording.gcsPathPolished, 'polished');
             } else {
               // Fallback if neither local edit nor S3 path is available.
-              if (recording.status === 'saved' && !recording.s3PathPolished) {
-                polishedContentToSet = 'Polished transcript S3 path missing. Please refresh the page and try again.';
+              if (recording.status === 'saved' && !recording.gcsPathPolished) {
+                polishedContentToSet = 'Polished transcript GCS path missing. Please refresh the page and try again.';
               } else {
-                polishedContentToSet = 'Polished transcript not available or S3 path missing.';
+                polishedContentToSet = 'Polished transcript not available or GCS path missing.';
               }
             }
             setPolishedTranscriptContent(polishedContentToSet);

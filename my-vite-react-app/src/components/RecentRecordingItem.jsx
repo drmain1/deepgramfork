@@ -112,9 +112,9 @@ function RecentRecordingItem({ recording, onDelete }) {
       {recording.patientContext && <><b>Context:</b> {recording.patientContext}<br /></>}
       {recording.encounterType && <><b>Type:</b> {recording.encounterType}<br /></>}
       {recording.llmTemplate && <><b>Template:</b> {recording.llmTemplate}<br /></>}
-      {recording.s3PathAudio && <><b>Audio:</b> {recording.s3PathAudio.split('/').pop()}<br /></>}
-      {recording.s3PathTranscript && <><b>Transcript:</b> {recording.s3PathTranscript.split('/').pop()}<br /></>}
-      {recording.s3PathPolished && <><b>Note:</b> {recording.s3PathPolished.split('/').pop()}</>}
+      {recording.gcsPathAudio && <><b>Audio:</b> {recording.gcsPathAudio.split('/').pop()}<br /></>}
+      {recording.gcsPathTranscript && <><b>Transcript:</b> {recording.gcsPathTranscript.split('/').pop()}<br /></>}
+      {recording.gcsPathPolished && <><b>Note:</b> {recording.gcsPathPolished.split('/').pop()}</>}
     </React.Fragment>
   ) : recording.status === 'failed' ? (
     <React.Fragment>

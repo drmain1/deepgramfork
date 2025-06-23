@@ -46,24 +46,13 @@ from gcp_utils import polish_transcript_with_gemini
 
 # Import authentication middleware
 # Use Firebase Admin SDK for production authentication
-if os.getenv('FIREBASE_PROJECT_ID'):
-    from gcp_auth_middleware import get_current_user, get_user_id
-    print("Using Firebase Admin SDK authentication (production-ready)")
-else:
-    from auth_middleware import get_current_user, get_user_id
-    print("Using AWS Cognito authentication middleware")
+from gcp_auth_middleware import get_current_user, get_user_id
+print("Using Firebase Admin SDK authentication (production-ready)")
 
 # Environment already loaded at the top of the file
 
 deepgram_api_key = os.getenv("DEEPGRAM_API_KEY") or os.getenv("deepgram_api_key")
-# AWS variables - keeping for reference during migration
-# AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
-# AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
-# AWS_S3_BUCKET_NAME = os.getenv("AWS_S3_BUCKET_NAME")
-# AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 DEFAULT_TENANT_ID = os.getenv("DEFAULT_TENANT_ID", "dev-tenant")
-# Optional: Specific Bedrock region if different, though AWS_REGION can be used
-# AWS_BEDROCK_REGION = os.getenv("AWS_BEDROCK_REGION", AWS_REGION)
 
 app = FastAPI()
 
@@ -101,7 +90,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com data:; "
             "img-src 'self' data: blob: https:; "
-            "connect-src 'self' wss: https://cognito-idp.*.amazonaws.com https://*.auth0.com;"
+            "connect-src 'self' wss: https://*.googleapis.com;"
         )
         
         return response
@@ -226,7 +215,7 @@ class UserSettingsData(BaseModel):
     transcriptionProfiles: List[TranscriptionProfileItem] = Field(default_factory=list)
     doctorName: Optional[str] = Field(default="", description="Doctor's name for signatures")
     doctorSignature: Optional[str] = Field(default=None, description="Base64 encoded doctor's signature image")
-    clinicLogo: Optional[str] = Field(default=None, description="URL to clinic logo in S3")
+    clinicLogo: Optional[str] = Field(default=None, description="URL to clinic logo in GCS")
     includeLogoOnPdf: bool = Field(default=False, description="Include clinic logo on PDF forms")
     medicalSpecialty: Optional[str] = Field(default="", description="Medical specialty of the doctor")
 
@@ -874,9 +863,9 @@ class RecordingInfo(BaseModel):
     name: str # Derived name, e.g., from patient context or session title
     date: datetime # Last modified date of the metadata file or a date from metadata
     status: str = "saved" # Can be "saved", "draft", "pending", "saving", "failed"
-    s3PathTranscript: Optional[str] = None
-    s3PathPolished: Optional[str] = None
-    s3PathMetadata: Optional[str] = None # S3 key for the session_metadata.json file itself, now optional
+    gcsPathTranscript: Optional[str] = None
+    gcsPathPolished: Optional[str] = None
+    gcsPathMetadata: Optional[str] = None # GCS key for the session_metadata.json file itself, now optional
     patientContext: Optional[str] = None
     encounterType: Optional[str] = None # Or selected profile name
     llmTemplateName: Optional[str] = None # Name of the LLM template/profile used
@@ -990,9 +979,9 @@ async def get_user_recordings(
                         id=session_id,
                         name=rec_name,
                         date=last_modified,
-                        s3PathTranscript=gcs_path_transcript_original,
-                        s3PathPolished=gcs_path_transcript_polished,
-                        s3PathMetadata=gcs_path_metadata,
+                        gcsPathTranscript=gcs_path_transcript_original,
+                        gcsPathPolished=gcs_path_transcript_polished,
+                        gcsPathMetadata=gcs_path_metadata,
                         patientContext=patient_context,
                         encounterType=encounter_type,
                         llmTemplateName=llm_template_name,
@@ -1047,9 +1036,9 @@ async def get_user_recordings(
                                 name=f"Draft: {draft_data.get('patient_name', 'Untitled')}",
                                 date=last_modified,
                                 status="draft",
-                                s3PathTranscript=None,
-                                s3PathPolished=None,
-                                s3PathMetadata=obj_name,
+                                gcsPathTranscript=None,
+                                gcsPathPolished=None,
+                                gcsPathMetadata=obj_name,
                                 patientContext=None,
                                 encounterType=None,
                                 llmTemplateName=None,
@@ -1107,14 +1096,14 @@ async def get_user_recordings(
 
 from fastapi.responses import PlainTextResponse
 
-@app.get("/api/v1/s3_object_content", response_class=PlainTextResponse)
-async def get_s3_object_content(
-    s3_key: str,
+@app.get("/api/v1/gcs_object_content", response_class=PlainTextResponse)
+async def get_gcs_object_content(
+    gcs_key: str,
     current_user: dict = Depends(get_current_user)
 ):
     # Extract user_id from the object key to verify ownership
     # Object keys are in format: {user_id}/transcripts/... or {user_id}/metadata/...
-    key_parts = s3_key.split('/')
+    key_parts = gcs_key.split('/')
     if len(key_parts) < 3:
         raise HTTPException(status_code=400, detail="Invalid object key format")
     
@@ -1128,16 +1117,16 @@ async def get_s3_object_content(
         print("GCS client not initialized. Cannot fetch object content.")
         raise HTTPException(status_code=503, detail="GCS service not available")
 
-    print(f"Attempting to fetch object content for key: {s3_key}")
+    print(f"Attempting to fetch object content for key: {gcs_key}")
     try:
-        content = gcs_client.get_gcs_object_content(s3_key)
+        content = gcs_client.get_gcs_object_content(gcs_key)
         if content:
             return content
         else:
-            print(f"Object not found: {s3_key}")
-            raise HTTPException(status_code=404, detail=f"Object not found: {s3_key}")
+            print(f"Object not found: {gcs_key}")
+            raise HTTPException(status_code=404, detail=f"Object not found: {gcs_key}")
     except Exception as e:
-        print(f"Unexpected error fetching object {s3_key}: {e}")
+        print(f"Unexpected error fetching object {gcs_key}: {e}")
         raise HTTPException(status_code=500, detail=f"Unexpected error fetching object: {str(e)}")
         
 if __name__ == "__main__":

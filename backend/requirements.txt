@@ -18,6 +18,5 @@ firebase-admin
 # For rate limiting
 slowapi
 
-# Keep for migration period (remove later)
-boto3
+# python-jose is still used for JWT handling with Firebase
 python-jose[cryptography]

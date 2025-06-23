@@ -160,7 +160,7 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
 
     setIsSaving(true);
     try {
-      // First, upload the logo to S3
+      // First, upload the logo to GCS
       const formData = new FormData();
       formData.append('file', clinicLogo);
       
