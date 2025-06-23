@@ -1,24 +1,32 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext } from 'react';
+import { useUserSettings } from './UserSettingsContext';
 
 const TemplateContext = createContext();
 
+// Thin wrapper around UserSettings for backward compatibility
 export function TemplateProvider({ children }) {
-  const [macroPhrases, setMacroPhrases] = useState(() => {
-    const saved = localStorage.getItem('macroPhrases');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [customVocabulary, setCustomVocabulary] = useState(() => {
-    const saved = localStorage.getItem('customVocabulary');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  useEffect(() => {
-    localStorage.setItem('macroPhrases', JSON.stringify(macroPhrases));
-    localStorage.setItem('customVocabulary', JSON.stringify(customVocabulary));
-  }, [macroPhrases, customVocabulary]);
+  const { userSettings, updateUserSettings } = useUserSettings();
+  
+  // Extract template-related settings
+  const macroPhrases = userSettings.macroPhrases || [];
+  const customVocabulary = userSettings.customVocabulary || [];
+  
+  // Wrapper functions to maintain API compatibility
+  const setMacroPhrases = (newPhrases) => {
+    updateUserSettings({ ...userSettings, macroPhrases: newPhrases });
+  };
+  
+  const setCustomVocabulary = (newVocabulary) => {
+    updateUserSettings({ ...userSettings, customVocabulary: newVocabulary });
+  };
 
   return (
-    <TemplateContext.Provider value={{ macroPhrases, setMacroPhrases, customVocabulary, setCustomVocabulary }}>
+    <TemplateContext.Provider value={{ 
+      macroPhrases, 
+      setMacroPhrases, 
+      customVocabulary, 
+      setCustomVocabulary 
+    }}>
       {children}
     </TemplateContext.Provider>
   );
