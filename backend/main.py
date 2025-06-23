@@ -27,6 +27,9 @@ import json
 import tempfile
 import time
 from typing import Callable
+
+# Set up logging
+logger = logging.getLogger(__name__)
 from pydantic import BaseModel, Field
 from fastapi import HTTPException
 from typing import Optional, List, Dict, Any, Union
@@ -68,7 +71,7 @@ app.add_middleware(
     allow_origins=origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"], # Allow all common methods
-    allow_headers=["Authorization", "Content-Type", "*"], # Allow common and custom headers
+    allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"], # Explicit headers only
 )
 
 # Security Headers Middleware for HIPAA Compliance
@@ -323,6 +326,32 @@ async def test_gcp_connection(current_user_id: str = Depends(get_user_id)):
             "success": False,
             "message": f"Failed to test GCP connection: {str(e)}",
             "provider": "Google Cloud Platform - Vertex AI"
+        }
+
+@app.post("/api/v1/logout")
+async def logout(current_user: dict = Depends(get_current_user)):
+    """
+    Logout endpoint to clear user session from Firestore.
+    This ensures proper session cleanup for HIPAA compliance.
+    """
+    try:
+        user_id = current_user.get('sub')
+        # Clear the session in Firestore
+        await session_manager.clear_session(user_id)
+        
+        # Log the logout event for audit trail
+        logger.info(f"AUDIT: User {user_id} logged out successfully")
+        
+        return {
+            "success": True,
+            "message": "Logged out successfully"
+        }
+    except Exception as e:
+        logger.error(f"Error during logout for user {current_user.get('sub')}: {str(e)}")
+        # Still return success to client to avoid leaking information
+        return {
+            "success": True,
+            "message": "Logged out"
         }
 
 

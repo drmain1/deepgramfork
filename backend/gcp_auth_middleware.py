@@ -111,12 +111,11 @@ def validate_firebase_token(token: str) -> str:
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid token: no user ID")
         
-        # Check if email is verified (optional but recommended)
+        # Check if email is verified (required for HIPAA compliance)
         email_verified = decoded_token.get('email_verified', False)
         if not email_verified:
-            logger.warning(f"User {user_id} email not verified")
-            # You might want to enforce this for production
-            # raise HTTPException(status_code=403, detail="Email not verified")
+            logger.warning(f"User {user_id} attempted access without verified email")
+            raise HTTPException(status_code=403, detail="Email verification required. Please verify your email address before accessing this application.")
         
         # Log successful authentication
         logger.info(f"User authenticated via Firebase: {user_id}")
@@ -135,13 +134,45 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Security(securi
     Unified authentication function that works with both IAP and Firebase tokens.
     Returns a user dict to maintain compatibility with AWS middleware.
     """
-    user_id = validate_firebase_token(credentials.credentials)
+    user_info = validate_firebase_token(credentials.credentials)
+    
+    # Extract user_id first
+    user_id = user_info.get('user_id', user_info.get('uid')) if isinstance(user_info, dict) else user_info
+    
+    # Check session validity using Firestore
+    import asyncio
+    try:
+        # Try to get the current event loop
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # If we're in an async context, create a task
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, session_manager.check_session(user_id))
+                session_valid = future.result()
+        else:
+            # If no loop is running, we can use run_until_complete
+            session_valid = loop.run_until_complete(session_manager.check_session(user_id))
+    except RuntimeError:
+        # No event loop exists, create one
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        session_valid = loop.run_until_complete(session_manager.check_session(user_id))
+        loop.close()
+    
+    if not session_valid:
+        logger.warning(f"Session expired for user: {user_id}")
+        raise HTTPException(
+            status_code=401,
+            detail="Session expired. Please log in again."
+        )
     
     # Return user dict for compatibility with existing code
     return {
         'sub': user_id,
         'username': user_id,
-        'email': None,  # Could be populated from Firebase token if needed
+        'email': user_info.get('email') if isinstance(user_info, dict) else None,
+        'email_verified': user_info.get('email_verified', False) if isinstance(user_info, dict) else False,
         'token_use': 'id'
     }
 
@@ -203,40 +234,5 @@ def log_user_access(user_id: str, action: str, resource: str, request: Request):
     except Exception as e:
         logger.error(f"Failed to log user access: {str(e)}")
 
-# Middleware for session timeout (HIPAA requirement)
-from datetime import datetime, timedelta
-import json
-
-class SessionTimeoutMiddleware:
-    """
-    Middleware to enforce session timeouts for HIPAA compliance.
-    """
-    def __init__(self, timeout_minutes: int = 15):
-        self.timeout_minutes = timeout_minutes
-        self.sessions = {}  # In production, use Redis or Firestore
-    
-    async def check_session(self, user_id: str) -> bool:
-        """Check if user session is still valid."""
-        if user_id not in self.sessions:
-            self.sessions[user_id] = datetime.utcnow()
-            return True
-        
-        last_activity = self.sessions[user_id]
-        if datetime.utcnow() - last_activity > timedelta(minutes=self.timeout_minutes):
-            # Session expired
-            del self.sessions[user_id]
-            return False
-        
-        # Update last activity
-        self.sessions[user_id] = datetime.utcnow()
-        return True
-    
-    async def clear_session(self, user_id: str):
-        """Clear user session on logout."""
-        if user_id in self.sessions:
-            del self.sessions[user_id]
-
-# Create singleton instance
-session_manager = SessionTimeoutMiddleware(
-    timeout_minutes=int(os.getenv("SESSION_TIMEOUT_MINUTES", "25"))
-)
+# Import Firestore-based session manager for production use
+from firestore_session_manager import firestore_session_manager as session_manager

@@ -50,10 +50,10 @@ function RecordingView({
   const webSocketRef = useRef(null);
   const audioStreamRef = useRef(null);
 
-  // Debug logging for location
-  console.log("RecordingView - selectedLocation prop:", selectedLocation);
-  console.log("RecordingView - patientDetails:", patientDetails);
-  console.log("RecordingView - patientContext:", patientContext);
+  // PHI-safe debug logging
+  console.log("RecordingView - location provided:", !!selectedLocation);
+  console.log("RecordingView - patient details provided:", !!patientDetails);
+  console.log("RecordingView - patient context provided:", !!patientContext);
 
   useEffect(() => {
     setCombinedTranscript(finalTranscript + currentInterimTranscript);
@@ -393,7 +393,8 @@ function RecordingView({
       // Comprehensive debug logging
       console.log('=== SAVE SESSION DEBUG ===');
       console.log('currentProfileId:', currentProfileId);
-      console.log('userSettings.transcriptionProfiles:', userSettings.transcriptionProfiles);
+      // PHI-safe logging
+      console.log('userSettings.transcriptionProfiles count:', userSettings.transcriptionProfiles?.length || 0);
       console.log('activeProfile found:', activeProfile);
       if (activeProfile) {
         console.log('activeProfile details:', {

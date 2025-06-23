@@ -40,11 +40,12 @@ function Sidebar() {
     
     if (deletePersistedRecording) {
       try {
-        console.log(`Attempting to delete recording via context: ${deleteConfirmation.recordingId}`);
+        // PHI-safe logging
+        console.log(`Attempting to delete recording`);
         await deletePersistedRecording(deleteConfirmation.recordingId);
         setDeleteConfirmation({ isOpen: false, recordingId: null, recordingName: null });
       } catch (error) {
-        console.error(`Failed to delete recording ${deleteConfirmation.recordingId}:`, error);
+        console.error(`Failed to delete recording:`, error);
       }
     } else {
       console.error('deletePersistedRecording function not available from context.');

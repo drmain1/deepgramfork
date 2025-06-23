@@ -105,7 +105,8 @@ const useRecordingsStore = create(
             }
             
             const fetchedRecordings = await response.json();
-            console.log("Fetched recordings from backend:", fetchedRecordings.length);
+            // PHI-safe logging: only log count, not content
+            console.log("Fetched recordings count:", fetchedRecordings.length);
             
             // Merge with local state
             get().mergeRecordings(fetchedRecordings);
@@ -218,7 +219,8 @@ const useRecordingsStore = create(
 
         // Update recording
         updateRecording: (sessionId, updates) => {
-          console.log(`[updateRecording] Updating recording ${sessionId} with:`, updates);
+          // PHI-safe logging: only log sessionId and status, not patient names
+          console.log(`[updateRecording] Updating recording ${sessionId}, status: ${updates.status || 'unchanged'}`);
           
           // Cache patient names in memory
           if (updates.name && 
@@ -399,7 +401,8 @@ const useRecordingsStore = create(
               });
             }
             
-            console.log(`Successfully deleted recording ${recordingId}`);
+            // PHI-safe logging
+            console.log(`Successfully deleted recording`);
           } catch (error) {
             console.error(`Error deleting recording ${recordingId}:`, error);
             throw error;
