@@ -325,24 +325,6 @@ async def test_gcp_connection(current_user_id: str = Depends(get_user_id)):
             "provider": "Google Cloud Platform - Vertex AI"
         }
 
-@app.get("/api/v1/test-gcp-noauth")
-async def test_gcp_connection_noauth():
-    """Test endpoint to verify GCP Vertex AI connection (no auth for testing)"""
-    try:
-        from gcp_utils import test_gemini_connection
-        success, message = test_gemini_connection()
-        return {
-            "success": success,
-            "message": message,
-            "provider": "Google Cloud Platform - Vertex AI",
-            "note": "This is a temporary endpoint without auth - remove in production!"
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "message": f"Failed to test GCP connection: {str(e)}",
-            "provider": "Google Cloud Platform - Vertex AI"
-        }
 
 @app.post("/api/v1/user_settings")
 async def save_user_settings(

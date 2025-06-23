@@ -19,10 +19,14 @@ security = HTTPBearer()
 
 # Firebase project configuration
 FIREBASE_PROJECT_ID = os.getenv('FIREBASE_PROJECT_ID', 'medlegaldoc-b31df')
-FIREBASE_API_KEY = 'AIzaSyBLRq3spaL-8fG9BIi-91F_Wrr3Yjk7Zqk'  # Public API key from frontend
+FIREBASE_API_KEY = os.getenv('FIREBASE_API_KEY', '')  # Must be set in environment variables
 
 # Google's public keys for verifying Firebase tokens
 GOOGLE_CERTS_URL = "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com"
+
+# Validate configuration
+if not FIREBASE_API_KEY:
+    logger.warning("FIREBASE_API_KEY environment variable not set. Some features may not work properly.")
 
 class FirebaseTokenVerifier:
     def __init__(self):
