@@ -476,13 +476,14 @@ function RecordingView({
           selectRecording(null);
         }
         
-        // Trigger a fetch of recordings after a short delay to ensure backend is ready
+        // Trigger a fetch of recordings after a longer delay to ensure backend metadata is fully saved
+        // This prevents the patient name from reverting to timestamp
         setTimeout(() => {
           if (fetchUserRecordings) {
             console.log('Fetching updated recordings after save...');
             fetchUserRecordings();
           }
-        }, 1000);
+        }, 3000); // Increased from 1000ms to 3000ms
       } else {
         const errorText = result.error || result.detail || `HTTP ${response.status}: ${response.statusText}`;
         console.error('Server responded with error:', errorText);

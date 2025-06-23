@@ -612,6 +612,41 @@ async def save_session_data_endpoint(
     saved_paths = {}
     errors = []
 
+    # Save initial metadata FIRST to ensure patient name is available immediately
+    print(f"Attempting to save initial metadata for session_id: {session_id}, patient_name: {patient_name}")
+    try:
+        initial_metadata = {
+            "session_id": session_id,
+            "patient_name": patient_name,
+            "patient_context": patient_context,
+            "encounter_type": encounter_type,
+            "llm_template": llm_template,
+            "llm_template_id": llm_template_id,
+            "location": location,
+            "user_id": user_id,
+            "created_date": datetime.now(timezone.utc).isoformat(),
+            "status": "processing"
+        }
+        
+        metadata_content = json.dumps(initial_metadata, indent=2)
+        
+        # Save metadata to GCS
+        success = gcs_client.save_data_to_gcs(
+            user_id=user_id,
+            data_type="metadata",
+            session_id=session_id,
+            content=metadata_content
+        )
+        
+        if success:
+            metadata_path = f"{user_id}/metadata/{session_id}.txt"
+            saved_paths["metadata"] = metadata_path
+            print(f"Initial session metadata saved to: {metadata_path}")
+        else:
+            print(f"Failed to save initial metadata for session {session_id}")
+    except Exception as e:
+        print(f"Error saving initial metadata for {session_id}: {e}")
+
     # Save original transcript to GCS
     print(f"Attempting to save original transcript for session_id: {session_id}, user_id: {user_id}")
     try:
@@ -690,9 +725,9 @@ async def save_session_data_endpoint(
             print(f"Error polishing transcript for {session_id}: {e}")
             errors.append(f"Error polishing transcript: {str(e)}")
 
-    # Save session metadata to GCS
+    # Update metadata with final paths after all processing is complete
     try:
-        session_metadata = {
+        final_metadata = {
             "session_id": session_id,
             "patient_name": patient_name,
             "patient_context": patient_context,
@@ -702,12 +737,13 @@ async def save_session_data_endpoint(
             "location": location,
             "user_id": user_id,
             "created_date": datetime.now(timezone.utc).isoformat(),
-            "gcs_paths": saved_paths
+            "gcs_paths": saved_paths,
+            "status": "completed"
         }
         
-        metadata_content = json.dumps(session_metadata, indent=2)
+        metadata_content = json.dumps(final_metadata, indent=2)
         
-        # Save metadata to GCS
+        # Update metadata in GCS
         success = gcs_client.save_data_to_gcs(
             user_id=user_id,
             data_type="metadata",
@@ -716,14 +752,12 @@ async def save_session_data_endpoint(
         )
         
         if success:
-            metadata_path = f"{user_id}/metadata/{session_id}.txt"
-            saved_paths["metadata"] = metadata_path
-            print(f"Session metadata saved to: {metadata_path}")
+            print(f"Final session metadata updated in: {saved_paths.get('metadata', 'metadata path not set')}")
         else:
-            errors.append("Failed to save session metadata to GCS.")
+            errors.append("Failed to update final session metadata in GCS.")
     except Exception as e:
-        print(f"Error saving session metadata for {session_id}: {e}")
-        errors.append(f"Error saving session metadata: {str(e)}")
+        print(f"Error updating final session metadata for {session_id}: {e}")
+        errors.append(f"Error updating final session metadata: {str(e)}")
 
     response_message = "Session data processing completed."
     if not saved_paths and errors:
@@ -945,15 +979,17 @@ async def get_user_recordings(
                         metadata_content = gcs_client.get_gcs_object_content(gcs_path_metadata)
                         if metadata_content:
                             print(f"[DEBUG] Metadata content found, length: {len(metadata_content)}")
+                            # Log first 200 chars of metadata for debugging
+                            print(f"[DEBUG] Metadata content preview: {metadata_content[:200]}...")
                             metadata = json.loads(metadata_content)
                             print(f"[DEBUG] Metadata parsed for session {session_id}: patient_name='{metadata.get('patient_name')}', has_name={bool(metadata.get('patient_name'))}")
                             
                             # Use patient name from metadata if available
                             if metadata.get('patient_name'):
                                 rec_name = metadata['patient_name']
-                                print(f"Using patient name from metadata: '{rec_name}' for session {session_id}")
+                                print(f"[SUCCESS] Using patient name from metadata: '{rec_name}' for session {session_id}")
                             else:
-                                print(f"[DEBUG] No patient_name in metadata for session {session_id}")
+                                print(f"[WARNING] No patient_name in metadata for session {session_id}, metadata keys: {list(metadata.keys())}")
                             
                             # Extract other metadata
                             patient_context = metadata.get('patient_context')
@@ -961,9 +997,12 @@ async def get_user_recordings(
                             llm_template_name = metadata.get('llm_template')
                             location = metadata.get('location')
                         else:
-                            print(f"[DEBUG] No metadata content found for: {gcs_path_metadata}")
+                            print(f"[WARNING] No metadata content found for: {gcs_path_metadata}")
+                    except json.JSONDecodeError as e:
+                        print(f"[ERROR] Failed to parse JSON metadata for session {session_id}: {e}")
+                        print(f"[ERROR] Metadata content that failed to parse: {metadata_content[:500] if 'metadata_content' in locals() else 'N/A'}")
                     except Exception as e:
-                        print(f"Error parsing metadata for session {session_id}: {e}")
+                        print(f"[ERROR] Error fetching/parsing metadata for session {session_id}: {type(e).__name__}: {e}")
                     
                     # Fallback name generation if no patient name from metadata
                     if not rec_name:

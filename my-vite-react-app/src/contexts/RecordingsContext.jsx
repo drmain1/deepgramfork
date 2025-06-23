@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from './FirebaseAuthContext';
 
 const RecordingsContext = createContext();
@@ -18,6 +18,7 @@ export function RecordingsProvider({ children }) {
   const [isLoadingSelectedTranscript, setIsLoadingSelectedTranscript] = useState(false);
   const [selectedTranscriptError, setSelectedTranscriptError] = useState(null);
   const [previousRecordingStatus, setPreviousRecordingStatus] = useState({});
+  const patientNameCacheRef = useRef({}); // Session-only cache, not persisted
 
 
   useEffect(() => {
@@ -101,12 +102,38 @@ export function RecordingsProvider({ children }) {
             // Recording exists in both local and GCS - use GCS version (it's been processed)
             console.log(`[MERGE] Found GCS version for local recording ${localRec.id} (was ${localRec.status}, now ${gcsVersion.status || 'saved'})`);
             
-            // Special handling: If local version has a patient name but GCS version has a timestamp-based name,
-            // preserve the patient name from local version
-            if (localRec.name && !localRec.name.startsWith('Transcript ') && 
-                gcsVersion.name && gcsVersion.name.startsWith('Transcript ')) {
-              console.log(`[MERGE] Preserving patient name from local: "${localRec.name}" instead of GCS's "${gcsVersion.name}"`);
-              gcsVersion.name = localRec.name;
+            // Special handling: Preserve patient names in several scenarios
+            // 1. If local has a real name but GCS has timestamp-based name
+            // 2. If local was "saving" and GCS is now "saved" (status transition)
+            // 3. If local has "Processing:" prefix and GCS has timestamp
+            // 4. If local has "Failed:" prefix and GCS has timestamp
+            const localHasRealName = localRec.name && 
+              !localRec.name.startsWith('Transcript ') && 
+              !localRec.name.startsWith('Session ') &&
+              !localRec.name.startsWith('Tx @ ');
+            const gcsHasTimestampName = gcsVersion.name && 
+              (gcsVersion.name.startsWith('Transcript ') || 
+               gcsVersion.name.startsWith('Session ') ||
+               gcsVersion.name.startsWith('Tx @ '));
+            const isStatusTransition = (localRec.status === 'saving' && gcsVersion.status === 'saved') ||
+                                     (localRec.status === 'draft' && gcsVersion.status === 'saved');
+            
+            if (localHasRealName && (gcsHasTimestampName || isStatusTransition)) {
+              // Extract the actual patient name (remove "Processing:" or "Failed:" prefix if present)
+              let patientName = localRec.name;
+              if (patientName.startsWith('Processing: ')) {
+                patientName = patientName.substring('Processing: '.length);
+              } else if (patientName.startsWith('Failed: ')) {
+                patientName = patientName.substring('Failed: '.length);
+              }
+              console.log(`[MERGE] Preserving patient name from local: "${patientName}" instead of GCS's "${gcsVersion.name}"`);
+              gcsVersion.name = patientName;
+              // Also update the cache (session-only)
+              patientNameCacheRef.current[localRec.id] = patientName;
+            } else if (gcsHasTimestampName && patientNameCacheRef.current[localRec.id]) {
+              // If GCS has timestamp name but we have a cached patient name, use the cached one
+              console.log(`[MERGE] Using cached patient name: "${patientNameCacheRef.current[localRec.id]}" instead of GCS's "${gcsVersion.name}"`);
+              gcsVersion.name = patientNameCacheRef.current[localRec.id];
             }
             
             // Always prefer the backend version as the source of truth
@@ -128,6 +155,11 @@ export function RecordingsProvider({ children }) {
         
         // Then, add any remaining GCS recordings that weren't in local storage
         gcsMap.forEach((gcsRec, id) => {
+          // Check if we have a cached name for this recording
+          if (gcsRec.name && gcsRec.name.startsWith('Transcript ') && patientNameCacheRef.current[id]) {
+            console.log(`[MERGE] Applying cached patient name to GCS-only recording ${id}: "${patientNameCacheRef.current[id]}"`);
+            gcsRec.name = patientNameCacheRef.current[id];
+          }
           merged.push(gcsRec);
         });
         
@@ -209,6 +241,29 @@ export function RecordingsProvider({ children }) {
 
   const updateRecording = useCallback((sessionId, updates) => {
     console.log(`[updateRecording] Updating recording ${sessionId} with:`, updates);
+    
+    // Cache patient names in session memory only (for UI consistency during current session)
+    if (updates.name && 
+        !updates.name.startsWith('Transcript ') && 
+        !updates.name.startsWith('Session ') &&
+        !updates.name.startsWith('Pending ') &&
+        !updates.name.startsWith('Tx @ ')) {
+      const cleanName = updates.name.replace('Processing: ', '').replace('Failed: ', '');
+      patientNameCacheRef.current[sessionId] = cleanName;
+      console.log(`[updateRecording] Cached patient name for ${sessionId}: ${cleanName} (session-only)`);
+    }
+    
+    // Special handling for 'saved' status - always cache the name
+    if (updates.status === 'saved' && updates.name) {
+      const cleanName = updates.name.replace('Processing: ', '').replace('Failed: ', '');
+      if (!cleanName.startsWith('Transcript ') && 
+          !cleanName.startsWith('Session ') && 
+          !cleanName.startsWith('Tx @ ')) {
+        patientNameCacheRef.current[sessionId] = cleanName;
+        console.log(`[updateRecording] Cached patient name for saved recording ${sessionId}: ${cleanName} (session-only)`);
+      }
+    }
+    
     setRecordings(prevRecordings => {
       console.log(`[updateRecording] Current recordings:`, prevRecordings.map(r => ({ id: r.id, status: r.status, name: r.name })));
       const updated = prevRecordings.map(rec =>

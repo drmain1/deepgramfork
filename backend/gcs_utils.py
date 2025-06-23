@@ -59,7 +59,7 @@ class GCSClient:
         try:
             # Construct the object path
             if data_type == "metadata":
-                object_name = f"{user_id}/metadata/{session_id}.json"
+                object_name = f"{user_id}/metadata/{session_id}.txt"  # Changed from .json to .txt
             else:
                 object_name = f"{user_id}/{data_type}/{session_id}.txt"
             
