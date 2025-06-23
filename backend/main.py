@@ -952,20 +952,27 @@ async def get_user_recordings(
                     
                     try:
                         # Attempt to fetch metadata from GCS
+                        print(f"[DEBUG] Attempting to fetch metadata from: {gcs_path_metadata}")
                         metadata_content = gcs_client.get_gcs_object_content(gcs_path_metadata)
                         if metadata_content:
+                            print(f"[DEBUG] Metadata content found, length: {len(metadata_content)}")
                             metadata = json.loads(metadata_content)
+                            print(f"[DEBUG] Metadata parsed for session {session_id}: patient_name='{metadata.get('patient_name')}', has_name={bool(metadata.get('patient_name'))}")
                             
                             # Use patient name from metadata if available
                             if metadata.get('patient_name'):
                                 rec_name = metadata['patient_name']
                                 print(f"Using patient name from metadata: '{rec_name}' for session {session_id}")
+                            else:
+                                print(f"[DEBUG] No patient_name in metadata for session {session_id}")
                             
                             # Extract other metadata
                             patient_context = metadata.get('patient_context')
                             encounter_type = metadata.get('encounter_type')
                             llm_template_name = metadata.get('llm_template')
                             location = metadata.get('location')
+                        else:
+                            print(f"[DEBUG] No metadata content found for: {gcs_path_metadata}")
                     except Exception as e:
                         print(f"Error parsing metadata for session {session_id}: {e}")
                     

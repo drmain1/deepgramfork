@@ -54,6 +54,12 @@ export function RecordingsProvider({ children }) {
       console.log("Fetched recordings from S3:", fetchedRecordings);
       console.log("Raw API Response - First recording full object:", JSON.stringify(fetchedRecordings[0], null, 2));
       
+      // Debug: Check names of all recordings
+      console.log("[DEBUG] Recording names from backend:");
+      fetchedRecordings.forEach((rec, idx) => {
+        console.log(`  [${idx}] ID: ${rec.id}, Name: "${rec.name}", Has name: ${!!rec.name}`);
+      });
+      
       // Debug: Check status of all fetched recordings
       console.log("[DEBUG] Status of fetched recordings:");
       fetchedRecordings.forEach((rec, idx) => {
@@ -94,6 +100,15 @@ export function RecordingsProvider({ children }) {
           if (s3Version) {
             // Recording exists in both local and S3 - use S3 version (it's been processed)
             console.log(`[MERGE] Found S3 version for local recording ${localRec.id} (was ${localRec.status}, now ${s3Version.status || 'saved'})`);
+            
+            // Special handling: If local version has a patient name but S3 version has a timestamp-based name,
+            // preserve the patient name from local version
+            if (localRec.name && !localRec.name.startsWith('Transcript ') && 
+                s3Version.name && s3Version.name.startsWith('Transcript ')) {
+              console.log(`[MERGE] Preserving patient name from local: "${localRec.name}" instead of S3's "${s3Version.name}"`);
+              s3Version.name = localRec.name;
+            }
+            
             // Always prefer the backend version as the source of truth
             merged.push(s3Version);
             s3Map.delete(localRec.id); // Remove from s3Map so we don't add it again
