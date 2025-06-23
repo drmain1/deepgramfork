@@ -8,15 +8,30 @@ from fastapi import WebSocket, WebSocketDisconnect
 import speechmatics
 from speechmatics.models import ConnectionSettings, TranscriptionConfig, AudioSettings, ServerMessageType, TranslationConfig
 
-# Load environment variables
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
-load_dotenv(dotenv_path=dotenv_path)
+# Configure logging first
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Load environment variables - try multiple locations
+backend_env_path = os.path.join(os.path.dirname(__file__), '.env')
+parent_env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+
+if os.path.exists(backend_env_path):
+    load_dotenv(dotenv_path=backend_env_path)
+    logger.info(f"Loaded .env from backend directory: {backend_env_path}")
+elif os.path.exists(parent_env_path):
+    load_dotenv(dotenv_path=parent_env_path)
+    logger.info(f"Loaded .env from parent directory: {parent_env_path}")
+else:
+    logger.warning("No .env file found in backend or parent directory")
 
 SPEECHMATICS_API_KEY = os.getenv("SPEECHMATICS_API_KEY")
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Debug log the API key status
+if SPEECHMATICS_API_KEY:
+    logger.info(f"Speechmatics API key loaded successfully (length: {len(SPEECHMATICS_API_KEY)})")
+else:
+    logger.error("SPEECHMATICS_API_KEY not found in environment variables!")
 
 async def handle_speechmatics_websocket(websocket: WebSocket, get_user_settings_func: callable, authenticated_user_id: str = None):
     # WebSocket is already accepted in the main endpoint after auth
@@ -78,11 +93,12 @@ async def handle_speechmatics_websocket(websocket: WebSocket, get_user_settings_
 
                 logger.info("Starting Speechmatics transcription task immediately")
                 # Run the transcription in a background task
+                # The run() method might expect a stream parameter
                 transcription_task = asyncio.create_task(
                     sm_ws_client.run(
-                        audio_processor, 
-                        transcription_config, 
-                        audio_settings
+                        stream=audio_processor,  # Audio stream 
+                        transcription_config=transcription_config,
+                        audio_settings=audio_settings
                     )
                 )
                 
