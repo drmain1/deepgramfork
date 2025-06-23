@@ -27,6 +27,7 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
     # WebSocket is already accepted in the main endpoint after auth
     logger.info(f"WebSocket connection accepted from: {websocket.client.host}:{websocket.client.port} for user: {authenticated_user_id}")
 
+    # Generate default session ID - may be overridden by client
     session_id = datetime.now().strftime("%Y%m%d%H%M%S%f")
     
     # Initialize Deepgram settings
@@ -37,13 +38,8 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
     target_language = None  # Default value for specific language targeting
     deepgram_started = False
 
-    # Send session init immediately with default settings
-    try:
-        await websocket.send_text(json.dumps({"type": "session_init", "session_id": session_id}))
-        logger.info(f"Sent session_init with session_id: {session_id} to client.")
-    except Exception as e:
-        logger.error(f"Error sending session_id to client: {e}")
-        return
+    # Don't send session_init yet - wait until after we process initial_metadata
+    session_init_sent = False
 
     dg_connection = None
     ffmpeg_proc = None
@@ -164,13 +160,19 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
 
     async def handle_configuration_message(config_data):
         """Handle configuration messages from client"""
-        nonlocal dg_smart_format, dg_diarize, user_profile_utterances, multilingual_enabled, target_language
+        nonlocal dg_smart_format, dg_diarize, user_profile_utterances, multilingual_enabled, target_language, session_id
         
         try:
             user_id_from_client = config_data.get("user_id")
             selected_profile_id_from_client = config_data.get("profile_id")
             is_multilingual_from_client = config_data.get("is_multilingual", False)
             target_language_from_client = config_data.get("target_language", None)  # New: specific language target
+            session_id_from_client = config_data.get("session_id", None)  # Support resuming draft sessions
+            
+            # Update session_id if provided by client (for resuming drafts)
+            if session_id_from_client:
+                session_id = session_id_from_client
+                logger.info(f"Using session_id from client for draft resumption: {session_id}")
             
             # Update multilingual setting from client
             multilingual_enabled = is_multilingual_from_client
@@ -183,7 +185,7 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
             if authenticated_user_id and selected_profile_id_from_client:
                 logger.info(f"Updating settings for authenticated user: {authenticated_user_id}, profile: {selected_profile_id_from_client}")
                 try:
-                    user_settings = await get_user_settings_func(authenticated_user_id)
+                    user_settings = await get_user_settings_func(authenticated_user_id, current_user_id=authenticated_user_id)
                     if user_settings and user_settings.transcriptionProfiles:
                         selected_profile = next((p for p in user_settings.transcriptionProfiles if p.id == selected_profile_id_from_client), None)
                         if selected_profile:
@@ -244,7 +246,7 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
 
         async def websocket_message_handler():
             """Handle all WebSocket messages"""
-            nonlocal services_started
+            nonlocal services_started, session_init_sent
             logger.info("WebSocket message handler started.")
             
             try:
@@ -257,6 +259,15 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
                         if not audio_data: 
                             logger.info("Empty bytes from client, ending session.")
                             break
+                        
+                        # Send session_init if not sent yet (in case client didn't send initial_metadata)
+                        if not session_init_sent:
+                            try:
+                                await websocket.send_text(json.dumps({"type": "session_init", "session_id": session_id}))
+                                logger.info(f"Sent session_init with session_id: {session_id} to client (on first audio).")
+                                session_init_sent = True
+                            except Exception as e:
+                                logger.error(f"Error sending session_id to client: {e}")
                         
                         # Start services on first audio data
                         if not services_started:
@@ -291,6 +302,14 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
                             if message_type == "initial_metadata":
                                 logger.info("Received configuration message")
                                 await handle_configuration_message(text_message)
+                                # Send session_init after processing configuration
+                                if not session_init_sent:
+                                    try:
+                                        await websocket.send_text(json.dumps({"type": "session_init", "session_id": session_id}))
+                                        logger.info(f"Sent session_init with session_id: {session_id} to client.")
+                                        session_init_sent = True
+                                    except Exception as e:
+                                        logger.error(f"Error sending session_id to client: {e}")
                             elif message_type == "eos":
                                 logger.info("Received end-of-stream signal from client.")
                                 break
@@ -396,13 +415,8 @@ async def handle_deepgram_websocket_with_initial_message(websocket: WebSocket, i
     target_language = None  # Default value for specific language targeting
     deepgram_started = False
 
-    # Send session init immediately with default settings
-    try:
-        await websocket.send_text(json.dumps({"type": "session_init", "session_id": session_id}))
-        logger.info(f"Sent session_init with session_id: {session_id} to client.")
-    except Exception as e:
-        logger.error(f"Error sending session_id to client: {e}")
-        return
+    # Don't send session_init yet - wait until after we process initial_metadata
+    session_init_sent = False
 
     dg_connection = None
     ffmpeg_proc = None

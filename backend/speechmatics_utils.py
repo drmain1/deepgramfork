@@ -22,6 +22,7 @@ async def handle_speechmatics_websocket(websocket: WebSocket, get_user_settings_
     # WebSocket is already accepted in the main endpoint after auth
     logger.info(f"Speechmatics WebSocket connection accepted from: {websocket.client.host}:{websocket.client.port} for user: {authenticated_user_id}")
 
+    # Generate default session ID - may be overridden by client
     session_id = datetime.now().strftime("%Y%m%d%H%M%S%f")
     
     # Initialize Speechmatics settings
@@ -29,13 +30,8 @@ async def handle_speechmatics_websocket(websocket: WebSocket, get_user_settings_
     target_language = "multi"  # Default for multilingual
     speechmatics_started = False
 
-    # Send session init immediately with default settings
-    try:
-        await websocket.send_text(json.dumps({"type": "session_init", "session_id": session_id}))
-        logger.info(f"Sent session_init with session_id: {session_id} to client.")
-    except Exception as e:
-        logger.error(f"Error sending session_id to client: {e}")
-        return
+    # Don't send session_init yet - wait until after we process initial_metadata
+    session_init_sent = False
 
     # Initialize Speechmatics and FFmpeg immediately so they're ready for audio data
     logger.info("Initializing Speechmatics and FFmpeg immediately for incoming audio...")
@@ -296,22 +292,28 @@ async def handle_speechmatics_websocket(websocket: WebSocket, get_user_settings_
 
     async def handle_configuration_message(config_data):
         """Handle configuration messages from client"""
-        nonlocal user_profile_utterances, target_language
+        nonlocal user_profile_utterances, target_language, session_id
         
         try:
             user_id_from_client = config_data.get("user_id")
             selected_profile_id_from_client = config_data.get("profile_id")
             is_multilingual_from_client = config_data.get("is_multilingual", False)
             target_language_from_client = config_data.get("target_language", None)
+            session_id_from_client = config_data.get("session_id", None)  # Support resuming draft sessions
+            
+            # Update session_id if provided by client (for resuming drafts)
+            if session_id_from_client:
+                session_id = session_id_from_client
+                logger.info(f"Using session_id from client for draft resumption: {session_id}")
             
             # Update target language from client
             target_language = target_language_from_client or "multi"
             logger.info(f"Speechmatics multilingual mode activated with target language: {target_language}")
 
-            if user_id_from_client and selected_profile_id_from_client:
-                logger.info(f"Updating settings for user: {user_id_from_client}, profile: {selected_profile_id_from_client}")
+            if authenticated_user_id and selected_profile_id_from_client:
+                logger.info(f"Updating settings for authenticated user: {authenticated_user_id}, profile: {selected_profile_id_from_client}")
                 try:
-                    user_settings = await get_user_settings_func(user_id_from_client)
+                    user_settings = await get_user_settings_func(authenticated_user_id, current_user_id=authenticated_user_id)
                     if user_settings and user_settings.transcriptionProfiles:
                         selected_profile = next((p for p in user_settings.transcriptionProfiles if p.id == selected_profile_id_from_client), None)
                         if selected_profile:
@@ -370,6 +372,7 @@ async def handle_speechmatics_websocket(websocket: WebSocket, get_user_settings_
 
     async def websocket_message_handler():
         """Handle incoming WebSocket messages"""
+        nonlocal session_init_sent
         try:
             while True:
                 message = await websocket.receive()
@@ -385,12 +388,30 @@ async def handle_speechmatics_websocket(websocket: WebSocket, get_user_settings_
                             config_data = json.loads(message["text"])
                             logger.info(f"Parsed config data: {config_data}")  # Debug log
                             await handle_configuration_message(config_data)
+                            # Send session_init after processing configuration
+                            if not session_init_sent:
+                                try:
+                                    await websocket.send_text(json.dumps({"type": "session_init", "session_id": session_id}))
+                                    logger.info(f"Sent session_init with session_id: {session_id} to client.")
+                                    session_init_sent = True
+                                except Exception as e:
+                                    logger.error(f"Error sending session_id to client: {e}")
                         except json.JSONDecodeError as e:
                             logger.error(f"Failed to parse JSON message: {e}")
                     elif "bytes" in message:
                         # Handle binary audio data
                         audio_data = message["bytes"]
                         logger.debug(f"Received {len(audio_data)} bytes of audio data")  # Debug log
+                        
+                        # Send session_init if not sent yet (in case client didn't send initial_metadata)
+                        if not session_init_sent:
+                            try:
+                                await websocket.send_text(json.dumps({"type": "session_init", "session_id": session_id}))
+                                logger.info(f"Sent session_init with session_id: {session_id} to client (on first audio).")
+                                session_init_sent = True
+                            except Exception as e:
+                                logger.error(f"Error sending session_id to client: {e}")
+                        
                         if ffmpeg_proc and ffmpeg_proc.stdin:
                             try:
                                 ffmpeg_proc.stdin.write(audio_data)

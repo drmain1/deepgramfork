@@ -740,6 +740,17 @@ async def save_session_data_endpoint(
     if not saved_paths and errors:
          raise HTTPException(status_code=500, detail=f"Failed to save any session data to GCS for session_id {session_id}. Errors: {'; '.join(errors)}")
     
+    # Delete the draft file if it exists (since the session is now saved)
+    draft_key = f"{user_id}/drafts/{session_id}.txt"
+    try:
+        if gcs_client.delete_gcs_object(draft_key):
+            print(f"Successfully deleted draft file: {draft_key}")
+        else:
+            print(f"No draft file found to delete: {draft_key}")
+    except Exception as e:
+        print(f"Error deleting draft file {draft_key}: {e}")
+        # Don't fail the save operation if draft deletion fails
+    
     if errors:
         response_message += f" Some issues occurred: {'; '.join(errors)}"
 
@@ -1059,8 +1070,8 @@ async def get_user_recordings(
                 seen_ids[rec.id] = []
             seen_ids[rec.id].append(rec)
         
-        # Second pass - for each ID, prefer draft > saved > pending
-        status_priority = {'draft': 3, 'saved': 2, 'saving': 1, 'pending': 0, 'failed': -1}
+        # Second pass - for each ID, prefer saved > draft > saving > pending > failed
+        status_priority = {'saved': 4, 'draft': 3, 'saving': 2, 'pending': 1, 'failed': 0}
         for session_id, recs in seen_ids.items():
             if len(recs) == 1:
                 deduplicated_recordings.append(recs[0])

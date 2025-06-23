@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, Typography, Button, Tabs, Tab, CircularProgress, Paper, Chip } from '@mui/material';
+import { Box, Typography, Button, Tabs, Tab, CircularProgress, Paper, Chip, LinearProgress } from '@mui/material';
 import { CheckCircle, Edit } from '@mui/icons-material';
 import { useRecordings } from '../contexts/RecordingsContext';
 import { useUserSettings } from '../contexts/UserSettingsContext';
@@ -106,6 +106,55 @@ function TranscriptViewer() {
   }
 
   if (selectedTranscriptError) {
+    // Special handling for processing state
+    if (selectedTranscriptError === 'PROCESSING') {
+      return (
+        <Box sx={{ p: 2, height: 'calc(100vh - 16px)', display: 'flex', flexDirection: 'column', width: '100%' }}>
+          <Box sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:1, flexShrink: 0}}>
+            <Typography variant="h5" gutterBottom sx={{mb:0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+              {title}
+            </Typography>
+            <Button onClick={() => selectRecording(null)} variant="outlined" size="small">
+              Back to Recorder
+            </Button>
+          </Box>
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flexGrow: 1, flexDirection: 'column', p:4 }}>
+            <Typography variant="h6" sx={{ mb: 3, color: 'text.secondary' }}>
+              Processing your transcript...
+            </Typography>
+            <Box sx={{ width: '100%', maxWidth: 400 }}>
+              <LinearProgress 
+                variant="indeterminate" 
+                sx={{ 
+                  height: 8, 
+                  borderRadius: 4,
+                  backgroundColor: 'rgba(0, 0, 0, 0.1)',
+                  '& .MuiLinearProgress-bar': {
+                    borderRadius: 4,
+                    background: 'linear-gradient(90deg, #1976d2 0%, #42a5f5 50%, #1976d2 100%)',
+                    backgroundSize: '200% 100%',
+                    animation: 'shimmer 2s ease-in-out infinite',
+                  },
+                  '@keyframes shimmer': {
+                    '0%': {
+                      backgroundPosition: '200% 0',
+                    },
+                    '100%': {
+                      backgroundPosition: '-200% 0',
+                    },
+                  },
+                }} 
+              />
+            </Box>
+            <Typography variant="body2" sx={{ mt: 2, color: 'text.secondary' }}>
+              This usually takes 5-10 seconds
+            </Typography>
+          </Box>
+        </Box>
+      );
+    }
+    
+    // Regular error display
     return (
       <Box sx={{ p: 2, height: 'calc(100vh - 16px)', display: 'flex', flexDirection: 'column', width: '100%' }}>
         <Box sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:1, flexShrink: 0}}>

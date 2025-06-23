@@ -32,7 +32,7 @@ function RecordingView({
   resumeData
 }) {
   const { user, getToken } = useAuth();
-  const { startPendingRecording, updateRecording, removeRecording, fetchUserRecordings } = useRecordings();
+  const { startPendingRecording, updateRecording, removeRecording, fetchUserRecordings, selectRecording } = useRecordings();
 
   const [isRecording, setIsRecording] = useState(false);
   const [hasStreamedOnce, setHasStreamedOnce] = useState(!!resumeData);
@@ -137,22 +137,39 @@ function RecordingView({
             user_id: user.uid || user.sub,
             profile_id: currentProfileId,
             is_multilingual: isMultilingual,
-            target_language: targetLanguage
+            target_language: targetLanguage,
+            // Include session_id if resuming a draft to reuse the same session
+            session_id: resumeData?.sessionId || undefined
           };
-          webSocketRef.current.send(JSON.stringify(initialMetadata));
-          console.log('[WebSocket] Sent initial_metadata:', initialMetadata);
+          
+          try {
+            webSocketRef.current.send(JSON.stringify(initialMetadata));
+            console.log('[WebSocket] Sent initial_metadata:', initialMetadata);
+          } catch (error) {
+            console.error('[WebSocket] Error sending initial_metadata:', error);
+            setError('Failed to send initial configuration. Please try again.');
+            return;
+          }
         } else {
           console.warn('[WebSocket] Could not send initial_metadata: user_id or profile_id missing.', { userId: user ? (user.uid || user.sub) : 'undefined', profileId: currentProfileId });
         }
 
         if (audioStreamRef.current) {
-          mediaRecorderRef.current = new MediaRecorder(audioStreamRef.current, { mimeType: 'audio/webm' });
-
-          mediaRecorderRef.current.ondataavailable = (event) => {
-            if (event.data.size > 0 && webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
-              webSocketRef.current.send(event.data);
+          // Small delay to ensure WebSocket is fully ready after sending initial metadata
+          setTimeout(() => {
+            if (!webSocketRef.current || webSocketRef.current.readyState !== WebSocket.OPEN) {
+              console.error('[WebSocket] Connection lost before MediaRecorder could start');
+              setError('WebSocket connection lost. Please try again.');
+              return;
             }
-          };
+            
+            mediaRecorderRef.current = new MediaRecorder(audioStreamRef.current, { mimeType: 'audio/webm' });
+
+            mediaRecorderRef.current.ondataavailable = (event) => {
+              if (event.data.size > 0 && webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
+                webSocketRef.current.send(event.data);
+              }
+            };
 
           mediaRecorderRef.current.onstop = () => {
             console.log("[MediaRecorder] MediaRecorder stopped.");
@@ -172,10 +189,11 @@ function RecordingView({
             }
           };
 
-          mediaRecorderRef.current.start(1000);
-          console.log("[MediaRecorder] MediaRecorder started.");
-          setIsRecording(true);
-          setHasStreamedOnce(true);
+            mediaRecorderRef.current.start(1000);
+            console.log("[MediaRecorder] MediaRecorder started.");
+            setIsRecording(true);
+            setHasStreamedOnce(true);
+          }, 100); // 100ms delay to ensure WebSocket is ready
         } else {
           console.error("[WebSocket] Audio stream is not available in onopen. Cannot start MediaRecorder.");
           setError("Audio stream lost. Please try again.");
@@ -196,23 +214,18 @@ function RecordingView({
               console.log('Received session_init (JSON):', parsedMessage);
               const backendSessionId = parsedMessage.session_id;
               
-              // Set our session ID to match the backend
-              setSessionId(backendSessionId);
-              setError('');
-              
-              // Create the pending recording with the backend's session ID
-              console.log('[WebSocket] Creating pending recording with backend session ID:', backendSessionId);
-              // Only create a new pending recording if we're not resuming a draft
-              if (!resumeData || resumeData.sessionId !== backendSessionId) {
+              // Only update session ID if we don't already have one from resumeData
+              if (!resumeData || !resumeData.sessionId) {
+                setSessionId(backendSessionId);
+                console.log('[WebSocket] Creating new pending recording with backend session ID:', backendSessionId);
                 startPendingRecording(backendSessionId, patientDetails || 'New Session');
               } else {
-                // If resuming a draft, update status to pending now that we're actively recording
-                updateRecording(backendSessionId, {
-                  status: 'pending',
-                  name: patientDetails || 'Resumed Session',
-                  transcript: undefined // Clear the saved transcript since it's in component state
-                });
+                // We're resuming a draft - the session ID should already be set
+                console.log('[WebSocket] Resuming draft with existing session ID:', resumeData.sessionId);
+                // Don't update the recording here - it can cause race conditions
+                // The recording is already in draft state and should stay that way
               }
+              setError('');
             } else if (parsedMessage.type === 'transcript') {
               if (parsedMessage.is_final) {
                 setFinalTranscript(prev => (prev ? prev + ' ' : '') + parsedMessage.text);
@@ -456,6 +469,12 @@ function RecordingView({
           location: selectedLocation === '__LEAVE_OUT__' ? '' : selectedLocation,
           encounterType: encounterType
         });
+        
+        // Clear the selection to prevent the "still being processed" error
+        // This ensures the UI doesn't try to show a draft or saving status recording
+        if (resumeData && selectRecording) {
+          selectRecording(null);
+        }
         
         // Trigger a fetch of recordings after a short delay to ensure backend is ready
         setTimeout(() => {

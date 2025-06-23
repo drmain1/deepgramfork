@@ -314,7 +314,7 @@ export function RecordingsProvider({ children }) {
         // Check if recording is still being processed
         if (recording.status === 'pending' || recording.status === 'saving') {
           setIsLoadingSelectedTranscript(false);
-          setSelectedTranscriptError('Recording is still being processed. Please wait for it to complete.');
+          setSelectedTranscriptError('PROCESSING'); // Special flag for processing state
           setOriginalTranscriptContent(null);
           setPolishedTranscriptContent(null);
           return;

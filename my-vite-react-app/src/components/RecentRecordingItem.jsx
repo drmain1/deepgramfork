@@ -1,5 +1,5 @@
 import React from 'react'; // Removed useState as modal state is gone
-import { ListItem, ListItemText, Tooltip, Typography, Box, ListItemSecondaryAction, IconButton } from '@mui/material'; // Removed Paper, Button, Modal, etc.
+import { ListItem, ListItemText, Tooltip, Typography, Box, ListItemSecondaryAction, IconButton, LinearProgress } from '@mui/material'; // Removed Paper, Button, Modal, etc.
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import SaveIcon from '@mui/icons-material/Save';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
@@ -66,12 +66,20 @@ function RecentRecordingItem({ recording, onDelete }) {
           fontSize="small" 
           sx={{ 
             color: '#42a5f5',
-            animation: 'pulse 2s infinite'
+            animation: 'spin 2s linear infinite',
+            '@keyframes spin': {
+              '0%': {
+                transform: 'rotate(0deg)',
+              },
+              '100%': {
+                transform: 'rotate(360deg)',
+              },
+            },
           }} 
         />
       );
       statusColor = 'primary.main'; // Blue for saving
-      statusText = 'Processing note (this may take 10-20 seconds)...';
+      statusText = 'Processing transcript with AI...';
       break;
     case 'saved':
       statusIcon = <CheckCircleOutlineIcon fontSize="small" color="success" />;
@@ -143,44 +151,62 @@ function RecentRecordingItem({ recording, onDelete }) {
             }
           `}
         </style>
-        <ListItem
-          button={!isProcessing} // Only allow button behavior if not processing
-          onClick={handleClick} // Updated onClick handler
-          selected={isSelected} // MUI's selected prop for visual indication
-          sx={{
-            borderLeft: recording.status === 'pending' ? '3px solid #ffa726'
-                      : recording.status === 'saving' ? '3px solid #42a5f5'
-                      : recording.status === 'failed' ? '3px solid red'
-                      : '3px solid transparent',
-            paddingY: '4px',
-            width: '100%',
-            // Apply disabled styling for processing recordings
-            ...(isProcessing && {
-              opacity: 0.7,
-              cursor: 'not-allowed',
-              pointerEvents: 'none', // Completely disable clicking
-            }),
-            // Apply a different background or style if selected
-            ...(isSelected && {
-              backgroundColor: 'action.selected', // Example: uses theme's selected color
-              '&:hover': {
-                backgroundColor: 'action.hover', // Keep hover effect consistent
-              },
-            }),
-          }}
-        >
-          <ListItemText
-            primary={primaryText}
-            secondary={secondaryDisplay}
-            primaryTypographyProps={{ variant: 'subtitle2', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-            secondaryTypographyProps={{ component: 'div' }}
-          />
-          <ListItemSecondaryAction>
-            <IconButton edge="end" aria-label="delete" onClick={handleDelete} size="small">
-              <DeleteIcon fontSize="small" />
-            </IconButton>
-          </ListItemSecondaryAction>
-        </ListItem>
+        <Box sx={{ position: 'relative' }}>
+          <ListItem
+            button={!isProcessing} // Only allow button behavior if not processing
+            onClick={handleClick} // Updated onClick handler
+            selected={isSelected} // MUI's selected prop for visual indication
+            sx={{
+              borderLeft: recording.status === 'pending' ? '3px solid #ffa726'
+                        : recording.status === 'saving' ? '3px solid #42a5f5'
+                        : recording.status === 'failed' ? '3px solid red'
+                        : '3px solid transparent',
+              paddingY: '4px',
+              width: '100%',
+              // Apply disabled styling for processing recordings
+              ...(isProcessing && {
+                opacity: 0.9,
+                cursor: 'not-allowed',
+                pointerEvents: 'none', // Completely disable clicking
+              }),
+              // Apply a different background or style if selected
+              ...(isSelected && {
+                backgroundColor: 'action.selected', // Example: uses theme's selected color
+                '&:hover': {
+                  backgroundColor: 'action.hover', // Keep hover effect consistent
+                },
+              }),
+            }}
+          >
+            <ListItemText
+              primary={primaryText}
+              secondary={secondaryDisplay}
+              primaryTypographyProps={{ variant: 'subtitle2', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+              secondaryTypographyProps={{ component: 'div' }}
+            />
+            <ListItemSecondaryAction>
+              <IconButton edge="end" aria-label="delete" onClick={handleDelete} size="small">
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </ListItemSecondaryAction>
+          </ListItem>
+          {recording.status === 'saving' && (
+            <LinearProgress 
+              variant="indeterminate" 
+              sx={{ 
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                height: 2,
+                backgroundColor: 'rgba(66, 165, 245, 0.1)',
+                '& .MuiLinearProgress-bar': {
+                  backgroundColor: '#42a5f5',
+                },
+              }} 
+            />
+          )}
+        </Box>
       </TooltipCompatibleWrapper>
     </Tooltip>
     // Modal and related logic removed
