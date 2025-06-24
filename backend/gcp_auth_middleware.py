@@ -1,6 +1,8 @@
 import os
+import json
 import logging
 from typing import Optional
+from datetime import datetime
 from fastapi import Request, HTTPException, Security, Query, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from google.oauth2 import id_token
@@ -234,5 +236,5 @@ def log_user_access(user_id: str, action: str, resource: str, request: Request):
     except Exception as e:
         logger.error(f"Failed to log user access: {str(e)}")
 
-# Import Firestore-based session manager for production use
-from firestore_session_manager import firestore_session_manager as session_manager
+# Import memory-based session manager (no database required)
+from memory_session_manager import memory_session_manager as session_manager

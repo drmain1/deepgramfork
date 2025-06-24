@@ -32,8 +32,19 @@ export const AuthProvider = ({ children }) => {
         await updateProfile(user, { displayName });
       }
       
-      // Send email verification
-      await sendEmailVerification(user);
+      // Send email verification with custom action URL
+      try {
+        const actionCodeSettings = {
+          url: window.location.origin, // Redirect back to the app after verification
+          handleCodeInApp: true,
+        };
+        await sendEmailVerification(user, actionCodeSettings);
+        console.log('Verification email sent successfully to:', user.email);
+      } catch (emailError) {
+        console.error('Failed to send verification email:', emailError);
+        // Still return user but note the email issue
+        setError('Account created but verification email failed. Please try resending.');
+      }
       
       return user;
     } catch (error) {
@@ -48,11 +59,18 @@ export const AuthProvider = ({ children }) => {
       setError('');
       const { user } = await signInWithEmailAndPassword(auth, email, password);
       
-      // Check if email is verified (skip in development for easier testing)
-      if (!user.emailVerified && import.meta.env.PROD) {
-        await signOut(auth);
+      // Force token refresh to get latest email verification status
+      await user.reload();
+      const idTokenResult = await user.getIdTokenResult(true); // Force refresh
+      
+      // Check if email is verified (always enforce for HIPAA compliance)
+      if (!user.emailVerified) {
+        // Don't sign out here - let the user stay logged in to receive the verification
         throw new Error('Please verify your email before logging in. Check your inbox for the verification link.');
       }
+      
+      console.log('Login successful, email verified:', user.emailVerified);
+      console.log('Token claims:', idTokenResult.claims);
       
       return user;
     } catch (error) {
@@ -83,6 +101,41 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Check email verification status and refresh token
+  const checkEmailVerification = async () => {
+    try {
+      if (currentUser) {
+        // Reload user to get latest email verification status
+        await currentUser.reload();
+        
+        // Force token refresh if email is now verified
+        if (currentUser.emailVerified) {
+          const idTokenResult = await currentUser.getIdTokenResult(true);
+          console.log('Email verified! Token refreshed with claims:', idTokenResult.claims);
+          return true;
+        }
+        return false;
+      }
+    } catch (error) {
+      console.error('Error checking email verification:', error);
+      return false;
+    }
+  };
+
+  // Resend verification email
+  const resendVerificationEmail = async () => {
+    try {
+      if (currentUser && !currentUser.emailVerified) {
+        await sendEmailVerification(currentUser);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      setError(error.message);
+      throw error;
+    }
+  };
+
   // Get ID token for API calls
   const getToken = async () => {
     if (!currentUser) {
@@ -90,7 +143,8 @@ export const AuthProvider = ({ children }) => {
     }
     
     try {
-      const token = await currentUser.getIdToken();
+      // Force refresh to ensure latest email verification status
+      const token = await currentUser.getIdToken(true);
       return token;
     } catch (error) {
       console.error('Error getting ID token:', error);
@@ -98,38 +152,33 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Resend verification email
-  const resendVerificationEmail = async () => {
-    if (!currentUser) {
-      throw new Error('No authenticated user');
-    }
-    
-    try {
-      await sendEmailVerification(currentUser);
-    } catch (error) {
-      setError(error.message);
-      throw error;
-    }
-  };
-
   // Monitor auth state changes
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       console.log('Auth state changed:', user ? {
         uid: user.uid,
         email: user.email,
         emailVerified: user.emailVerified
       } : 'No user');
       
-      setCurrentUser(user);
-      setLoading(false);
-      
-      // Log authentication events
+      // If user exists, reload to get latest email verification status
       if (user) {
-        console.log('User authenticated:', user.uid);
+        try {
+          await user.reload();
+          // Get fresh ID token to ensure backend has latest verification status
+          if (user.emailVerified) {
+            await user.getIdToken(true);
+          }
+          console.log('User authenticated:', user.uid, 'Email verified:', user.emailVerified);
+        } catch (error) {
+          console.error('Error reloading user:', error);
+        }
       } else {
         console.log('User signed out');
       }
+      
+      setCurrentUser(user);
+      setLoading(false);
     });
 
     return unsubscribe;
@@ -155,6 +204,7 @@ export const AuthProvider = ({ children }) => {
     logout,
     resetPassword,
     getToken,
+    checkEmailVerification,
     resendVerificationEmail,
     getUserAttributes,
     loading,
@@ -164,7 +214,7 @@ export const AuthProvider = ({ children }) => {
     signIn: login,
     signUp: signup,
     signOut: logout,
-    isAuthenticated: !!currentUser && (currentUser.emailVerified || import.meta.env.DEV),
+    isAuthenticated: !!currentUser && currentUser.emailVerified,
     isLoading: loading  // Add isLoading for compatibility
   };
 

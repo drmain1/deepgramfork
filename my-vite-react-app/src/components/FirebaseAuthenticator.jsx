@@ -47,7 +47,7 @@ const StyledTextField = styled(TextField)(({ theme }) => ({
 }));
 
 const FirebaseAuthenticator = () => {
-  const { login, signup, resetPassword, error: authError } = useAuth();
+  const { login, signup, resetPassword, checkEmailVerification, resendVerificationEmail, error: authError } = useAuth();
   
   const [isSignUp, setIsSignUp] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
@@ -79,13 +79,16 @@ const FirebaseAuthenticator = () => {
         }
         await signup(email, password, displayName);
         setSuccess('Account created! Please check your email to verify your account.');
-        setIsSignUp(false);
+        // Keep the form data in case user needs to log in
+        setPassword('');
+        setConfirmPassword('');
       } else {
         await login(email, password);
         // After successful login, the auth state change will automatically
         // trigger a re-render and show the main app
       }
     } catch (err) {
+      console.error('Auth error:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -115,6 +118,45 @@ const FirebaseAuthenticator = () => {
         {(error || authError) && (
           <Alert severity="error" sx={{ width: '100%', mb: 2 }}>
             {error || authError}
+            {(error || authError)?.includes('verify your email') && (
+              <Box sx={{ mt: 1 }}>
+                <Stack direction="row" spacing={2}>
+                  <Button 
+                    size="small" 
+                    onClick={async () => {
+                      try {
+                        await resendVerificationEmail();
+                        setSuccess('Verification email sent! Please check your inbox.');
+                        setError('');
+                      } catch (err) {
+                        setError('Failed to send verification email.');
+                      }
+                    }}
+                    sx={{ color: 'inherit', textDecoration: 'underline' }}
+                  >
+                    Resend verification email
+                  </Button>
+                  <Button 
+                    size="small" 
+                    onClick={async () => {
+                      try {
+                        const verified = await checkEmailVerification();
+                        if (verified) {
+                          window.location.reload();
+                        } else {
+                          setError('Email not verified yet. Please check your inbox and click the verification link.');
+                        }
+                      } catch (err) {
+                        setError('Failed to check verification status.');
+                      }
+                    }}
+                    sx={{ color: 'inherit', textDecoration: 'underline' }}
+                  >
+                    I've verified my email
+                  </Button>
+                </Stack>
+              </Box>
+            )}
           </Alert>
         )}
 

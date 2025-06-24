@@ -17,6 +17,7 @@ import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
+from contextlib import asynccontextmanager
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from deepgram import AsyncLiveClient, DeepgramClientOptions, LiveOptions, LiveTranscriptionEvents
@@ -57,7 +58,56 @@ print("Using Firebase Admin SDK authentication (production-ready)")
 deepgram_api_key = os.getenv("DEEPGRAM_API_KEY") or os.getenv("deepgram_api_key")
 DEFAULT_TENANT_ID = os.getenv("DEFAULT_TENANT_ID", "dev-tenant")
 
-app = FastAPI()
+# Import GCS utilities early
+from gcs_utils import GCSClient
+
+# Global placeholders for clients, to be initialized in startup event
+gcs_client = None
+vertex_ai_client = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    global gcs_client, vertex_ai_client
+    print("FastAPI startup: Initializing GCP clients...")
+    
+    # Initialize GCS client
+    try:
+        gcs_client = GCSClient()
+        print("✓ GCS client initialized successfully during startup.")
+        
+        # Log bucket information
+        print(f"✓ Using GCS bucket: {gcs_client.bucket_name}")
+        
+        # HIPAA Compliance notes
+        print("\n📋 HIPAA Compliance Status:")
+        print("   ✓ Customer-managed encryption keys (CMEK) configured")
+        print("   ✓ Audit logging enabled via Cloud Audit Logs")
+        print("   ✓ Data retention policies configured")
+        print("   ✓ Access controls via IAM and bucket policies")
+        print("   ✓ All data encrypted at rest and in transit")
+        
+    except Exception as e:
+        print(f"Failed to initialize GCS client during startup: {e}")
+        gcs_client = None
+    
+    # Initialize Vertex AI for transcription polish
+    if os.getenv('GCP_PROJECT_ID'):
+        try:
+            # Vertex AI initialization happens in gcp_utils when needed
+            print("✓ Vertex AI configuration available for transcript polish")
+        except Exception as e:
+            print(f"Failed to configure Vertex AI: {e}")
+    
+    print("FastAPI startup finished.")
+    
+    yield  # Server is running
+    
+    # Shutdown
+    print("FastAPI shutdown: Cleaning up resources...")
+    # Add any cleanup code here if needed
+
+app = FastAPI(lifespan=lifespan)
 
 # CORS Configuration
 origins = [
@@ -100,47 +150,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityHeadersMiddleware)
 
-# Import GCS utilities
-from gcs_utils import GCSClient
+# Add rate limiting middleware
+from rate_limiter import RateLimitMiddleware
+app.add_middleware(RateLimitMiddleware)
+logger.info("Rate limiting middleware enabled")
 
-# Global placeholders for clients, to be initialized in startup event
-gcs_client = None
-vertex_ai_client = None
-
-@app.on_event("startup")
-async def startup_event():
-    global gcs_client, vertex_ai_client
-    print("FastAPI startup event: Initializing GCP clients...")
-    
-    # Initialize GCS client
-    try:
-        gcs_client = GCSClient()
-        print("✓ GCS client initialized successfully during startup.")
-        
-        # Log bucket information
-        print(f"✓ Using GCS bucket: {gcs_client.bucket_name}")
-        
-        # HIPAA Compliance notes
-        print("\n📋 HIPAA Compliance Status:")
-        print("   ✓ Customer-managed encryption keys (CMEK) configured")
-        print("   ✓ Audit logging enabled via Cloud Audit Logs")
-        print("   ✓ Data retention policies configured")
-        print("   ✓ Access controls via IAM and bucket policies")
-        print("   ✓ All data encrypted at rest and in transit")
-        
-    except Exception as e:
-        print(f"Failed to initialize GCS client during startup: {e}")
-        gcs_client = None
-    
-    # Initialize Vertex AI for transcription polish
-    if os.getenv('GCP_PROJECT_ID'):
-        try:
-            # Vertex AI initialization happens in gcp_utils when needed
-            print("✓ Vertex AI configuration available for transcript polish")
-        except Exception as e:
-            print(f"Failed to configure Vertex AI: {e}")
-    
-    print("FastAPI startup event finished.")
+# Import audit logger for HIPAA compliance
+from audit_logger import AuditLogger, audit_endpoint
 
 config = DeepgramClientOptions(
     api_key=deepgram_api_key, 
@@ -158,6 +174,9 @@ async def websocket_stream_endpoint(websocket: WebSocket, token: str = Query(...
     For multilingual support, clients should use the /stream/multilingual endpoint.
     """
     # Verify Firebase token before accepting WebSocket connection
+    connection_id = f"ws_deepgram_{int(time.time() * 1000)}"
+    start_time = time.time()
+    
     try:
         # Always use production Firebase Admin SDK for token verification
         from gcp_auth_middleware import validate_firebase_token
@@ -166,8 +185,24 @@ async def websocket_stream_endpoint(websocket: WebSocket, token: str = Query(...
         # Accept the WebSocket connection
         await websocket.accept()
         
+        # Log WebSocket connection start
+        AuditLogger.log_websocket_event(
+            user_id=user_id,
+            event_type="CONNECT",
+            connection_id=connection_id
+        )
+        
         # Pass the authenticated user_id to the handler
         await handle_deepgram_websocket(websocket, get_user_settings, user_id)
+        
+        # Log successful completion
+        duration = time.time() - start_time
+        AuditLogger.log_websocket_event(
+            user_id=user_id,
+            event_type="DISCONNECT",
+            connection_id=connection_id,
+            duration_seconds=duration
+        )
     except HTTPException as e:
         # Close WebSocket with policy violation code for auth failures
         await websocket.close(code=1008, reason=f"Authentication failed: {e.detail}")
@@ -181,6 +216,9 @@ async def websocket_multilingual_stream_endpoint(websocket: WebSocket, token: st
     This endpoint provides Spanish/English code-switching and translation capabilities.
     """
     # Verify Firebase token before accepting WebSocket connection
+    connection_id = f"ws_speechmatics_{int(time.time() * 1000)}"
+    start_time = time.time()
+    
     try:
         # Always use production Firebase Admin SDK for token verification
         from gcp_auth_middleware import validate_firebase_token
@@ -189,8 +227,24 @@ async def websocket_multilingual_stream_endpoint(websocket: WebSocket, token: st
         # Accept the WebSocket connection
         await websocket.accept()
         
+        # Log WebSocket connection start
+        AuditLogger.log_websocket_event(
+            user_id=user_id,
+            event_type="CONNECT_MULTILINGUAL",
+            connection_id=connection_id
+        )
+        
         # Pass the authenticated user_id to the handler
         await handle_speechmatics_websocket(websocket, get_user_settings, user_id)
+        
+        # Log successful completion
+        duration = time.time() - start_time
+        AuditLogger.log_websocket_event(
+            user_id=user_id,
+            event_type="DISCONNECT_MULTILINGUAL",
+            connection_id=connection_id,
+            duration_seconds=duration
+        )
     except HTTPException as e:
         # Close WebSocket with policy violation code for auth failures
         await websocket.close(code=1008, reason=f"Authentication failed: {e.detail}")
@@ -551,13 +605,24 @@ class SaveSessionRequest(BaseModel):
 @app.post("/api/v1/save_session_data") 
 async def save_session_data_endpoint(
     request_data: SaveSessionRequest,
-    current_user_id: str = Depends(get_user_id)
+    current_user_id: str = Depends(get_user_id),
+    request: Request = None
 ):
     # Verify that the user_id in the request matches the authenticated user
     print(f"Save session - Request user_id: {request_data.user_id}, Auth user_id: {current_user_id}")
     if request_data.user_id != current_user_id:
         raise HTTPException(status_code=403, detail=f"You can only save your own session data. Request user: {request_data.user_id}, Auth user: {current_user_id}")
+    
+    # Log PHI access for HIPAA compliance
     session_id = request_data.session_id
+    AuditLogger.log_data_access(
+        user_id=current_user_id,
+        operation="CREATE",
+        data_type="session_data",
+        resource_id=session_id,
+        request=request,
+        success=True
+    )
     original_transcript = request_data.final_transcript_text
     user_id = request_data.user_id 
     patient_context = request_data.patient_context 
@@ -848,8 +913,19 @@ async def save_draft_endpoint(
 async def delete_session_recording(
     user_id: str = Path(..., description="The ID of the user who owns the recording"),
     session_id: str = Path(..., description="The ID of the session recording to delete"),
-    current_user_id: str = Depends(get_user_id)
+    current_user_id: str = Depends(get_user_id),
+    request: Request = None
 ):
+    # Log PHI access for HIPAA compliance
+    AuditLogger.log_data_access(
+        user_id=current_user_id,
+        operation="DELETE",
+        data_type="recording",
+        resource_id=session_id,
+        request=request,
+        success=True
+    )
+    
     # Verify that the user_id matches the authenticated user
     if user_id != current_user_id:
         raise HTTPException(status_code=403, detail="You can only delete your own recordings")
@@ -924,8 +1000,19 @@ class RecordingInfo(BaseModel):
 @app.get("/api/v1/user_recordings/{user_id}", response_model=List[RecordingInfo])
 async def get_user_recordings(
     user_id: str = Path(..., description="User's unique identifier"),
-    current_user_id: str = Depends(get_user_id)
+    current_user_id: str = Depends(get_user_id),
+    request: Request = None
 ):
+    # Log PHI access for HIPAA compliance
+    AuditLogger.log_data_access(
+        user_id=current_user_id,
+        operation="READ",
+        data_type="recordings_list",
+        resource_id=f"user_{user_id}_recordings",
+        request=request,
+        success=True
+    )
+    
     # Verify that the user_id matches the authenticated user
     if user_id != current_user_id:
         raise HTTPException(status_code=403, detail="You can only access your own recordings")
@@ -1149,7 +1236,8 @@ from fastapi.responses import PlainTextResponse
 @app.get("/api/v1/gcs_object_content", response_class=PlainTextResponse)
 async def get_gcs_object_content(
     gcs_key: str,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    request: Request = None
 ):
     # Extract user_id from the object key to verify ownership
     # Object keys are in format: {user_id}/transcripts/... or {user_id}/metadata/...
@@ -1159,6 +1247,16 @@ async def get_gcs_object_content(
     
     # The user_id is the first part of the key
     key_user_id = key_parts[0]
+    
+    # Log PHI access for HIPAA compliance
+    AuditLogger.log_data_access(
+        user_id=current_user['sub'],
+        operation="READ",
+        data_type="gcs_object",
+        resource_id=gcs_key,
+        request=request,
+        success=True
+    )
     
     # Verify that the user can only access their own content
     if key_user_id != current_user['sub']:

@@ -3,20 +3,27 @@ import json
 import logging
 from datetime import datetime
 from typing import Optional, Dict, Any
-from google.cloud import logging as cloud_logging
-from google.cloud.logging import DESCENDING
+# Google Cloud Logging import - optional for production
+try:
+    from google.cloud import logging as cloud_logging
+    from google.cloud.logging import DESCENDING
+    CLOUD_LOGGING_AVAILABLE = True
+except ImportError:
+    cloud_logging = None
+    DESCENDING = None
+    CLOUD_LOGGING_AVAILABLE = False
 from fastapi import Request
 
 # Initialize Cloud Logging client
-try:
-    if os.getenv("ENVIRONMENT") != "development":
-        logging_client = cloud_logging.Client()
-        audit_logger = logging_client.logger("medical-transcription-audit")
-    else:
+audit_logger = None
+if CLOUD_LOGGING_AVAILABLE:
+    try:
+        if os.getenv("ENVIRONMENT") != "development":
+            logging_client = cloud_logging.Client()
+            audit_logger = logging_client.logger("medical-transcription-audit")
+    except Exception as e:
+        print(f"Failed to initialize Cloud Logging: {str(e)}")
         audit_logger = None
-except Exception as e:
-    print(f"Failed to initialize Cloud Logging: {str(e)}")
-    audit_logger = None
 
 # Also use local logger as fallback
 local_logger = logging.getLogger("audit")
@@ -189,6 +196,52 @@ class AuditLogger:
             local_logger.error(f"Failed to log security event: {str(e)}")
     
     @staticmethod
+    def log_websocket_event(
+        user_id: str,
+        event_type: str,
+        connection_id: str,
+        duration_seconds: Optional[float] = None,
+        details: Optional[Dict[str, Any]] = None
+    ):
+        """
+        Log WebSocket connection events.
+        
+        Args:
+            user_id: User identifier
+            event_type: Type of WebSocket event (e.g., "CONNECT", "DISCONNECT")
+            connection_id: Unique connection identifier
+            duration_seconds: Connection duration for disconnect events
+            details: Additional details to log
+        """
+        try:
+            websocket_entry = {
+                "timestamp": datetime.utcnow().isoformat(),
+                "user_id": user_id,
+                "event_type": f"WEBSOCKET_{event_type}",
+                "connection_id": connection_id,
+                "severity": "INFO"
+            }
+            
+            if duration_seconds is not None:
+                websocket_entry["duration_seconds"] = duration_seconds
+            
+            if details:
+                websocket_entry["details"] = details
+            
+            # Log to Cloud Logging if available
+            if audit_logger:
+                audit_logger.log_struct(
+                    websocket_entry,
+                    severity=websocket_entry["severity"]
+                )
+            
+            # Always log locally as well
+            local_logger.info(f"WEBSOCKET: {json.dumps(websocket_entry)}")
+            
+        except Exception as e:
+            local_logger.error(f"Failed to log WebSocket event: {str(e)}")
+    
+    @staticmethod
     def query_audit_logs(
         user_id: Optional[str] = None,
         start_time: Optional[datetime] = None,
@@ -224,9 +277,10 @@ class AuditLogger:
             filter_str = " AND ".join(filters) if filters else None
             
             # Query logs
+            order_by = DESCENDING if DESCENDING else None
             entries = list(audit_logger.list_entries(
                 filter_=filter_str,
-                order_by=DESCENDING,
+                order_by=order_by,
                 page_size=limit
             ))
             

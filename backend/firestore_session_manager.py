@@ -27,7 +27,10 @@ class FirestoreSessionManager:
     
     def __init__(self, timeout_minutes: int = 25):
         self.timeout_minutes = timeout_minutes
-        self.db = firestore.Client()
+        # Use Firebase project ID for Firestore
+        firebase_project_id = os.getenv('FIREBASE_PROJECT_ID', 'medlegaldoc-b31df')
+        logger.info(f"Initializing Firestore client for project: {firebase_project_id}")
+        self.db = firestore.Client(project=firebase_project_id)
         self.sessions_collection = self.db.collection('user_sessions')
         
         # Create index for efficient cleanup queries
