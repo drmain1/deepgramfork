@@ -50,8 +50,17 @@ from gcp_utils import polish_transcript_with_gemini
 
 # Import authentication middleware
 # Use Firebase Admin SDK for production authentication
-from gcp_auth_middleware import get_current_user, get_user_id
+from gcp_auth_middleware import get_current_user, get_user_id, session_manager
 print("Using Firebase Admin SDK authentication (production-ready)")
+
+# Import Firestore-based endpoints
+from firestore_endpoints import (
+    get_user_recordings_firestore,
+    get_user_settings_firestore,
+    update_user_settings_firestore,
+    save_session_data_firestore,
+    delete_recording_firestore
+)
 
 # Environment already loaded at the top of the file
 
@@ -64,6 +73,7 @@ from gcs_utils import GCSClient
 # Global placeholders for clients, to be initialized in startup event
 gcs_client = None
 vertex_ai_client = None
+USE_FIRESTORE = True  # Will be set based on environment in startup
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -98,6 +108,16 @@ async def lifespan(app: FastAPI):
             print("✓ Vertex AI configuration available for transcript polish")
         except Exception as e:
             print(f"Failed to configure Vertex AI: {e}")
+    
+    # Check if Firestore is available
+    global USE_FIRESTORE
+    USE_FIRESTORE = os.getenv('USE_FIRESTORE', 'true').lower() == 'true'
+    
+    if USE_FIRESTORE:
+        print("✓ Using Firestore for metadata and queries (faster performance)")
+        print("✓ Using GCS for file storage (transcripts, audio)")
+    else:
+        print("⚠ Using GCS-only mode (slower queries)")
     
     print("FastAPI startup finished.")
     
@@ -295,8 +315,33 @@ DEFAULT_USER_SETTINGS = UserSettingsData(
 @app.get("/api/v1/user_settings/{user_id}", response_model=UserSettingsData)
 async def get_user_settings(
     user_id: str = Path(..., description="The ID of the user whose settings are to be fetched"),
-    current_user_id: str = Depends(get_user_id)
+    current_user_id: str = Depends(get_user_id),
+    request: Request = None
 ):
+    # Use Firestore endpoint if enabled
+    if USE_FIRESTORE:
+        settings = await get_user_settings_firestore(user_id, current_user_id, request)
+        # Convert to UserSettingsData model
+        # Handle the existing data - convert dict to list format if needed
+        macro_phrases = settings.get("macroPhrases", {})
+        if isinstance(macro_phrases, dict):
+            # Convert dict to list of MacroPhraseItem objects
+            macro_list = [{"shortcut": k, "expansion": v} for k, v in macro_phrases.items()]
+        else:
+            macro_list = macro_phrases
+            
+        return UserSettingsData(
+            customVocabulary=settings.get("customVocabulary", []),
+            macroPhrases=macro_list,
+            transcriptionProfiles=settings.get("transcriptionProfiles", []),
+            doctorName=settings.get("doctorName", ""),
+            medicalSpecialty=settings.get("medicalSpecialty", ""),
+            doctorSignature=settings.get("doctorSignature"),
+            clinicLogo=settings.get("clinicLogo"),
+            includeLogoOnPdf=settings.get("includeLogoOnPdf", False),
+            officeInformation=settings.get("officeInformation", [])
+        )
+    
     # Verify that the requested user_id matches the authenticated user
     if user_id != current_user_id:
         raise HTTPException(status_code=403, detail="You can only access your own settings")
@@ -382,6 +427,30 @@ async def test_gcp_connection(current_user_id: str = Depends(get_user_id)):
             "provider": "Google Cloud Platform - Vertex AI"
         }
 
+@app.post("/api/v1/login")
+async def login(current_user: dict = Depends(get_current_user)):
+    """
+    Login endpoint to create a session in Firestore.
+    Called after successful Firebase authentication.
+    """
+    try:
+        user_id = current_user.get('sub')
+        
+        # Create or update session in Firestore
+        await session_manager.create_session(user_id)
+        
+        # Log the login event for audit trail
+        logger.info(f"AUDIT: User {user_id} logged in successfully")
+        
+        return {
+            "success": True,
+            "message": "Logged in successfully",
+            "user_id": user_id
+        }
+    except Exception as e:
+        logger.error(f"Error during login for user {current_user.get('sub')}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create session")
+
 @app.post("/api/v1/logout")
 async def logout(current_user: dict = Depends(get_current_user)):
     """
@@ -412,8 +481,19 @@ async def logout(current_user: dict = Depends(get_current_user)):
 @app.post("/api/v1/user_settings")
 async def save_user_settings(
     request: SaveUserSettingsRequest,
-    current_user_id: str = Depends(get_user_id)
+    current_user_id: str = Depends(get_user_id),
+    req: Request = None
 ):
+    # Use Firestore endpoint if enabled
+    if USE_FIRESTORE:
+        settings_dict = request.settings.model_dump()
+        return await update_user_settings_firestore(
+            user_id=request.user_id,
+            settings_data=settings_dict,
+            current_user_id=current_user_id,
+            request=req
+        )
+    
     # Verify that the user_id in the request matches the authenticated user
     if request.user_id != current_user_id:
         raise HTTPException(status_code=403, detail="You can only save your own settings")
@@ -608,6 +688,19 @@ async def save_session_data_endpoint(
     current_user_id: str = Depends(get_user_id),
     request: Request = None
 ):
+    global gcs_client
+    
+    # Use Firestore endpoint if enabled
+    if USE_FIRESTORE:
+        # Convert SaveSessionRequest to dict for Firestore endpoint
+        request_dict = request_data.model_dump()
+        return await save_session_data_firestore(
+            request_data=request_dict,
+            current_user_id=current_user_id,
+            request=request,
+            gcs_client=gcs_client
+        )
+    
     # Verify that the user_id in the request matches the authenticated user
     print(f"Save session - Request user_id: {request_data.user_id}, Auth user_id: {current_user_id}")
     if request_data.user_id != current_user_id:
@@ -680,7 +773,6 @@ async def save_session_data_endpoint(
 
     print(f"Received save request for session: {session_id}, user: {user_id}")
 
-    global gcs_client
     if gcs_client is None:
         print("CRITICAL: GCS client not initialized when save_session_data_endpoint was called.")
         raise HTTPException(status_code=500, detail="GCS client not available. Cannot save data.")
@@ -1003,6 +1095,9 @@ async def get_user_recordings(
     current_user_id: str = Depends(get_user_id),
     request: Request = None
 ):
+    # Use Firestore endpoint if enabled
+    if USE_FIRESTORE:
+        return await get_user_recordings_firestore(user_id, current_user_id, request)
     # Log PHI access for HIPAA compliance
     AuditLogger.log_data_access(
         user_id=current_user_id,

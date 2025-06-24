@@ -72,6 +72,28 @@ export const AuthProvider = ({ children }) => {
       console.log('Login successful, email verified:', user.emailVerified);
       console.log('Token claims:', idTokenResult.claims);
       
+      // Call backend login endpoint to create Firestore session
+      try {
+        const token = await user.getIdToken();
+        const response = await fetch('/api/v1/login', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (!response.ok) {
+          console.error('Backend login failed:', response.status);
+        } else {
+          const data = await response.json();
+          console.log('Backend session created successfully:', data);
+        }
+      } catch (backendError) {
+        console.error('Error calling backend login:', backendError);
+        // Continue even if backend fails - Firebase auth is primary
+      }
+      
       return user;
     } catch (error) {
       setError(error.message);
@@ -83,6 +105,31 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       setError('');
+      
+      // First, call backend logout endpoint to clear Firestore session
+      if (currentUser) {
+        try {
+          const token = await currentUser.getIdToken();
+          const response = await fetch('/api/v1/logout', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (!response.ok) {
+            console.error('Backend logout failed:', response.status);
+          } else {
+            console.log('Backend session cleared successfully');
+          }
+        } catch (backendError) {
+          console.error('Error calling backend logout:', backendError);
+          // Continue with Firebase logout even if backend fails
+        }
+      }
+      
+      // Then sign out from Firebase
       await signOut(auth);
     } catch (error) {
       setError(error.message);
@@ -167,7 +214,26 @@ export const AuthProvider = ({ children }) => {
           await user.reload();
           // Get fresh ID token to ensure backend has latest verification status
           if (user.emailVerified) {
-            await user.getIdToken(true);
+            const token = await user.getIdToken(true);
+            
+            // Create backend session if email is verified
+            try {
+              const response = await fetch('/api/v1/login', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+                }
+              });
+              
+              if (!response.ok) {
+                console.error('Backend session creation failed:', response.status);
+              } else {
+                console.log('Backend session created/verified on auth state change');
+              }
+            } catch (backendError) {
+              console.error('Error creating backend session:', backendError);
+            }
           }
           console.log('User authenticated:', user.uid, 'Email verified:', user.emailVerified);
         } catch (error) {

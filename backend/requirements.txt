@@ -9,6 +9,7 @@ httpx
 # Google Cloud dependencies
 google-cloud-storage
 google-cloud-aiplatform>=1.38.0
+google-cloud-firestore
 google-api-python-client
 google-auth
 google-auth-httplib2
@@ -17,6 +18,9 @@ firebase-admin
 
 # For rate limiting
 slowapi
+
+# For handling async in sync contexts
+nest-asyncio
 
 # python-jose is still used for JWT handling with Firebase
 python-jose[cryptography]

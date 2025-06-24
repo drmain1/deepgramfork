@@ -103,7 +103,9 @@ export const UserSettingsProvider = ({ children }) => {
       }
       const savedData = await response.json();
       console.log('UserSettingsContext - Settings saved successfully:', savedData);
-      setUserSettings(savedData); 
+      // Don't replace userSettings with the response message
+      // Keep the newSettings that were sent to the API
+      setUserSettings(newSettings); 
       return savedData;
     } catch (error) {
       console.error('Error saving user settings:', error);

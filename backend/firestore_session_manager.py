@@ -52,6 +52,32 @@ class FirestoreSessionManager:
             asyncio.create_task(self._periodic_cleanup())
             logger.info("Started session cleanup background task")
     
+    async def create_session(self, user_id: str) -> None:
+        """Create a new session for the user."""
+        # Ensure cleanup task is running
+        await self._ensure_cleanup_task()
+        
+        try:
+            now = datetime.now(timezone.utc)
+            session_ref = self.sessions_collection.document(user_id)
+            
+            # Create or update session
+            session_data = {
+                'user_id': user_id,
+                'created_at': now,
+                'last_activity': now,
+                'expires_at': now + timedelta(minutes=self.timeout_minutes),
+                'active': True
+            }
+            session_ref.set(session_data)
+            
+            # Audit log for new session
+            logger.info(f"AUDIT: New session created for user {user_id}")
+            
+        except Exception as e:
+            logger.error(f"Error creating session for user {user_id}: {str(e)}")
+            raise
+    
     async def check_session(self, user_id: str) -> bool:
         """Check if user session is still valid."""
         # Ensure cleanup task is running
@@ -65,19 +91,8 @@ class FirestoreSessionManager:
             now = datetime.now(timezone.utc)
             
             if not session_doc.exists:
-                # Create new session
-                session_data = {
-                    'user_id': user_id,
-                    'created_at': now,
-                    'last_activity': now,
-                    'expires_at': now + timedelta(minutes=self.timeout_minutes),
-                    'active': True
-                }
-                session_ref.set(session_data)
-                
-                # Audit log for new session
-                logger.info(f"AUDIT: New session created for user {user_id}")
-                return True
+                # No session exists
+                return False
             
             session_data = session_doc.to_dict()
             expires_at = session_data.get('expires_at')

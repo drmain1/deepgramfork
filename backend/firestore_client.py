@@ -1,0 +1,304 @@
+"""
+Firestore client for managing users, transcripts, and sessions.
+This replaces metadata storage in GCS with structured Firestore documents.
+"""
+
+import os
+import logging
+from datetime import datetime, timezone, timedelta
+from typing import Optional, List, Dict, Any
+from google.cloud import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
+import asyncio
+from firestore_models import (
+    UserDocument, TranscriptDocument, SessionDocument,
+    TranscriptStatus, create_user_document, create_transcript_document
+)
+
+logger = logging.getLogger(__name__)
+
+class FirestoreClient:
+    """
+    Client for interacting with Firestore collections.
+    Handles users, transcripts, and sessions.
+    """
+    
+    def __init__(self):
+        firebase_project_id = os.getenv('FIREBASE_PROJECT_ID', 'medlegaldoc-b31df')
+        logger.info(f"Initializing Firestore client for project: {firebase_project_id}")
+        self.db = firestore.Client(project=firebase_project_id)
+        
+        # Collection references
+        self.users_collection = self.db.collection('users')
+        self.transcripts_collection = self.db.collection('transcripts')
+        self.sessions_collection = self.db.collection('user_sessions')
+    
+    # User operations
+    async def get_or_create_user(self, user_id: str, email: str, name: Optional[str] = None) -> Dict[str, Any]:
+        """Get existing user or create new one"""
+        try:
+            user_ref = self.users_collection.document(user_id)
+            user_doc = user_ref.get()
+            
+            if user_doc.exists:
+                # Update last login
+                user_ref.update({
+                    'last_login': datetime.now(timezone.utc),
+                    'updated_at': datetime.now(timezone.utc)
+                })
+                return user_doc.to_dict()
+            else:
+                # Create new user
+                user_data = {
+                    'email': email,
+                    'name': name,
+                    'created_at': datetime.now(timezone.utc),
+                    'updated_at': datetime.now(timezone.utc),
+                    'last_login': datetime.now(timezone.utc),
+                    'email_verified': True  # Assuming verified if they got this far
+                }
+                
+                user_doc_dict = create_user_document(user_data)
+                user_ref.set(user_doc_dict)
+                logger.info(f"Created new user document for {user_id}")
+                return user_doc_dict
+                
+        except Exception as e:
+            logger.error(f"Error getting/creating user {user_id}: {str(e)}")
+            raise
+    
+    async def update_user_settings(self, user_id: str, settings: Dict[str, Any]) -> bool:
+        """Update user settings in Firestore"""
+        try:
+            user_ref = self.users_collection.document(user_id)
+            
+            # Add updated_at timestamp
+            settings['updated_at'] = datetime.now(timezone.utc)
+            
+            user_ref.update(settings)
+            logger.info(f"Updated settings for user {user_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error updating user settings: {str(e)}")
+            return False
+    
+    async def get_user_settings(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Get user settings from Firestore"""
+        try:
+            user_ref = self.users_collection.document(user_id)
+            user_doc = user_ref.get()
+            
+            if user_doc.exists:
+                return user_doc.to_dict()
+            else:
+                logger.warning(f"No user document found for {user_id}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error getting user settings: {str(e)}")
+            return None
+    
+    # Transcript operations
+    async def create_transcript(self, transcript_data: Dict[str, Any]) -> str:
+        """Create a new transcript document"""
+        try:
+            # Use session_id as document ID
+            session_id = transcript_data['session_id']
+            transcript_ref = self.transcripts_collection.document(session_id)
+            
+            # Create document using model
+            transcript_doc = create_transcript_document(transcript_data)
+            transcript_ref.set(transcript_doc)
+            
+            logger.info(f"Created transcript document for session {session_id}")
+            return session_id
+            
+        except Exception as e:
+            logger.error(f"Error creating transcript: {str(e)}")
+            raise
+    
+    async def update_transcript(self, session_id: str, updates: Dict[str, Any]) -> bool:
+        """Update an existing transcript"""
+        try:
+            transcript_ref = self.transcripts_collection.document(session_id)
+            
+            # Add updated_at timestamp
+            updates['updated_at'] = datetime.now(timezone.utc)
+            
+            # If status is being set to completed, add completed_at
+            if updates.get('status') == TranscriptStatus.COMPLETED:
+                updates['completed_at'] = datetime.now(timezone.utc)
+            
+            transcript_ref.update(updates)
+            logger.info(f"Updated transcript {session_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error updating transcript: {str(e)}")
+            return False
+    
+    async def get_user_transcripts(
+        self, 
+        user_id: str, 
+        limit: int = 50,
+        status: Optional[TranscriptStatus] = None
+    ) -> List[Dict[str, Any]]:
+        """Get transcripts for a user, sorted by creation date"""
+        try:
+            query = self.transcripts_collection.where(
+                filter=FieldFilter('user_id', '==', user_id)
+            )
+            
+            if status:
+                query = query.where(filter=FieldFilter('status', '==', status))
+            
+            # Order by created_at descending (newest first)
+            query = query.order_by('created_at', direction=firestore.Query.DESCENDING)
+            
+            if limit:
+                query = query.limit(limit)
+            
+            transcripts = []
+            for doc in query.stream():
+                transcript_data = doc.to_dict()
+                transcript_data['id'] = doc.id  # Add document ID
+                transcripts.append(transcript_data)
+            
+            logger.info(f"Retrieved {len(transcripts)} transcripts for user {user_id}")
+            return transcripts
+            
+        except Exception as e:
+            logger.error(f"Error getting user transcripts: {str(e)}")
+            return []
+    
+    async def get_transcript(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Get a single transcript by session ID"""
+        try:
+            transcript_ref = self.transcripts_collection.document(session_id)
+            transcript_doc = transcript_ref.get()
+            
+            if transcript_doc.exists:
+                data = transcript_doc.to_dict()
+                data['id'] = transcript_doc.id
+                return data
+            else:
+                logger.warning(f"No transcript found for session {session_id}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error getting transcript: {str(e)}")
+            return None
+    
+    async def delete_transcript(self, session_id: str) -> bool:
+        """Delete a transcript document"""
+        try:
+            transcript_ref = self.transcripts_collection.document(session_id)
+            transcript_ref.delete()
+            logger.info(f"Deleted transcript {session_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error deleting transcript: {str(e)}")
+            return False
+    
+    # Batch operations for migration
+    async def batch_create_transcripts(self, transcripts: List[Dict[str, Any]]) -> int:
+        """Batch create multiple transcripts (for migration)"""
+        try:
+            batch = self.db.batch()
+            count = 0
+            
+            for transcript_data in transcripts:
+                session_id = transcript_data['session_id']
+                transcript_ref = self.transcripts_collection.document(session_id)
+                transcript_doc = create_transcript_document(transcript_data)
+                batch.set(transcript_ref, transcript_doc)
+                count += 1
+                
+                # Commit every 500 documents (Firestore limit)
+                if count % 500 == 0:
+                    batch.commit()
+                    batch = self.db.batch()
+            
+            # Commit remaining
+            if count % 500 != 0:
+                batch.commit()
+            
+            logger.info(f"Batch created {count} transcripts")
+            return count
+            
+        except Exception as e:
+            logger.error(f"Error in batch creation: {str(e)}")
+            raise
+    
+    # Query helpers
+    async def get_recent_transcripts(self, user_id: str, days: int = 7) -> List[Dict[str, Any]]:
+        """Get transcripts from the last N days"""
+        try:
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
+            
+            query = self.transcripts_collection.where(
+                filter=FieldFilter('user_id', '==', user_id)
+            ).where(
+                filter=FieldFilter('created_at', '>=', cutoff_date)
+            ).order_by(
+                'created_at', direction=firestore.Query.DESCENDING
+            )
+            
+            transcripts = []
+            for doc in query.stream():
+                transcript_data = doc.to_dict()
+                transcript_data['id'] = doc.id
+                transcripts.append(transcript_data)
+            
+            return transcripts
+            
+        except Exception as e:
+            logger.error(f"Error getting recent transcripts: {str(e)}")
+            return []
+    
+    async def search_transcripts(
+        self, 
+        user_id: str, 
+        patient_name: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> List[Dict[str, Any]]:
+        """Search transcripts with filters"""
+        try:
+            query = self.transcripts_collection.where(
+                filter=FieldFilter('user_id', '==', user_id)
+            )
+            
+            if patient_name:
+                query = query.where(
+                    filter=FieldFilter('patient_name', '==', patient_name)
+                )
+            
+            if start_date:
+                query = query.where(
+                    filter=FieldFilter('created_at', '>=', start_date)
+                )
+            
+            if end_date:
+                query = query.where(
+                    filter=FieldFilter('created_at', '<=', end_date)
+                )
+            
+            query = query.order_by('created_at', direction=firestore.Query.DESCENDING)
+            
+            transcripts = []
+            for doc in query.stream():
+                transcript_data = doc.to_dict()
+                transcript_data['id'] = doc.id
+                transcripts.append(transcript_data)
+            
+            return transcripts
+            
+        except Exception as e:
+            logger.error(f"Error searching transcripts: {str(e)}")
+            return []
+
+# Create singleton instance
+firestore_client = FirestoreClient()

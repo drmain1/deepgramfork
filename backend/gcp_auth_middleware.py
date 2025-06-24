@@ -131,7 +131,7 @@ def validate_firebase_token(token: str) -> str:
         logger.error(f"Firebase token validation failed: {str(e)}")
         raise HTTPException(status_code=401, detail=f"Token validation failed: {str(e)}")
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security)) -> dict:
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security)) -> dict:
     """
     Unified authentication function that works with both IAP and Firebase tokens.
     Returns a user dict to maintain compatibility with AWS middleware.
@@ -141,26 +141,44 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Security(securi
     # Extract user_id first
     user_id = user_info.get('user_id', user_info.get('uid')) if isinstance(user_info, dict) else user_info
     
-    # Check session validity using Firestore
-    import asyncio
-    try:
-        # Try to get the current event loop
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # If we're in an async context, create a task
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(asyncio.run, session_manager.check_session(user_id))
-                session_valid = future.result()
-        else:
-            # If no loop is running, we can use run_until_complete
-            session_valid = loop.run_until_complete(session_manager.check_session(user_id))
-    except RuntimeError:
-        # No event loop exists, create one
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        session_valid = loop.run_until_complete(session_manager.check_session(user_id))
-        loop.close()
+    # Check session validity with Firestore
+    session_valid = await session_manager.check_session(user_id)
+    
+    if not session_valid:
+        # Try to create a new session if the user has a valid token
+        # This handles cases where the session expired but the Firebase token is still valid
+        try:
+            await session_manager.create_session(user_id)
+            logger.info(f"Created new session for user with valid token: {user_id}")
+        except Exception as e:
+            logger.warning(f"Session expired and couldn't create new one for user: {user_id}, error: {str(e)}")
+            raise HTTPException(
+                status_code=401,
+                detail="Session expired. Please log in again."
+            )
+    
+    logger.info(f"User authenticated with valid session: {user_id}")
+    
+    # Return user dict for compatibility with existing code
+    return {
+        'sub': user_id,
+        'username': user_id,
+        'email': user_info.get('email') if isinstance(user_info, dict) else None,
+        'email_verified': user_info.get('email_verified', False) if isinstance(user_info, dict) else False,
+        'token_use': 'id'
+    }
+
+async def get_current_user_async(credentials: HTTPAuthorizationCredentials = Security(security)) -> dict:
+    """
+    Async version of get_current_user that can properly handle session checks.
+    """
+    user_info = validate_firebase_token(credentials.credentials)
+    
+    # Extract user_id first
+    user_id = user_info.get('user_id', user_info.get('uid')) if isinstance(user_info, dict) else user_info
+    
+    # Check session validity
+    session_valid = await session_manager.check_session(user_id)
     
     if not session_valid:
         logger.warning(f"Session expired for user: {user_id}")
@@ -236,5 +254,5 @@ def log_user_access(user_id: str, action: str, resource: str, request: Request):
     except Exception as e:
         logger.error(f"Failed to log user access: {str(e)}")
 
-# Import memory-based session manager (no database required)
-from memory_session_manager import memory_session_manager as session_manager
+# Import Firestore-based session manager for production use
+from firestore_session_manager import firestore_session_manager as session_manager
