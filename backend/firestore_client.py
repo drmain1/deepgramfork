@@ -250,6 +250,15 @@ class FirestoreClient:
             for doc in query.stream():
                 transcript_data = doc.to_dict()
                 transcript_data['id'] = doc.id
+                
+                # Debug logging
+                original_transcript = transcript_data.get('transcript_original')
+                polished_transcript = transcript_data.get('transcript_polished')
+                logger.info(f"Transcript {doc.id}: has original: {bool(original_transcript)}, "
+                           f"original length: {len(original_transcript) if original_transcript else 0}, "
+                           f"has polished: {bool(polished_transcript)}, "
+                           f"polished length: {len(polished_transcript) if polished_transcript else 0}")
+                
                 transcripts.append(transcript_data)
             
             return transcripts

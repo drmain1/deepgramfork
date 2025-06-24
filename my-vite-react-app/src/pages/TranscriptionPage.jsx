@@ -120,7 +120,7 @@ function TranscriptionPage() {
     console.log('selectedRecording:', selectedRecording);
     console.log('selectedRecording status:', selectedRecording?.status);
     console.log('Is draft?:', selectedRecording?.status === 'draft');
-    console.log('transcript:', selectedRecording?.transcript ? 'Has transcript' : 'No transcript');
+    console.log('transcript:', selectedRecording?.transcript ? `Has transcript (length: ${selectedRecording.transcript.length})` : 'No transcript');
     console.log('profileId:', selectedRecording?.profileId);
     
     // Show all recordings to see if there are any actual drafts

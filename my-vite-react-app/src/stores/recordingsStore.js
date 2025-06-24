@@ -108,6 +108,16 @@ const useRecordingsStore = create(
             // PHI-safe logging: only log count, not content
             console.log("Fetched recordings count:", fetchedRecordings.length);
             
+            // Debug log to check if transcript field is present
+            if (fetchedRecordings.length > 0) {
+              console.log('[fetchUserRecordings] First recording sample:', {
+                id: fetchedRecordings[0].id,
+                hasTranscript: !!fetchedRecordings[0].transcript,
+                transcriptLength: fetchedRecordings[0].transcript?.length || 0,
+                status: fetchedRecordings[0].status
+              });
+            }
+            
             // Merge with local state
             get().mergeRecordings(fetchedRecordings);
             
@@ -283,12 +293,32 @@ const useRecordingsStore = create(
 
         // Select recording
         selectRecording: (recordingId) => {
-          set({ 
-            selectedRecordingId: recordingId,
-            originalTranscriptContent: null,
-            polishedTranscriptContent: null,
-            selectedTranscriptError: null
+          console.log(`[selectRecording] Selecting recording: ${recordingId}`);
+          const recording = get().recordings.find(r => r.id === recordingId);
+          console.log(`[selectRecording] Found recording:`, {
+            id: recording?.id,
+            hasTranscript: !!recording?.transcript,
+            transcriptLength: recording?.transcript?.length || 0
           });
+          
+          // If recording has inline transcript, set it immediately
+          if (recording?.transcript) {
+            console.log('[selectRecording] Setting inline transcript immediately');
+            set({ 
+              selectedRecordingId: recordingId,
+              originalTranscriptContent: recording.transcript,
+              polishedTranscriptContent: recording.polishedTranscript || 'No polished transcript available.',
+              selectedTranscriptError: null,
+              isLoadingSelectedTranscript: false
+            });
+          } else {
+            set({ 
+              selectedRecordingId: recordingId,
+              originalTranscriptContent: null,
+              polishedTranscriptContent: null,
+              selectedTranscriptError: null
+            });
+          }
         },
 
         // Fetch transcript content
@@ -342,25 +372,82 @@ const useRecordingsStore = create(
           set({ isLoadingSelectedTranscript: true, selectedTranscriptError: null });
           
           try {
-            const [originalContent, polishedContent] = await Promise.all([
-              recording.gcsPathTranscript 
-                ? get().fetchTranscriptContent(recording.gcsPathTranscript, 'original', currentUser, getToken)
-                : Promise.resolve(null),
-              recording.gcsPathPolished 
-                ? get().fetchTranscriptContent(recording.gcsPathPolished, 'polished', currentUser, getToken)
-                : Promise.resolve(null)
-            ]);
+            // Debug logging
+            console.log(`[loadSelectedTranscript] Loading transcript for ${selectedRecordingId}`);
+            console.log(`[loadSelectedTranscript] Recording has transcript field: ${!!recording.transcript}`);
+            console.log(`[loadSelectedTranscript] Transcript length: ${recording.transcript?.length || 0}`);
+            
+            // For drafts or recordings with inline transcript content
+            if (recording.transcript) {
+              console.log('[loadSelectedTranscript] Setting inline transcript:', {
+                transcriptPreview: recording.transcript.substring(0, 100) + '...',
+                fullLength: recording.transcript.length,
+                hasPolished: !!recording.polishedTranscript
+              });
+              set({
+                originalTranscriptContent: recording.transcript,
+                polishedTranscriptContent: recording.polishedTranscript || 'No polished transcript available.',
+                isLoadingSelectedTranscript: false
+              });
+              return;
+            }
+            
+            // Fetch from new Firestore endpoint
+            const accessToken = await getToken();
+            const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+            
+            const response = await fetch(
+              `${API_BASE_URL}/api/v1/transcript/${currentUser.uid}/${selectedRecordingId}`,
+              {
+                headers: {
+                  Authorization: `Bearer ${accessToken}`,
+                },
+              }
+            );
+            
+            if (!response.ok) {
+              throw new Error(`Failed to fetch transcript: ${response.status}`);
+            }
+            
+            const transcriptData = await response.json();
             
             set({
-              originalTranscriptContent: originalContent,
-              polishedTranscriptContent: polishedContent,
+              originalTranscriptContent: transcriptData.originalTranscript || 'No original transcript available.',
+              polishedTranscriptContent: transcriptData.polishedTranscript || 'No polished transcript available.',
               isLoadingSelectedTranscript: false
             });
           } catch (error) {
-            set({
-              selectedTranscriptError: error.message,
-              isLoadingSelectedTranscript: false
-            });
+            console.error('Error loading transcript:', error);
+            
+            // Fallback to GCS if Firestore fails (for backwards compatibility)
+            if (recording.gcsPathTranscript) {
+              try {
+                const [originalContent, polishedContent] = await Promise.all([
+                  recording.gcsPathTranscript 
+                    ? get().fetchTranscriptContent(recording.gcsPathTranscript, 'original', currentUser, getToken)
+                    : Promise.resolve(null),
+                  recording.gcsPathPolished 
+                    ? get().fetchTranscriptContent(recording.gcsPathPolished, 'polished', currentUser, getToken)
+                    : Promise.resolve(null)
+                ]);
+                
+                set({
+                  originalTranscriptContent: originalContent || 'No original transcript available.',
+                  polishedTranscriptContent: polishedContent || 'No polished transcript available.',
+                  isLoadingSelectedTranscript: false
+                });
+              } catch (gcsError) {
+                set({
+                  selectedTranscriptError: error.message,
+                  isLoadingSelectedTranscript: false
+                });
+              }
+            } else {
+              set({
+                selectedTranscriptError: error.message,
+                isLoadingSelectedTranscript: false
+              });
+            }
           }
         },
 

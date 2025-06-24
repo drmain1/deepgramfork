@@ -59,7 +59,8 @@ from firestore_endpoints import (
     get_user_settings_firestore,
     update_user_settings_firestore,
     save_session_data_firestore,
-    delete_recording_firestore
+    delete_recording_firestore,
+    get_transcript_details_firestore
 )
 
 # Environment already loaded at the top of the file
@@ -1008,6 +1009,10 @@ async def delete_session_recording(
     current_user_id: str = Depends(get_user_id),
     request: Request = None
 ):
+    # Use Firestore endpoint if enabled
+    if USE_FIRESTORE:
+        return await delete_recording_firestore(user_id, session_id, current_user_id, request, gcs_client)
+    
     # Log PHI access for HIPAA compliance
     AuditLogger.log_data_access(
         user_id=current_user_id,
@@ -1086,6 +1091,7 @@ class RecordingInfo(BaseModel):
     durationSeconds: Optional[int] = None
     # Draft-specific fields
     transcript: Optional[str] = None
+    polishedTranscript: Optional[str] = None
     profileId: Optional[str] = None
     # Add any other relevant fields that might be in session_metadata.json and useful for display
 
@@ -1327,6 +1333,20 @@ async def get_user_recordings(
         raise HTTPException(status_code=500, detail=f"Unexpected error listing transcript files: {str(e)}")
 
 from fastapi.responses import PlainTextResponse
+
+@app.get("/api/v1/transcript/{user_id}/{transcript_id}")
+async def get_transcript_details(
+    user_id: str = Path(..., description="User's unique identifier"),
+    transcript_id: str = Path(..., description="Transcript/session ID"),
+    current_user_id: str = Depends(get_user_id),
+    request: Request = None
+):
+    """Get transcript details including content from Firestore"""
+    if USE_FIRESTORE:
+        return await get_transcript_details_firestore(user_id, transcript_id, current_user_id, request)
+    else:
+        # Fallback to GCS-based approach
+        raise HTTPException(status_code=501, detail="Non-Firestore transcript details not implemented")
 
 @app.get("/api/v1/gcs_object_content", response_class=PlainTextResponse)
 async def get_gcs_object_content(

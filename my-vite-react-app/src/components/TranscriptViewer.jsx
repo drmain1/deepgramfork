@@ -50,9 +50,19 @@ function TranscriptViewer() {
   const title = selectedRec ? `Details: ${selectedRec.name}` : "Recording Details";
   const isSigned = selectedRec?.isSigned || false;
   
-  // Debug logging for location
+  // Debug logging for location and transcript content
   console.log("TranscriptViewer - selectedRec:", selectedRec);
   console.log("TranscriptViewer - location:", selectedRec?.location);
+  console.log("TranscriptViewer - originalTranscriptContent:", {
+    hasContent: !!originalTranscriptContent,
+    length: originalTranscriptContent?.length || 0,
+    preview: originalTranscriptContent ? originalTranscriptContent.substring(0, 50) + '...' : 'null'
+  });
+  console.log("TranscriptViewer - polishedTranscriptContent:", {
+    hasContent: !!polishedTranscriptContent,
+    length: polishedTranscriptContent?.length || 0,
+    preview: polishedTranscriptContent ? polishedTranscriptContent.substring(0, 50) + '...' : 'null'
+  });
 
   const handleTabChange = (event, newValue) => {
     setTranscriptDisplayTab(newValue);
@@ -247,6 +257,8 @@ function TranscriptViewer() {
         </Box>
         
         <TabPanel value={transcriptDisplayTab} index={0}>
+          {console.log('[TranscriptViewer] Rendering original transcript tab with content:', 
+            originalTranscriptContent ? originalTranscriptContent.substring(0, 100) + '...' : 'null/empty')}
           <FormattedMedicalText
             content={originalTranscriptContent || "Original transcript not available or empty."}
             sx={{ 

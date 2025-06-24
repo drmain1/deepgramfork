@@ -69,10 +69,14 @@ class TranscriptDocument(BaseModel):
     llm_template_id: Optional[str] = None
     language: str = "en"
     
-    # References to GCS files (not the actual content)
+    # Transcript content stored directly in Firestore
+    transcript_original: Optional[str] = None
+    transcript_polished: Optional[str] = None
+    
+    # References to GCS files (only for audio or large files)
     gcs_path_audio: Optional[str] = None
-    gcs_path_original: Optional[str] = None
-    gcs_path_polished: Optional[str] = None
+    gcs_path_original: Optional[str] = None  # Deprecated - kept for backwards compatibility
+    gcs_path_polished: Optional[str] = None  # Deprecated - kept for backwards compatibility
     
     # Error tracking
     error_message: Optional[str] = None

@@ -38,6 +38,11 @@ export function useRecordings() {
 
   // Load transcript when selection changes
   useEffect(() => {
+    console.log('[useRecordings] Transcript loading effect triggered:', {
+      selectedRecordingId,
+      hasCurrentUser: !!currentUser,
+      currentUserId: currentUser?.uid
+    });
     if (selectedRecordingId && currentUser) {
       loadSelectedTranscript(currentUser, getToken);
     }

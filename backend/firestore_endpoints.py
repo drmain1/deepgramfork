@@ -7,6 +7,7 @@ from fastapi import HTTPException, Depends, Path, Request
 from typing import List, Optional
 import logging
 from datetime import datetime, timezone, timedelta
+import asyncio
 
 from firestore_client import firestore_client
 from firestore_models import TranscriptStatus
@@ -14,6 +15,7 @@ from gcs_utils import GCSClient
 from gcp_auth_middleware import get_user_id
 from audit_logger import AuditLogger
 from pydantic import BaseModel
+from gcp_utils import polish_transcript_with_gemini
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,7 @@ class RecordingInfo(BaseModel):
     location: Optional[str] = None
     durationSeconds: Optional[int] = None
     transcript: Optional[str] = None
+    polishedTranscript: Optional[str] = None
     profileId: Optional[str] = None
 
 async def get_user_recordings_firestore(
@@ -73,6 +76,8 @@ async def get_user_recordings_firestore(
                 date_obj = datetime.now(timezone.utc)
             
             # Convert Firestore document to RecordingInfo
+            transcript_content = transcript.get('transcript_original', '')
+            
             recording = RecordingInfo(
                 id=transcript['session_id'],
                 name=transcript.get('patient_name', 'Unknown Patient'),
@@ -86,8 +91,16 @@ async def get_user_recordings_firestore(
                 llmTemplateName=transcript.get('llm_template'),
                 location=transcript.get('location'),
                 durationSeconds=transcript.get('duration_seconds'),
-                profileId=transcript.get('llm_template_id')
+                profileId=transcript.get('llm_template_id'),
+                # Include transcript content directly
+                transcript=transcript_content,
+                polishedTranscript=transcript.get('transcript_polished')
             )
+            
+            # Debug logging
+            logger.info(f"Recording {recording.id}: has transcript content: {bool(transcript_content)}, length: {len(transcript_content)}, "
+                       f"has polished: {bool(transcript.get('transcript_polished'))}")
+            
             recordings_info.append(recording)
         
         logger.info(f"Found {len(recordings_info)} recordings for user {user_id}")
@@ -264,31 +277,113 @@ async def save_session_data_firestore(
         # Create in Firestore
         await firestore_client.create_transcript(transcript_data)
         
-        # Save actual transcript content to GCS
-        saved_paths = {}
+        # Get transcript content (support both field names for compatibility)
+        transcript_content = request_data.get('transcript') or request_data.get('final_transcript_text', '')
         
-        # Save original transcript
-        if request_data.get('transcript'):
-            success = gcs_client.save_data_to_gcs(
-                user_id=user_id,
-                data_type="transcripts/original",
-                session_id=session_id,
-                content=request_data['transcript']
-            )
-            if success:
-                saved_paths['original_transcript'] = f"{user_id}/transcripts/original/{session_id}.txt"
+        logger.info(f"Transcript content length: {len(transcript_content)}")
+        logger.info(f"First 100 chars: {transcript_content[:100] if transcript_content else 'Empty'}")
+        
+        # Update Firestore with transcript content directly
+        update_data = {
+            'transcript_original': transcript_content,
+            'status': TranscriptStatus.COMPLETED
+        }
+        
+        # Also save to GCS for backwards compatibility (optional)
+        saved_paths = {}
+        if transcript_content and gcs_client:
+            try:
+                success = gcs_client.save_data_to_gcs(
+                    user_id=user_id,
+                    data_type="transcripts/original",
+                    session_id=session_id,
+                    content=transcript_content
+                )
+                if success:
+                    saved_paths['original_transcript'] = f"{user_id}/transcripts/original/{session_id}.txt"
+                    update_data['gcs_path_original'] = saved_paths['original_transcript']
+            except Exception as e:
+                logger.warning(f"Failed to save to GCS (will continue with Firestore only): {e}")
         
         # Process with AI if template provided
         if request_data.get('llm_template'):
-            # Polish transcript logic here...
-            # Update paths in Firestore after polishing
-            pass
+            logger.info(f"Processing transcript with LLM for session {session_id}")
+            
+            # Get user settings to retrieve LLM instructions
+            try:
+                # Get user settings directly from Firestore
+                user_settings = await firestore_client.get_user_settings(user_id)
+                custom_instructions = None
+                
+                if user_settings and user_settings.get('transcription_profiles'):
+                    llm_template_id = request_data.get('llm_template_id')
+                    llm_template = request_data.get('llm_template')
+                    
+                    # Find matching profile
+                    selected_profile = None
+                    profiles = user_settings.get('transcription_profiles', [])
+                    
+                    if llm_template_id:
+                        selected_profile = next((p for p in profiles if p.get('id') == llm_template_id), None)
+                    if not selected_profile and llm_template:
+                        selected_profile = next((p for p in profiles if p.get('name') == llm_template), None)
+                    
+                    if selected_profile:
+                        custom_instructions = selected_profile.get('llmInstructions') or selected_profile.get('llmPrompt')
+                        logger.info(f"Found LLM instructions from profile '{selected_profile.get('name')}')")
+                
+                # Fallback instructions if no profile found
+                if not custom_instructions:
+                    patient_name = request_data.get('patient_name', '')
+                    patient_context = request_data.get('patient_context', '')
+                    encounter_type = request_data.get('encounter_type', '')
+                    custom_instructions = f"Patient Name: {patient_name}\nPatient Context: {patient_context}\nEncounter Type: {encounter_type}\nTemplate: {llm_template}"
+                else:
+                    # Append context to profile instructions
+                    patient_name = request_data.get('patient_name', '')
+                    patient_context = request_data.get('patient_context', '')
+                    encounter_type = request_data.get('encounter_type', '')
+                    custom_instructions += f"\n\nAdditional Context:\nPatient Name: {patient_name}\nPatient Context: {patient_context}\nEncounter Type: {encounter_type}"
+                
+                # Polish transcript using Gemini
+                polished_result = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    polish_transcript_with_gemini,
+                    transcript_content,
+                    request_data.get('patient_name', ''),
+                    request_data.get('patient_context', ''),
+                    request_data.get('encounter_type', ''),
+                    custom_instructions,
+                    request_data.get('location', '')
+                )
+                
+                if polished_result['success']:
+                    update_data['transcript_polished'] = polished_result['polished_transcript']
+                    logger.info(f"Transcript polished successfully for session {session_id}")
+                    
+                    # Save to GCS as well for backwards compatibility
+                    if gcs_client and polished_result['polished_transcript']:
+                        try:
+                            success = gcs_client.save_data_to_gcs(
+                                user_id=user_id,
+                                data_type="transcripts/polished",
+                                session_id=session_id,
+                                content=polished_result['polished_transcript']
+                            )
+                            if success:
+                                update_data['gcs_path_polished'] = f"{user_id}/transcripts/polished/{session_id}.txt"
+                        except Exception as e:
+                            logger.warning(f"Failed to save polished transcript to GCS: {e}")
+                else:
+                    logger.error(f"Failed to polish transcript: {polished_result.get('error', 'Unknown error')}")
+                    
+            except Exception as e:
+                logger.error(f"Error during LLM processing: {str(e)}")
+                # Continue without polishing rather than failing the entire save
         
-        # Update Firestore with GCS paths
-        await firestore_client.update_transcript(session_id, {
-            'gcs_path_original': saved_paths.get('original_transcript'),
-            'status': TranscriptStatus.COMPLETED
-        })
+        # Update Firestore with transcript content
+        logger.info(f"Updating transcript {session_id} with content (length: {len(transcript_content)})")
+        await firestore_client.update_transcript(session_id, update_data)
         
         # Delete draft if exists
         draft_key = f"{user_id}/drafts/{session_id}.txt"
@@ -308,6 +403,55 @@ async def save_session_data_firestore(
             'error_message': str(e)
         })
         raise HTTPException(status_code=500, detail=f"Failed to save session data: {str(e)}")
+
+async def get_transcript_details_firestore(
+    user_id: str,
+    transcript_id: str,
+    current_user_id: str = Depends(get_user_id),
+    request: Request = None
+):
+    """
+    Get detailed transcript information including content from Firestore.
+    """
+    # Verify authorization
+    if user_id != current_user_id:
+        raise HTTPException(status_code=403, detail="You can only access your own transcripts")
+    
+    logger.info(f"Fetching transcript details for {transcript_id}")
+    
+    try:
+        # Get transcript from Firestore
+        transcript = await firestore_client.get_transcript(transcript_id)
+        
+        if not transcript:
+            raise HTTPException(status_code=404, detail="Transcript not found")
+        
+        # Verify ownership
+        if transcript.get('user_id') != user_id:
+            raise HTTPException(status_code=403, detail="Unauthorized access to transcript")
+        
+        # Log for debugging
+        logger.info(f"Transcript data: has original: {bool(transcript.get('transcript_original'))}, "
+                   f"has polished: {bool(transcript.get('transcript_polished'))}")
+        logger.info(f"Original transcript length: {len(transcript.get('transcript_original', ''))}")
+        logger.info(f"Polished transcript length: {len(transcript.get('transcript_polished', ''))}")
+        
+        # Return transcript with content
+        return {
+            'id': transcript['session_id'],
+            'originalTranscript': transcript.get('transcript_original', ''),
+            'polishedTranscript': transcript.get('transcript_polished', ''),
+            'patientName': transcript.get('patient_name'),
+            'status': transcript.get('status'),
+            'createdAt': transcript.get('created_at'),
+            'updatedAt': transcript.get('updated_at')
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching transcript details: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch transcript details")
 
 async def delete_recording_firestore(
     user_id: str,
