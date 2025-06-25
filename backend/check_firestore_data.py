@@ -50,7 +50,7 @@ else:
 
 # Check transcripts collection
 print("\n\n3. TRANSCRIPTS COLLECTION:")
-transcripts = db.collection('transcripts').where('user_id', '==', user_id).limit(5).get()
+transcripts = db.collection('transcripts').filter('user_id', '==', user_id).limit(5).get()
 print(f"Found {len(list(transcripts))} transcript documents")
 
 print("\n" + "=" * 60)

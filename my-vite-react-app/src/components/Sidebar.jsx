@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useRecordings } from '../contexts/RecordingsContext';
 import { useAuth } from '../contexts/FirebaseAuthContext';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 function Sidebar() {
   const { recordings, deletePersistedRecording, isFetchingRecordings, selectRecording, selectedRecordingId } = useRecordings();
@@ -12,8 +12,31 @@ function Sidebar() {
   const [deleteConfirmation, setDeleteConfirmation] = useState({
     isOpen: false,
     recordingId: null,
-    recordingName: null
+    recordingName: null,
+    isDeleting: false
   });
+
+  // State for search
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+
+  // Keyboard shortcut for search (Cmd/Ctrl + K)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsSearchExpanded(!isSearchExpanded);
+      }
+      // Close search on Escape
+      if (e.key === 'Escape' && isSearchExpanded) {
+        setIsSearchExpanded(false);
+        setSearchQuery('');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSearchExpanded]);
 
   const handleGoToSettings = () => {
     navigate('/settings');
@@ -28,24 +51,29 @@ function Sidebar() {
     setDeleteConfirmation({
       isOpen: true,
       recordingId,
-      recordingName
+      recordingName,
+      isDeleting: false
     });
   };
 
   const handleConfirmDelete = async () => {
-    if (!isAuthenticated || !deleteConfirmation.recordingId) {
-      console.error("User not authenticated or no recording selected. Cannot delete recording.");
+    if (!isAuthenticated || !deleteConfirmation.recordingId || deleteConfirmation.isDeleting) {
+      console.error("User not authenticated, no recording selected, or deletion already in progress.");
       return;
     }
     
     if (deletePersistedRecording) {
       try {
+        // Set deleting state to prevent duplicate requests
+        setDeleteConfirmation(prev => ({ ...prev, isDeleting: true }));
+        
         // PHI-safe logging
         console.log(`Attempting to delete recording`);
         await deletePersistedRecording(deleteConfirmation.recordingId);
-        setDeleteConfirmation({ isOpen: false, recordingId: null, recordingName: null });
+        setDeleteConfirmation({ isOpen: false, recordingId: null, recordingName: null, isDeleting: false });
       } catch (error) {
         console.error(`Failed to delete recording:`, error);
+        setDeleteConfirmation(prev => ({ ...prev, isDeleting: false }));
       }
     } else {
       console.error('deletePersistedRecording function not available from context.');
@@ -53,7 +81,7 @@ function Sidebar() {
   };
 
   const handleCancelDelete = () => {
-    setDeleteConfirmation({ isOpen: false, recordingId: null, recordingName: null });
+    setDeleteConfirmation({ isOpen: false, recordingId: null, recordingName: null, isDeleting: false });
   };
 
   const handleLogout = () => {
@@ -99,7 +127,18 @@ function Sidebar() {
     }
   }, []);
 
-  const sortedRecordings = processedRecordings.sort((a, b) => {
+  // Filter recordings based on search query
+  const filteredRecordings = processedRecordings.filter(recording => {
+    if (!searchQuery.trim()) return true;
+    
+    const query = searchQuery.toLowerCase();
+    const name = (recording.name || '').toLowerCase();
+    const sessionId = (recording.id || '').toLowerCase();
+    
+    return name.includes(query) || sessionId.includes(query);
+  });
+
+  const sortedRecordings = filteredRecordings.sort((a, b) => {
     // Sort by session ID timestamp for accuracy
     const timeA = parseSessionIdTime(a.id) || new Date(a.date || 0);
     const timeB = parseSessionIdTime(b.id) || new Date(b.date || 0);
@@ -182,6 +221,18 @@ function Sidebar() {
     return sessionId.length > 20 ? `${sessionId.substring(0, 10)}...${sessionId.substring(sessionId.length - 3)}` : sessionId;
   };
 
+  // Highlight search terms in text
+  const highlightSearchTerm = (text, searchTerm) => {
+    if (!searchTerm || !text) return text;
+    
+    const parts = text.split(new RegExp(`(${searchTerm})`, 'gi'));
+    return parts.map((part, index) => 
+      part.toLowerCase() === searchTerm.toLowerCase() 
+        ? <mark key={index} className="bg-primary/30 text-white rounded px-0.5">{part}</mark>
+        : part
+    );
+  };
+
   return (
     <aside className="sidebar w-80 flex flex-col">
       {/* Logo Section */}
@@ -213,9 +264,51 @@ function Sidebar() {
         </button>
       </div>
 
+      {/* Search Section */}
+      <div className="px-4 pb-3">
+        <div className={`transition-all duration-300 overflow-hidden ${isSearchExpanded ? 'max-h-20' : 'max-h-0'}`}>
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search patients or sessions..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full px-4 py-2.5 pr-10 bg-gray-800 text-white rounded-lg border border-gray-700 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all text-sm"
+              autoFocus={isSearchExpanded}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+              >
+                <span className="material-icons text-xl">close</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Recordings Section */}
       <div className="flex-1 px-4 overflow-hidden">
-        <h3 className="section-header px-2">Recent Recordings</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="section-header px-2 mb-0">Recent Recordings</h3>
+          <button
+            onClick={() => setIsSearchExpanded(!isSearchExpanded)}
+            className={`p-1.5 rounded-lg transition-all group relative ${
+              isSearchExpanded 
+                ? 'bg-primary text-white' 
+                : 'text-gray-400 hover:text-white hover:bg-gray-800'
+            }`}
+            title={isSearchExpanded ? 'Close search (Esc)' : 'Search recordings (⌘K)'}
+          >
+            <span className="material-icons text-xl">search</span>
+            {!isSearchExpanded && (
+              <span className="absolute -bottom-8 right-0 bg-gray-900 text-xs text-gray-400 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                ⌘K
+              </span>
+            )}
+          </button>
+        </div>
         <nav className="space-y-4 overflow-y-auto max-h-[calc(100vh-400px)] pr-2">
           {isFetchingRecordings && recordings.length === 0 && (
             <div className="text-center py-8">
@@ -234,6 +327,20 @@ function Sidebar() {
             <div className="text-center py-8">
               <span className="material-icons text-gray-600 text-4xl mb-3 block">lock</span>
               <p className="text-sm text-gray-400">Login to see recordings</p>
+            </div>
+          )}
+          
+          {/* No search results message */}
+          {searchQuery && sortedRecordings.length === 0 && !isFetchingRecordings && isAuthenticated && (
+            <div className="text-center py-8">
+              <span className="material-icons text-gray-600 text-4xl mb-3 block">search_off</span>
+              <p className="text-sm text-gray-400">No recordings found for "{searchQuery}"</p>
+              <button 
+                onClick={() => setSearchQuery('')}
+                className="text-xs text-primary hover:text-primary-light mt-2"
+              >
+                Clear search
+              </button>
             </div>
           )}
           
@@ -261,7 +368,10 @@ function Sidebar() {
                   >
                     <div className="flex items-start justify-between">
                       <span className="truncate flex-1 font-medium text-base">
-                        {recording.name || `Session ${formatSessionId(recording.id)}`}
+                        {searchQuery 
+                          ? highlightSearchTerm(recording.name || `Session ${formatSessionId(recording.id)}`, searchQuery)
+                          : (recording.name || `Session ${formatSessionId(recording.id)}`)
+                        }
                       </span>
                       <span className={`status-indicator ${recording.status || 'pending'} ml-2 mt-1.5`}></span>
                     </div>
@@ -316,11 +426,25 @@ function Sidebar() {
                 Cancel
               </button>
               <button
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium flex items-center gap-2"
+                className={`px-4 py-2 text-white rounded-lg transition-colors font-medium flex items-center gap-2 ${
+                  deleteConfirmation.isDeleting 
+                    ? 'bg-red-400 cursor-not-allowed' 
+                    : 'bg-red-600 hover:bg-red-700'
+                }`}
                 onClick={handleConfirmDelete}
+                disabled={deleteConfirmation.isDeleting}
               >
-                <span className="material-icons text-sm">delete</span>
-                Delete Recording
+                {deleteConfirmation.isDeleting ? (
+                  <>
+                    <div className="spinner-small"></div>
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <span className="material-icons text-sm">delete</span>
+                    Delete Recording
+                  </>
+                )}
               </button>
             </div>
           </div>

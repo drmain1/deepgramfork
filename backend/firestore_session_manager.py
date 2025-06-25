@@ -140,7 +140,7 @@ class FirestoreSessionManager:
     async def get_active_sessions_count(self) -> int:
         """Get count of active sessions for monitoring."""
         try:
-            active_sessions = self.sessions_collection.where('active', '==', True).get()
+            active_sessions = self.sessions_collection.filter('active', '==', True).get()
             return len(list(active_sessions))
         except Exception as e:
             logger.error(f"Error counting active sessions: {str(e)}")
@@ -155,9 +155,9 @@ class FirestoreSessionManager:
                 now = datetime.now(timezone.utc)
                 
                 # Find and mark expired sessions
-                expired_sessions = self.sessions_collection.where(
+                expired_sessions = self.sessions_collection.filter(
                     'expires_at', '<', now
-                ).where(
+                ).filter(
                     'active', '==', True
                 ).limit(100).get()  # Process in batches
                 
