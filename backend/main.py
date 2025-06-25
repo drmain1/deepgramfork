@@ -131,10 +131,23 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+# Health check endpoint for App Engine
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for load balancer and monitoring."""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "service": "scribe-api",
+        "environment": os.getenv("ENVIRONMENT", "development")
+    }
+
 # CORS Configuration
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "https://scribe.medlegaldoc.com",
+    "https://medlegaldoc.com",
     # Add any other origins if necessary (e.g., your deployed frontend URL)
 ]
 

@@ -1,0 +1,53 @@
+runtime: python310
+instance_class: F4
+
+# Scaling configuration for production
+automatic_scaling:
+  min_instances: 1
+  max_instances: 10
+  min_idle_instances: 1
+  max_idle_instances: 3
+  min_pending_latency: 30ms
+  max_pending_latency: automatic
+  max_concurrent_requests: 50
+
+# Environment variables
+env_variables:
+  ENVIRONMENT: "production"
+  GCP_PROJECT_ID: "medlegaldoc-b31df"
+  GCP_LOCATION: "us-central1"
+  GCS_BUCKET_NAME: "medlegaldoc-b31df.firebasestorage.app"
+  FIREBASE_PROJECT_ID: "medlegaldoc-b31df"
+  ALLOWED_ORIGINS: "https://scribe.medlegaldoc.com,https://www.scribe.medlegaldoc.com"
+  SESSION_TIMEOUT_MINUTES: "25"
+  RATE_LIMIT_PER_MINUTE: "60"
+
+# VPC connector for internal GCP services
+vpc_access_connector:
+  name: projects/medlegaldoc-b31df/locations/us-central1/connectors/default
+
+# Handlers
+handlers:
+- url: /.*
+  secure: always
+  redirect_http_response_code: 301
+  script: auto
+
+# Health check configuration
+readiness_check:
+  path: "/health"
+  check_interval_sec: 5
+  timeout_sec: 4
+  failure_threshold: 2
+  success_threshold: 2
+  app_start_timeout_sec: 300
+
+liveness_check:
+  path: "/health"
+  check_interval_sec: 30
+  timeout_sec: 4
+  failure_threshold: 3
+  success_threshold: 1
+
+# Entrypoint with gunicorn
+entrypoint: gunicorn -b :$PORT -w 4 -k uvicorn.workers.UvicornWorker --timeout 120 --keep-alive 5 --max-requests 1000 --max-requests-jitter 50 main:app

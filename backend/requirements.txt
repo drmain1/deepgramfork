@@ -10,6 +10,7 @@ httpx
 google-cloud-storage
 google-cloud-aiplatform>=1.38.0
 google-cloud-firestore
+google-cloud-secret-manager
 google-api-python-client
 google-auth
 google-auth-httplib2
@@ -24,3 +25,6 @@ nest-asyncio
 
 # python-jose is still used for JWT handling with Firebase
 python-jose[cryptography]
+
+# Production server
+gunicorn
