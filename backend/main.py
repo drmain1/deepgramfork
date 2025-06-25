@@ -951,6 +951,42 @@ async def delete_patient(
         logger.error(f"Error deleting patient {patient_id} for user {current_user_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to delete patient")
 
+@app.get("/api/v1/patients/{patient_id}/transcripts", response_model=List[RecordingInfo])
+async def get_patient_transcripts(
+    patient_id: str = Path(..., description="Patient ID"),
+    current_user_id: str = Depends(get_user_id),
+    request: Request = None
+):
+    """Get all transcripts for a specific patient"""
+    try:
+        from firestore_client import firestore_client
+        
+        # First verify the patient belongs to this user
+        patient = await firestore_client.get_patient(patient_id, current_user_id)
+        if not patient:
+            raise HTTPException(status_code=404, detail="Patient not found")
+        
+        # Get all transcripts for this patient
+        transcripts = await firestore_client.get_patient_transcripts(patient_id, current_user_id)
+        
+        # Log PHI access for HIPAA compliance
+        AuditLogger.log_data_access(
+            user_id=current_user_id,
+            operation="READ",
+            data_type="patient_transcripts",
+            resource_id=patient_id,
+            request=request,
+            success=True
+        )
+        
+        return transcripts
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting transcripts for patient {patient_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get patient transcripts")
+
 # --- End Patient Management --- #
         
 if __name__ == "__main__":

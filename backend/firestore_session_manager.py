@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 import logging
 from google.cloud import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 from google.api_core import exceptions as gcp_exceptions
 import asyncio
 from functools import wraps
@@ -140,7 +141,9 @@ class FirestoreSessionManager:
     async def get_active_sessions_count(self) -> int:
         """Get count of active sessions for monitoring."""
         try:
-            active_sessions = self.sessions_collection.where('active', '==', True).get()
+            active_sessions = self.sessions_collection.where(
+                filter=FieldFilter('active', '==', True)
+            ).get()
             return len(list(active_sessions))
         except Exception as e:
             logger.error(f"Error counting active sessions: {str(e)}")
@@ -156,9 +159,9 @@ class FirestoreSessionManager:
                 
                 # Find and mark expired sessions
                 expired_sessions = self.sessions_collection.where(
-                    'expires_at', '<', now
+                    filter=FieldFilter('expires_at', '<', now)
                 ).where(
-                    'active', '==', True
+                    filter=FieldFilter('active', '==', True)
                 ).limit(100).get()  # Process in batches
                 
                 expired_count = 0

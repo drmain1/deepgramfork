@@ -381,30 +381,50 @@ class FirestoreClient:
     ) -> List[Dict[str, Any]]:
         """List all patients for a user"""
         try:
+            # TEMPORARY FIX: Simplified query to avoid composite index requirement
+            # TODO: Deploy firestore.indexes.json and revert to the optimized query
+            
+            # Simple query - just filter by user_id
             query = self.patients_collection.where(
                 filter=FieldFilter('user_id', '==', user_id)
             )
             
-            if active_only:
-                query = query.where(filter=FieldFilter('active', '==', True))
-            
-            # Order by last name, then first name
-            query = query.order_by('last_name').order_by('first_name')
-            
-            if limit:
+            # Get extra results if we need to filter/limit in Python
+            if limit and active_only:
+                query = query.limit(limit * 2)  # Get more to account for filtering
+            elif limit:
                 query = query.limit(limit)
             
             patients = []
             for doc in query.stream():
                 patient_data = doc.to_dict()
                 patient_data['id'] = doc.id
+                
+                # Apply active filter in Python
+                if active_only and not patient_data.get('active', True):
+                    continue
+                    
                 patients.append(patient_data)
+            
+            # Sort in Python by last name, then first name
+            patients.sort(key=lambda p: (
+                p.get('last_name', '').lower(),
+                p.get('first_name', '').lower()
+            ))
+            
+            # Apply limit after sorting if needed
+            if limit and len(patients) > limit:
+                patients = patients[:limit]
             
             logger.info(f"Retrieved {len(patients)} patients for user {user_id}")
             return patients
             
         except Exception as e:
-            logger.error(f"Error listing user patients: {str(e)}")
+            logger.error(f"Error listing user patients for user {user_id}: {str(e)}")
+            logger.error(f"Full exception details: {type(e).__name__}: {e}")
+            # Check if this is a missing index error
+            if "The query requires an index" in str(e):
+                logger.error("Missing Firestore index for patients query. Deploy firestore.indexes.json to fix.")
             return []
     
     async def search_patients(
@@ -442,6 +462,49 @@ class FirestoreClient:
         except Exception as e:
             logger.error(f"Error soft deleting patient: {str(e)}")
             return False
+    
+    async def get_patient_transcripts(self, patient_id: str, user_id: str) -> List[Dict[str, Any]]:
+        """Get all transcripts for a specific patient"""
+        try:
+            # Query transcripts collection for all transcripts with this patient_id
+            query = self.transcripts_collection.where(
+                filter=FieldFilter('patient_id', '==', patient_id)
+            ).where(
+                filter=FieldFilter('user_id', '==', user_id)
+            ).order_by('created_at', direction=firestore.Query.DESCENDING)
+            
+            transcripts = []
+            for doc in query.stream():
+                transcript_data = doc.to_dict()
+                transcript_data['id'] = doc.id
+                
+                # Format the transcript data to match RecordingInfo model
+                recording_info = {
+                    'id': doc.id,
+                    'name': transcript_data.get('patient_context', 'Unknown Patient'),
+                    'date': transcript_data.get('created_at', datetime.now()),
+                    'status': transcript_data.get('status', 'saved'),
+                    'gcsPathTranscript': transcript_data.get('gcs_path_transcript'),
+                    'gcsPathPolished': transcript_data.get('gcs_path_polished'),
+                    'gcsPathMetadata': transcript_data.get('gcs_path_metadata'),
+                    'patientContext': transcript_data.get('patient_context'),
+                    'encounterType': transcript_data.get('encounter_type'),
+                    'llmTemplateName': transcript_data.get('llm_template_name'),
+                    'location': transcript_data.get('location'),
+                    'durationSeconds': transcript_data.get('duration_seconds'),
+                    'transcript': transcript_data.get('transcript'),
+                    'polishedTranscript': transcript_data.get('polished_transcript'),
+                    'profileId': transcript_data.get('profile_id'),
+                    'patient_id': patient_id
+                }
+                transcripts.append(recording_info)
+            
+            logger.info(f"Retrieved {len(transcripts)} transcripts for patient {patient_id}")
+            return transcripts
+            
+        except Exception as e:
+            logger.error(f"Error getting patient transcripts: {str(e)}")
+            return []
 
 # Create singleton instance
 firestore_client = FirestoreClient()

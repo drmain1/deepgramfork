@@ -460,7 +460,7 @@ function Sidebar() {
             </div>
           ) : isAuthenticated ? (
             <>
-              <div className="flex items-center gap-3 mb-4 p-3 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer">
+              <div className="flex items-center gap-3 mb-3 p-3 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-medium">
                   {user?.name ? user.name.charAt(0).toUpperCase() : user?.email?.charAt(0).toUpperCase() || 'U'}
                 </div>
@@ -468,13 +468,17 @@ function Sidebar() {
                   <div className="text-base font-medium text-white truncate">
                     {user?.name || user?.email?.split('@')[0] || 'User'}
                   </div>
-                  <div className="text-sm text-gray-400 truncate">
-                    {user?.email || 'No email'}
-                  </div>
                 </div>
               </div>
 
               <div className="space-y-1">
+                <button
+                  className="sidebar-link flex items-center gap-3 p-3 rounded-lg w-full text-base bg-primary/10 text-primary hover:bg-primary/20"
+                  onClick={() => navigate('/patients')}
+                >
+                  <span className="material-icons text-xl">group</span>
+                  <span>View Patients</span>
+                </button>
                 <button
                   className="sidebar-link flex items-center gap-3 p-3 rounded-lg w-full text-base"
                   onClick={handleGoToSettings}

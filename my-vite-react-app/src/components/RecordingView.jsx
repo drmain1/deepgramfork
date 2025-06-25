@@ -28,6 +28,7 @@ function RecordingView({
   isMultilingual,
   targetLanguage,
   userSettings,
+  selectedPatient,
   onClose,
   resumeData
 }) {
@@ -433,6 +434,7 @@ function RecordingView({
           final_transcript_text: transcriptWithLocation,
           patient_context: patientContext,
           patient_name: patientDetails,
+          patient_id: selectedPatient?.id || null,
           encounter_type: encounterType,
           llm_template: llmTemplate,
           llm_template_id: llmTemplateId,

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import PatientSelector from './PatientSelector';
 
 function SetupView({
   patientDetails,
@@ -16,7 +17,9 @@ function SetupView({
   userSettings,
   settingsLoading,
   error,
-  onStartEncounter
+  onStartEncounter,
+  selectedPatient,
+  setSelectedPatient
 }) {
   // Debug logging
   // TEMPORARILY DISABLED FOR DEBUGGING
@@ -31,6 +34,7 @@ function SetupView({
   const [micLevel, setMicLevel] = useState(0);
   const [micStatus, setMicStatus] = useState('checking'); // 'checking', 'active', 'error', 'denied'
   const [permissionGranted, setPermissionGranted] = useState(false);
+  const [showPatientSelector, setShowPatientSelector] = useState(false);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const micStreamRef = useRef(null);
@@ -219,16 +223,54 @@ function SetupView({
                     <label className="form-label text-xl" htmlFor="session-title">
                       Patient Name / Session Title <span className="text-red-500">*</span>
                     </label>
-                    <input
-                      className="input-field text-xl py-5"
-                      id="session-title"
-                      name="session-title"
-                      placeholder="Enter patient name or session title"
-                      type="text"
-                      value={patientDetails}
-                      onChange={(e) => setPatientDetails(e.target.value)}
-                      required
-                    />
+                    <div className="flex gap-3">
+                      <input
+                        className="input-field text-xl py-5 flex-1"
+                        id="session-title"
+                        name="session-title"
+                        placeholder="Enter patient name or session title"
+                        type="text"
+                        value={patientDetails}
+                        onChange={(e) => {
+                          setPatientDetails(e.target.value);
+                          // Clear selected patient if user manually types
+                          if (selectedPatient) {
+                            setSelectedPatient(null);
+                          }
+                        }}
+                        required
+                      />
+                      <button
+                        type="button"
+                        className="px-6 py-5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium text-xl transition-colors flex items-center gap-2"
+                        onClick={() => setShowPatientSelector(true)}
+                      >
+                        <span className="material-icons">person_search</span>
+                        Select Patient
+                      </button>
+                    </div>
+                    {selectedPatient && (
+                      <div className="mt-3 p-3 bg-blue-50 rounded-lg flex items-center justify-between">
+                        <div className="text-lg text-blue-700">
+                          <span className="font-medium">Selected:</span> {selectedPatient.last_name}, {selectedPatient.first_name}
+                          {selectedPatient.date_of_accident && (
+                            <span className="text-base text-blue-600 ml-2">
+                              (DOA: {new Date(selectedPatient.date_of_accident).toLocaleDateString()})
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          className="text-blue-600 hover:text-blue-800"
+                          onClick={() => {
+                            setSelectedPatient(null);
+                            setPatientDetails('');
+                          }}
+                        >
+                          <span className="material-icons">close</span>
+                        </button>
+                      </div>
+                    )}
                     {error && !patientDetails.trim() && (
                       <p className="text-red-500 text-lg mt-3 flex items-center gap-2">
                         <span className="material-icons text-xl">error</span>
@@ -613,6 +655,31 @@ function SetupView({
           </form>
         </div>
       </div>
+      
+      {/* Patient Selector Dialog */}
+      {showPatientSelector && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[80vh] overflow-auto">
+            <PatientSelector
+              selectedPatient={selectedPatient}
+              onSelectPatient={(patient) => {
+                setSelectedPatient(patient);
+                if (patient) {
+                  // Set patient details when a patient is selected
+                  setPatientDetails(`${patient.last_name}, ${patient.first_name}`);
+                  // If patient has date of accident, add it to context
+                  if (patient.date_of_accident && !patientContext.includes('DOA:')) {
+                    const doaFormatted = new Date(patient.date_of_accident).toLocaleDateString();
+                    setPatientContext(prev => prev ? `${prev}\nDOA: ${doaFormatted}` : `DOA: ${doaFormatted}`);
+                  }
+                }
+                setShowPatientSelector(false);
+              }}
+              onClose={() => setShowPatientSelector(false)}
+            />
+          </div>
+        </div>
+      )}
     </main>
   );
 }

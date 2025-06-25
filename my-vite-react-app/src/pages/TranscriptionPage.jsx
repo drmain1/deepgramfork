@@ -22,6 +22,7 @@ function TranscriptionPage() {
   const [selectedProfileId, setSelectedProfileId] = useState('');
   const [isMultilingual, setIsMultilingual] = useState(false);
   const [targetLanguage, setTargetLanguage] = useState('');
+  const [selectedPatient, setSelectedPatient] = useState(null);
 
   // Initialize component state
   useEffect(() => {
@@ -152,6 +153,7 @@ function TranscriptionPage() {
           isMultilingual={isMultilingual}
           targetLanguage={targetLanguage}
           userSettings={userSettings}
+          selectedPatient={selectedPatient}
           onClose={() => {
             selectRecording(null); // Clear selection when closing
             handleCloseRecording();
@@ -214,6 +216,8 @@ function TranscriptionPage() {
         settingsLoading={settingsLoading}
         error={error}
         onStartEncounter={handleStartEncounter}
+        selectedPatient={selectedPatient}
+        setSelectedPatient={setSelectedPatient}
       />
     );
   } else if (currentView === 'recording') {
@@ -226,6 +230,7 @@ function TranscriptionPage() {
         isMultilingual={isMultilingual}
         targetLanguage={targetLanguage}
         userSettings={userSettings}
+        selectedPatient={selectedPatient}
         onClose={handleCloseRecording}
       />
     );
