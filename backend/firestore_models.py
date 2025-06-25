@@ -43,6 +43,29 @@ class UserDocument(BaseModel):
             datetime: lambda v: v.isoformat()
         }
 
+class PatientDocument(BaseModel):
+    """
+    Firestore document model for patients collection.
+    Document ID: Auto-generated unique ID
+    """
+    user_id: str  # Firebase Auth UID (doctor who owns this patient profile)
+    first_name: str
+    last_name: str
+    date_of_birth: datetime
+    date_of_accident: Optional[datetime] = None
+    
+    # Timestamps
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    # Soft delete support
+    active: bool = True
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
 class TranscriptDocument(BaseModel):
     """
     Firestore document model for transcripts collection.
@@ -60,6 +83,7 @@ class TranscriptDocument(BaseModel):
     # Recording details
     duration_seconds: Optional[int] = None
     patient_name: str  # Note: Consider de-identification for HIPAA
+    patient_id: Optional[str] = None  # Reference to patient document (optional)
     patient_context: Optional[str] = None
     encounter_type: Optional[str] = None
     location: Optional[str] = None
@@ -73,8 +97,8 @@ class TranscriptDocument(BaseModel):
     transcript_original: Optional[str] = None
     transcript_polished: Optional[str] = None
     
-    # References to GCS files (only for audio or large files)
-    gcs_path_audio: Optional[str] = None
+    # References to GCS files (kept for backwards compatibility but not used)
+    gcs_path_audio: Optional[str] = None  # DEPRECATED - streaming audio, no files stored
     gcs_path_original: Optional[str] = None  # Deprecated - kept for backwards compatibility
     gcs_path_polished: Optional[str] = None  # Deprecated - kept for backwards compatibility
     
@@ -128,3 +152,8 @@ def create_session_document(session_data: dict) -> dict:
     """Create a session document from raw data"""
     session = SessionDocument(**session_data)
     return session.dict()
+
+def create_patient_document(patient_data: dict) -> dict:
+    """Create a patient document from raw data"""
+    patient = PatientDocument(**patient_data)
+    return patient.dict()

@@ -285,6 +285,7 @@ async def save_session_data_firestore(
             'session_id': session_id,
             'status': TranscriptStatus.PROCESSING,
             'patient_name': request_data.get('patient_name', 'Unknown Patient'),
+            'patient_id': request_data.get('patient_id'),  # Add patient profile reference
             'patient_context': request_data.get('patient_context'),
             'encounter_type': request_data.get('encounter_type'),
             'location': request_data.get('location'),
@@ -315,6 +316,7 @@ async def save_session_data_firestore(
             # Update other fields
             await firestore_client.update_transcript(session_id, {
                 'patient_name': transcript_data['patient_name'],
+                'patient_id': transcript_data.get('patient_id'),
                 'patient_context': transcript_data.get('patient_context'),
                 'encounter_type': transcript_data.get('encounter_type'),
                 'location': transcript_data.get('location'),

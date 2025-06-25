@@ -16,7 +16,7 @@ import uvicorn
 import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from contextlib import asynccontextmanager
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -75,7 +75,6 @@ from gcs_utils import GCSClient
 # Global placeholders for clients, to be initialized in startup event
 gcs_client = None
 vertex_ai_client = None
-USE_FIRESTORE = True  # Will be set based on environment in startup
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -111,15 +110,9 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"Failed to configure Vertex AI: {e}")
     
-    # Check if Firestore is available
-    global USE_FIRESTORE
-    USE_FIRESTORE = os.getenv('USE_FIRESTORE', 'true').lower() == 'true'
-    
-    if USE_FIRESTORE:
-        print("✓ Using Firestore for metadata and queries (faster performance)")
-        print("✓ Using GCS for file storage (transcripts, audio)")
-    else:
-        print("⚠ Using GCS-only mode (slower queries)")
+    # Firestore is always used for metadata and queries
+    print("✓ Using Firestore for metadata and queries (faster performance)")
+    print("✓ Using GCS for file storage (logos, signatures)")
     
     print("FastAPI startup finished.")
     
@@ -333,61 +326,27 @@ async def get_user_settings(
     current_user_id: str = Depends(get_user_id),
     request: Request = None
 ):
-    # Use Firestore endpoint if enabled
-    if USE_FIRESTORE:
-        settings = await get_user_settings_firestore(user_id, current_user_id, request)
-        # Convert to UserSettingsData model
-        # Handle the existing data - convert dict to list format if needed
-        macro_phrases = settings.get("macroPhrases", {})
-        if isinstance(macro_phrases, dict):
-            # Convert dict to list of MacroPhraseItem objects
-            macro_list = [{"shortcut": k, "expansion": v} for k, v in macro_phrases.items()]
-        else:
-            macro_list = macro_phrases
-            
-        return UserSettingsData(
-            customVocabulary=settings.get("customVocabulary", []),
-            macroPhrases=macro_list,
-            transcriptionProfiles=settings.get("transcriptionProfiles", []),
-            doctorName=settings.get("doctorName", ""),
-            medicalSpecialty=settings.get("medicalSpecialty", ""),
-            doctorSignature=settings.get("doctorSignature"),
-            clinicLogo=settings.get("clinicLogo"),
-            includeLogoOnPdf=settings.get("includeLogoOnPdf", False),
-            officeInformation=settings.get("officeInformation", [])
-        )
-    
-    # Verify that the requested user_id matches the authenticated user
-    if user_id != current_user_id:
-        raise HTTPException(status_code=403, detail="You can only access your own settings")
-    if not gcs_client:
-        raise HTTPException(status_code=503, detail="GCS client not initialized. Cannot fetch settings.")
-
-    # Use GCS to fetch settings
-    print(f"Attempting to fetch settings from GCS for user: {user_id}")
-
-    try:
-        settings_content = gcs_client.get_gcs_object_content(
-            f"{user_id}/settings/user_settings.json"
-        )
+    settings = await get_user_settings_firestore(user_id, current_user_id, request)
+    # Convert to UserSettingsData model
+    # Handle the existing data - convert dict to list format if needed
+    macro_phrases = settings.get("macroPhrases", {})
+    if isinstance(macro_phrases, dict):
+        # Convert dict to list of MacroPhraseItem objects
+        macro_list = [{"shortcut": k, "expansion": v} for k, v in macro_phrases.items()]
+    else:
+        macro_list = macro_phrases
         
-        if settings_content:
-            settings_data = json.loads(settings_content)
-            print(f"Loaded settings from GCS - medicalSpecialty: {settings_data.get('medicalSpecialty', 'NOT FOUND')}")
-            # Ensure all default keys are present if the loaded data is partial
-            loaded_settings_with_defaults = DEFAULT_USER_SETTINGS.copy()
-            loaded_settings_with_defaults.update(settings_data) 
-            print(f"After merging with defaults - medicalSpecialty: {loaded_settings_with_defaults.get('medicalSpecialty', 'NOT FOUND')}")
-            return UserSettingsData(**loaded_settings_with_defaults)
-        else:
-            print(f"No settings file found for user {user_id}, returning defaults.")
-            return UserSettingsData(**DEFAULT_USER_SETTINGS)
-    except json.JSONDecodeError as e:
-        print(f"JSONDecodeError for user {user_id}: {e}. Returning default settings.")
-        return UserSettingsData(**DEFAULT_USER_SETTINGS)
-    except Exception as e:
-        print(f"Unexpected error fetching settings for user {user_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Unexpected error fetching user settings: {str(e)}")
+    return UserSettingsData(
+        customVocabulary=settings.get("customVocabulary", []),
+        macroPhrases=macro_list,
+        transcriptionProfiles=settings.get("transcriptionProfiles", []),
+        doctorName=settings.get("doctorName", ""),
+        medicalSpecialty=settings.get("medicalSpecialty", ""),
+        doctorSignature=settings.get("doctorSignature"),
+        clinicLogo=settings.get("clinicLogo"),
+        includeLogoOnPdf=settings.get("includeLogoOnPdf", False),
+        officeInformation=settings.get("officeInformation", [])
+    )
 
 @app.get("/api/v1/debug/transcription_profiles/{user_id}")
 async def debug_transcription_profiles(
@@ -499,44 +458,13 @@ async def save_user_settings(
     current_user_id: str = Depends(get_user_id),
     req: Request = None
 ):
-    # Use Firestore endpoint if enabled
-    if USE_FIRESTORE:
-        settings_dict = request.settings.model_dump()
-        return await update_user_settings_firestore(
-            user_id=request.user_id,
-            settings_data=settings_dict,
-            current_user_id=current_user_id,
-            request=req
-        )
-    
-    # Verify that the user_id in the request matches the authenticated user
-    if request.user_id != current_user_id:
-        raise HTTPException(status_code=403, detail="You can only save your own settings")
-    if not gcs_client:
-        raise HTTPException(status_code=503, detail="GCS client not initialized. Cannot save settings.")
-
-    print(f"Attempting to save settings to GCS for user: {request.user_id}")
-    
-    # Log the incoming settings
     settings_dict = request.settings.model_dump()
-    print(f"Settings to save - medicalSpecialty: {settings_dict.get('medicalSpecialty', 'NOT FOUND')}")
-    print(f"Full settings: {json.dumps(settings_dict, indent=2)}")
-
-    try:
-        # Save to GCS using the proper method
-        success = gcs_client.save_user_settings(
-            user_id=request.user_id,
-            settings=settings_dict
-        )
-        
-        if success:
-            print(f"Settings saved successfully - returning medicalSpecialty: {request.settings.medicalSpecialty}")
-            return request.settings
-        else:
-            raise HTTPException(status_code=500, detail="Failed to save settings to GCS")
-    except Exception as e:
-        print(f"Unexpected error saving settings for user {request.user_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Unexpected error saving user settings: {str(e)}")
+    return await update_user_settings_firestore(
+        user_id=request.user_id,
+        settings_data=settings_dict,
+        current_user_id=current_user_id,
+        request=req
+    )
 
 # Logo upload endpoint
 @app.post("/api/v1/upload_logo")
@@ -692,6 +620,7 @@ class SaveSessionRequest(BaseModel):
     user_id: str  
     patient_context: Optional[str] = None 
     patient_name: Optional[str] = None  # Add patient name field
+    patient_id: Optional[str] = None  # Reference to patient profile
     encounter_type: Optional[str] = None  
     llm_template: Optional[str] = None
     llm_template_id: Optional[str] = None
@@ -705,267 +634,14 @@ async def save_session_data_endpoint(
 ):
     global gcs_client
     
-    # Use Firestore endpoint if enabled
-    if USE_FIRESTORE:
-        # Convert SaveSessionRequest to dict for Firestore endpoint
-        request_dict = request_data.model_dump()
-        return await save_session_data_firestore(
-            request_data=request_dict,
-            current_user_id=current_user_id,
-            request=request,
-            gcs_client=gcs_client
-        )
-    
-    # Verify that the user_id in the request matches the authenticated user
-    print(f"Save session - Request user_id: {request_data.user_id}, Auth user_id: {current_user_id}")
-    if request_data.user_id != current_user_id:
-        raise HTTPException(status_code=403, detail=f"You can only save your own session data. Request user: {request_data.user_id}, Auth user: {current_user_id}")
-    
-    # Log PHI access for HIPAA compliance
-    session_id = request_data.session_id
-    AuditLogger.log_data_access(
-        user_id=current_user_id,
-        operation="CREATE",
-        data_type="session_data",
-        resource_id=session_id,
+    # Convert SaveSessionRequest to dict for Firestore endpoint
+    request_dict = request_data.model_dump()
+    return await save_session_data_firestore(
+        request_data=request_dict,
+        current_user_id=current_user_id,
         request=request,
-        success=True
+        gcs_client=gcs_client
     )
-    original_transcript = request_data.final_transcript_text
-    user_id = request_data.user_id 
-    patient_context = request_data.patient_context 
-    patient_name = request_data.patient_name  # Extract patient name
-    encounter_type = request_data.encounter_type   
-    llm_template = request_data.llm_template  
-    llm_template_id = request_data.llm_template_id
-    location = request_data.location  # Extract location
-    
-    # Debug logging for template routing
-    print(f"DEBUG: Received template - ID: '{llm_template_id}', Name: '{llm_template}'")
-    print(f"DEBUG: Will use GCP: {llm_template_id == 'test_gcp_template'}")
-
-    # Get user settings to retrieve the actual LLM instructions from the profile
-    custom_instructions = None
-    selected_profile = None  # Define it outside the try block
-    try:
-        user_settings = await get_user_settings(user_id, current_user_id=user_id)  # Pass the user_id as current_user_id
-        if user_settings and user_settings.transcriptionProfiles:
-            # First try to find by ID (more reliable), then fallback to name
-            if llm_template_id:
-                selected_profile = next((p for p in user_settings.transcriptionProfiles if p.id == llm_template_id), None)
-            if not selected_profile and llm_template:
-                selected_profile = next((p for p in user_settings.transcriptionProfiles if p.name == llm_template), None)
-            if selected_profile:
-                print(f"Found profile '{selected_profile.name}' (ID: {selected_profile.id}) for session {session_id}")
-                print(f"DEBUG: Profile originalTemplateId: '{selected_profile.originalTemplateId}'")
-                print(f"Profile has llmInstructions: {bool(selected_profile.llmInstructions)}")
-                print(f"Profile has llmPrompt: {bool(selected_profile.llmPrompt)}")
-                if selected_profile.llmInstructions:
-                    custom_instructions = selected_profile.llmInstructions
-                    print(f"Using LLM instructions from profile '{selected_profile.name}' (length: {len(custom_instructions)}) for session {session_id}")
-                    # Log first 200 chars of instructions for debugging
-                    print(f"LLM instructions preview: {custom_instructions[:200]}..." if len(custom_instructions) > 200 else f"LLM instructions: {custom_instructions}")
-                elif selected_profile.llmPrompt:
-                    # Fallback to deprecated llmPrompt field
-                    custom_instructions = selected_profile.llmPrompt
-                    print(f"Using legacy LLM prompt from profile '{selected_profile.name}' for session {session_id}")
-                else:
-                    print(f"Profile '{selected_profile.name}' has no LLM instructions or prompt")
-            else:
-                print(f"No profile found for template_id: {llm_template_id}, template_name: {llm_template}")
-    except Exception as e:
-        print(f"Error retrieving user settings for LLM instructions: {e}")
-    
-    # Fallback to basic custom instructions if no profile instructions found
-    if not custom_instructions:
-        custom_instructions = f"Patient Name: {patient_name}\nPatient Context: {patient_context}\nEncounter Type: {encounter_type}\nTemplate: {llm_template}"
-        print(f"Using fallback LLM instructions for session {session_id}")
-        print(f"Fallback reason: No profile instructions found. Template ID: {llm_template_id}, Template Name: {llm_template}")
-    else:
-        # Append context information to the profile instructions
-        custom_instructions += f"\n\nAdditional Context:\nPatient Name: {patient_name}\nPatient Context: {patient_context}\nEncounter Type: {encounter_type}"
-        print(f"Final instructions length after adding context: {len(custom_instructions)}") 
-
-    print(f"Received save request for session: {session_id}, user: {user_id}")
-
-    if gcs_client is None:
-        print("CRITICAL: GCS client not initialized when save_session_data_endpoint was called.")
-        raise HTTPException(status_code=500, detail="GCS client not available. Cannot save data.")
-
-    saved_paths = {}
-    errors = []
-
-    # Save initial metadata FIRST to ensure patient name is available immediately
-    print(f"Attempting to save initial metadata for session_id: {session_id}, patient_name: {patient_name}")
-    try:
-        initial_metadata = {
-            "session_id": session_id,
-            "patient_name": patient_name,
-            "patient_context": patient_context,
-            "encounter_type": encounter_type,
-            "llm_template": llm_template,
-            "llm_template_id": llm_template_id,
-            "location": location,
-            "user_id": user_id,
-            "created_date": datetime.now(timezone.utc).isoformat(),
-            "status": "processing"
-        }
-        
-        metadata_content = json.dumps(initial_metadata, indent=2)
-        
-        # Save metadata to GCS
-        success = gcs_client.save_data_to_gcs(
-            user_id=user_id,
-            data_type="metadata",
-            session_id=session_id,
-            content=metadata_content
-        )
-        
-        if success:
-            metadata_path = f"{user_id}/metadata/{session_id}.txt"
-            saved_paths["metadata"] = metadata_path
-            print(f"Initial session metadata saved to: {metadata_path}")
-        else:
-            print(f"Failed to save initial metadata for session {session_id}")
-    except Exception as e:
-        print(f"Error saving initial metadata for {session_id}: {e}")
-
-    # Save original transcript to GCS
-    print(f"Attempting to save original transcript for session_id: {session_id}, user_id: {user_id}")
-    try:
-        success = gcs_client.save_data_to_gcs(
-            user_id=user_id,
-            data_type="transcripts",
-            session_id=f"original/{session_id}",
-            content=original_transcript
-        )
-        if success:
-            original_path = f"{user_id}/transcripts/original/{session_id}.txt"
-            saved_paths["original_transcript"] = original_path
-            print(f"Original transcript saved to: {original_path}")
-        else:
-            errors.append("Failed to save original transcript to GCS.")
-    except Exception as e:
-        print(f"Error saving original transcript for {session_id}: {e}")
-        errors.append(f"Error saving original transcript: {str(e)}")
-
-    # Determine if we should use GCP based on template ID or originalTemplateId
-    use_gcp = llm_template_id == 'test_gcp_template'
-    
-    # Also check originalTemplateId from the selected profile
-    if not use_gcp and selected_profile and hasattr(selected_profile, 'originalTemplateId') and selected_profile.originalTemplateId:
-        use_gcp = selected_profile.originalTemplateId == 'test_gcp_template'
-        if use_gcp:
-            print(f"DEBUG: Routing to GCP based on originalTemplateId: {selected_profile.originalTemplateId}")
-    
-    # Polish transcript if GCP is available (we're migrating to GCP)
-    if use_gcp or True:  # Always use GCP for polishing in this migration
-        print(f"Attempting to polish transcript for session_id: {session_id}, user_id: {user_id}")
-        print(f"Using provider: GCP Gemini")
-        
-        try:
-            # Use Google Gemini for polishing
-            polished_result_dict = await asyncio.get_event_loop().run_in_executor(
-                None,
-                polish_transcript_with_gemini,
-                original_transcript,
-                patient_name,
-                patient_context,
-                encounter_type,
-                custom_instructions,
-                location
-            )
-            
-            if polished_result_dict['success']:
-                polished_result = polished_result_dict['polished_transcript']
-                print(f"Transcript polished successfully with Gemini for session_id: {session_id}")
-                
-                if polished_result and polished_result.strip() != original_transcript.strip():
-                    polished_transcript_content = polished_result.strip()
-                    
-                    # Save polished transcript to GCS
-                    success = gcs_client.save_data_to_gcs(
-                        user_id=user_id,
-                        data_type="transcripts",
-                        session_id=f"polished/{session_id}",
-                        content=polished_transcript_content
-                    )
-                    
-                    if success:
-                        polished_path = f"{user_id}/transcripts/polished/{session_id}.txt"
-                        saved_paths["polished_transcript"] = polished_path
-                        print(f"Polished transcript saved to: {polished_path}")
-                    else:
-                        errors.append("Failed to save polished transcript to GCS.")
-                elif polished_result:
-                    print(f"Transcript polishing did not significantly alter transcript for session_id: {session_id}")
-                else:
-                    print(f"Transcript polishing returned None or empty for session_id: {session_id}")
-            else:
-                errors.append(f"Gemini polishing error: {polished_result_dict.get('error', 'Unknown error')}")
-                
-        except Exception as e:
-            print(f"Error polishing transcript for {session_id}: {e}")
-            errors.append(f"Error polishing transcript: {str(e)}")
-
-    # Update metadata with final paths after all processing is complete
-    try:
-        final_metadata = {
-            "session_id": session_id,
-            "patient_name": patient_name,
-            "patient_context": patient_context,
-            "encounter_type": encounter_type,
-            "llm_template": llm_template,
-            "llm_template_id": llm_template_id,
-            "location": location,
-            "user_id": user_id,
-            "created_date": datetime.now(timezone.utc).isoformat(),
-            "gcs_paths": saved_paths,
-            "status": "completed"
-        }
-        
-        metadata_content = json.dumps(final_metadata, indent=2)
-        
-        # Update metadata in GCS
-        success = gcs_client.save_data_to_gcs(
-            user_id=user_id,
-            data_type="metadata",
-            session_id=session_id,
-            content=metadata_content
-        )
-        
-        if success:
-            print(f"Final session metadata updated in: {saved_paths.get('metadata', 'metadata path not set')}")
-        else:
-            errors.append("Failed to update final session metadata in GCS.")
-    except Exception as e:
-        print(f"Error updating final session metadata for {session_id}: {e}")
-        errors.append(f"Error updating final session metadata: {str(e)}")
-
-    response_message = "Session data processing completed."
-    if not saved_paths and errors:
-         raise HTTPException(status_code=500, detail=f"Failed to save any session data to GCS for session_id {session_id}. Errors: {'; '.join(errors)}")
-    
-    # Delete the draft file if it exists (since the session is now saved)
-    draft_key = f"{user_id}/drafts/{session_id}.txt"
-    try:
-        if gcs_client.delete_gcs_object(draft_key):
-            print(f"Successfully deleted draft file: {draft_key}")
-        else:
-            print(f"No draft file found to delete: {draft_key}")
-    except Exception as e:
-        print(f"Error deleting draft file {draft_key}: {e}")
-        # Don't fail the save operation if draft deletion fails
-    
-    if errors:
-        response_message += f" Some issues occurred: {'; '.join(errors)}"
-
-    return {
-        "message": response_message,
-        "session_id": session_id,
-        "saved_paths": saved_paths,
-        "processing_errors": errors if errors else None
-    }
 
 class SaveDraftRequest(BaseModel):
     session_id: str
@@ -980,47 +656,8 @@ async def save_draft_endpoint(
     current_user_id: str = Depends(get_user_id),
     request: Request = None
 ):
-    """Save a draft recording - uses Firestore for speed when enabled."""
-    # Use Firestore endpoint if enabled
-    if USE_FIRESTORE:
-        return await save_draft_firestore(request_data.dict(), current_user_id, request)
-    
-    # Otherwise use GCS (legacy)
-    # Verify user authorization
-    if request_data.user_id != current_user_id:
-        raise HTTPException(status_code=403, detail="You can only save your own drafts")
-    
-    global gcs_client
-    if gcs_client is None:
-        raise HTTPException(status_code=500, detail="GCS client not available")
-    
-    # Create draft metadata
-    draft_metadata = {
-        "session_id": request_data.session_id,
-        "patient_name": request_data.patient_name,
-        "profile_id": request_data.profile_id,
-        "transcript": request_data.transcript,
-        "status": "draft",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat()
-    }
-    
-    # Save draft to GCS
-    try:
-        success = gcs_client.save_data_to_gcs(
-            user_id=request_data.user_id,
-            data_type="drafts",
-            session_id=request_data.session_id,
-            content=json.dumps(draft_metadata)
-        )
-        
-        if success:
-            return {"message": "Draft saved successfully", "session_id": request_data.session_id}
-        else:
-            raise HTTPException(status_code=500, detail="Failed to save draft")
-    except Exception as e:
-        print(f"Error saving draft: {e}")
-        raise HTTPException(status_code=500, detail=f"Error saving draft: {str(e)}")
+    """Save a draft recording - uses Firestore for speed."""
+    return await save_draft_firestore(request_data.dict(), current_user_id, request)
 
 @app.delete("/api/v1/recordings/{user_id}/{session_id}", status_code=200)
 async def delete_session_recording(
@@ -1029,71 +666,7 @@ async def delete_session_recording(
     current_user_id: str = Depends(get_user_id),
     request: Request = None
 ):
-    # Use Firestore endpoint if enabled
-    if USE_FIRESTORE:
-        return await delete_recording_firestore(user_id, session_id, current_user_id, request, gcs_client)
-    
-    # Log PHI access for HIPAA compliance
-    AuditLogger.log_data_access(
-        user_id=current_user_id,
-        operation="DELETE",
-        data_type="recording",
-        resource_id=session_id,
-        request=request,
-        success=True
-    )
-    
-    # Verify that the user_id matches the authenticated user
-    if user_id != current_user_id:
-        raise HTTPException(status_code=403, detail="You can only delete your own recordings")
-    if not gcs_client:
-        raise HTTPException(status_code=503, detail="GCS client not initialized. Cannot delete recording.")
-
-    print(f"Attempting to delete transcripts for user {user_id}, session {session_id}.")
-
-    original_transcript_key = f"{user_id}/transcripts/original/{session_id}.txt"
-    polished_transcript_key = f"{user_id}/transcripts/polished/{session_id}.txt"
-    metadata_key = f"{user_id}/metadata/{session_id}.txt"
-    draft_key = f"{user_id}/drafts/{session_id}.txt"
-
-    deleted_count = 0
-
-    # --- Delete Original Transcript ---
-    print(f"  Attempting to delete original transcript: {original_transcript_key}")
-    if gcs_client.delete_gcs_object(original_transcript_key):
-        deleted_count += 1
-        print(f"  Successfully deleted original transcript: {original_transcript_key}")
-    else:
-        print(f"  Failed to delete or original transcript not found: {original_transcript_key}")
-
-    # --- Delete Polished Transcript ---
-    print(f"  Attempting to delete polished transcript: {polished_transcript_key}")
-    if gcs_client.delete_gcs_object(polished_transcript_key):
-        deleted_count += 1
-        print(f"  Successfully deleted polished transcript: {polished_transcript_key}")
-    else:
-        print(f"  Failed to delete or polished transcript not found: {polished_transcript_key}")
-
-    # --- Delete Metadata ---
-    print(f"  Attempting to delete metadata: {metadata_key}")
-    if gcs_client.delete_gcs_object(metadata_key):
-        deleted_count += 1
-        print(f"  Successfully deleted metadata: {metadata_key}")
-    else:
-        print(f"  Failed to delete or metadata not found: {metadata_key}")
-
-    # --- Delete Draft ---
-    print(f"  Attempting to delete draft: {draft_key}")
-    if gcs_client.delete_gcs_object(draft_key):
-        deleted_count += 1
-        print(f"  Successfully deleted draft: {draft_key}")
-    else:
-        print(f"  Failed to delete or draft not found: {draft_key}")
-
-    if deleted_count > 0:
-        return {"message": f"Successfully deleted {deleted_count} associated file(s) for session {session_id}."}
-    else:
-        return {"message": f"No files found to delete for session {session_id}. They may have already been deleted or never existed at the expected paths."}
+    return await delete_recording_firestore(user_id, session_id, current_user_id, request, gcs_client)
 
 
 class RecordingInfo(BaseModel):
@@ -1121,239 +694,7 @@ async def get_user_recordings(
     current_user_id: str = Depends(get_user_id),
     request: Request = None
 ):
-    # Use Firestore endpoint if enabled
-    if USE_FIRESTORE:
-        return await get_user_recordings_firestore(user_id, current_user_id, request)
-    # Log PHI access for HIPAA compliance
-    AuditLogger.log_data_access(
-        user_id=current_user_id,
-        operation="READ",
-        data_type="recordings_list",
-        resource_id=f"user_{user_id}_recordings",
-        request=request,
-        success=True
-    )
-    
-    # Verify that the user_id matches the authenticated user
-    if user_id != current_user_id:
-        raise HTTPException(status_code=403, detail="You can only access your own recordings")
-    print(f"--- get_user_recordings called with user_id: '{user_id}' ---")
-    if not gcs_client:
-        print("GCS client not initialized. Cannot fetch recordings.")
-        raise HTTPException(status_code=503, detail="GCS service not available")
-
-    recordings_info = []
-    fifteen_days_ago = datetime.now(timezone.utc) - timedelta(days=15)
-    print(f"Filtering for recordings newer than: {fifteen_days_ago.isoformat()}")
-
-    # First, fetch all saved recordings
-    prefix = f"{user_id}/transcripts/original/"
-    print(f"Attempting to list recordings for user: '{user_id}' with prefix: '{prefix}'")
-
-    try:
-        # Use GCS to list objects
-        objects = gcs_client.list_gcs_objects(prefix=prefix, max_results=1000)
-        print(f"Found {len(objects)} saved recording objects in GCS")
-        
-        for obj in objects:
-            obj_name = obj['name']  # Full object path
-            
-            # Parse the updated timestamp
-            if obj['updated']:
-                try:
-                    last_modified = datetime.fromisoformat(obj['updated'].replace('Z', '+00:00'))
-                except:
-                    last_modified = datetime.now(timezone.utc)
-            else:
-                continue
-                
-            # Filter by date
-            if last_modified < fifteen_days_ago:
-                print(f"FILTERED OUT (too old): {obj_name}, LastModified: {last_modified}")
-                continue
-
-            # We are looking for .txt files (original transcripts)
-            if obj_name.endswith('.txt'):
-                print(f"MATCHED SUFFIX (.txt): {obj_name}. Proceeding to process.")
-                try:
-                    # Extract session_id from the filename
-                    filename_with_extension = obj_name.split('/')[-1]
-                    session_id = filename_with_extension.rsplit('.', 1)[0]
-                    
-                    # GCS paths
-                    gcs_path_transcript_original = obj_name
-                    gcs_path_transcript_polished = f"{user_id}/transcripts/polished/{session_id}.txt"
-                    gcs_path_metadata = f"{user_id}/metadata/{session_id}.txt"
-                    
-                    # Try to load metadata to get patient name and other details
-                    rec_name = None
-                    patient_context = None
-                    encounter_type = None
-                    llm_template_name = None
-                    location = None
-                    
-                    try:
-                        # Attempt to fetch metadata from GCS
-                        print(f"[DEBUG] Attempting to fetch metadata from: {gcs_path_metadata}")
-                        metadata_content = gcs_client.get_gcs_object_content(gcs_path_metadata)
-                        if metadata_content:
-                            print(f"[DEBUG] Metadata content found, length: {len(metadata_content)}")
-                            # Log first 200 chars of metadata for debugging
-                            print(f"[DEBUG] Metadata content preview: {metadata_content[:200]}...")
-                            metadata = json.loads(metadata_content)
-                            print(f"[DEBUG] Metadata parsed for session {session_id}: patient_name='{metadata.get('patient_name')}', has_name={bool(metadata.get('patient_name'))}")
-                            
-                            # Use patient name from metadata if available
-                            if metadata.get('patient_name'):
-                                rec_name = metadata['patient_name']
-                                print(f"[SUCCESS] Using patient name from metadata: '{rec_name}' for session {session_id}")
-                            else:
-                                print(f"[WARNING] No patient_name in metadata for session {session_id}, metadata keys: {list(metadata.keys())}")
-                            
-                            # Extract other metadata
-                            patient_context = metadata.get('patient_context')
-                            encounter_type = metadata.get('encounter_type')
-                            llm_template_name = metadata.get('llm_template')
-                            location = metadata.get('location')
-                        else:
-                            print(f"[WARNING] No metadata content found for: {gcs_path_metadata}")
-                    except json.JSONDecodeError as e:
-                        print(f"[ERROR] Failed to parse JSON metadata for session {session_id}: {e}")
-                        print(f"[ERROR] Metadata content that failed to parse: {metadata_content[:500] if 'metadata_content' in locals() else 'N/A'}")
-                    except Exception as e:
-                        print(f"[ERROR] Error fetching/parsing metadata for session {session_id}: {type(e).__name__}: {e}")
-                    
-                    # Fallback name generation if no patient name from metadata
-                    if not rec_name:
-                        rec_name = f"Tx @ {session_id}"  # Default name
-                        if len(session_id) == 20 and session_id.isdigit():  # Timestamp-like string
-                            try:
-                                ts_dt = datetime.strptime(session_id[:14], "%Y%m%d%H%M%S")
-                                rec_name = ts_dt.strftime("Transcript %Y-%m-%d %H:%M")
-                            except ValueError:
-                                pass  # Keep default if parsing fails
-
-                    info = RecordingInfo(
-                        id=session_id,
-                        name=rec_name,
-                        date=last_modified,
-                        gcsPathTranscript=gcs_path_transcript_original,
-                        gcsPathPolished=gcs_path_transcript_polished,
-                        gcsPathMetadata=gcs_path_metadata,
-                        patientContext=patient_context,
-                        encounterType=encounter_type,
-                        llmTemplateName=llm_template_name,
-                        location=location,
-                        durationSeconds=None,
-                        status="saved"
-                    )
-                    recordings_info.append(info)
-                except Exception as e:
-                    print(f"Unexpected error processing transcript file {obj_name}: {e}")
-                    
-        # Now fetch draft recordings
-        draft_prefix = f"{user_id}/drafts/"
-        print(f"Attempting to list drafts for user: '{user_id}' with prefix: '{draft_prefix}'")
-        
-        try:
-            draft_objects = gcs_client.list_gcs_objects(prefix=draft_prefix, max_results=1000)
-            print(f"Found {len(draft_objects)} draft objects in GCS")
-            
-            for obj in draft_objects:
-                obj_name = obj['name']
-                print(f"Processing draft object: {obj_name}")
-                
-                # Parse the updated timestamp
-                if obj['updated']:
-                    try:
-                        last_modified = datetime.fromisoformat(obj['updated'].replace('Z', '+00:00'))
-                    except:
-                        last_modified = datetime.now(timezone.utc)
-                else:
-                    continue
-                    
-                # Filter by date
-                if last_modified < fifteen_days_ago:
-                    print(f"FILTERED OUT draft (too old): {obj_name}")
-                    continue
-                
-                if obj_name.endswith('.txt'):
-                    try:
-                        # Extract session_id from the filename
-                        filename_with_extension = obj_name.split('/')[-1]
-                        session_id = filename_with_extension.rsplit('.', 1)[0]
-                        
-                        # Fetch draft content
-                        draft_content = gcs_client.get_gcs_object_content(obj_name)
-                        if draft_content:
-                            draft_data = json.loads(draft_content)
-                            
-                            # Create RecordingInfo for draft
-                            draft_info = RecordingInfo(
-                                id=session_id,
-                                name=f"Draft: {draft_data.get('patient_name', 'Untitled')}",
-                                date=last_modified,
-                                status="draft",
-                                gcsPathTranscript=None,
-                                gcsPathPolished=None,
-                                gcsPathMetadata=obj_name,
-                                patientContext=None,
-                                encounterType=None,
-                                llmTemplateName=None,
-                                location=None,
-                                durationSeconds=None,
-                                # Include transcript and profileId for drafts
-                                transcript=draft_data.get('transcript', ''),
-                                profileId=draft_data.get('profile_id')
-                            )
-                            # Debug log to verify draft status
-                            print(f"[DEBUG] Created draft RecordingInfo - ID: {draft_info.id}, Status: {draft_info.status}, Name: {draft_info.name}")
-                            recordings_info.append(draft_info)
-                    except Exception as e:
-                        print(f"Error processing draft {obj_name}: {e}")
-        except Exception as e:
-            print(f"Error fetching drafts: {e}")
-            
-        # Remove duplicates - if a session has both a saved/pending recording and a draft, keep the draft
-        seen_ids = {}
-        deduplicated_recordings = []
-        
-        # First pass - collect all recordings by ID
-        for rec in recordings_info:
-            if rec.id not in seen_ids:
-                seen_ids[rec.id] = []
-            seen_ids[rec.id].append(rec)
-        
-        # Second pass - for each ID, prefer saved > draft > saving > pending > failed
-        status_priority = {'saved': 4, 'draft': 3, 'saving': 2, 'pending': 1, 'failed': 0}
-        for session_id, recs in seen_ids.items():
-            if len(recs) == 1:
-                deduplicated_recordings.append(recs[0])
-            else:
-                # Multiple records for same ID - pick the one with highest priority status
-                best_rec = max(recs, key=lambda r: status_priority.get(r.status, -2))
-                print(f"[DEDUP] Session {session_id} has {len(recs)} records. Keeping status='{best_rec.status}' over {[r.status for r in recs if r != best_rec]}")
-                deduplicated_recordings.append(best_rec)
-        
-        # Sort deduplicated recordings by date, most recent first
-        deduplicated_recordings.sort(key=lambda r: r.date, reverse=True)
-        print(f"Found {len(deduplicated_recordings)} recordings after deduplication (was {len(recordings_info)}) for user {user_id}")
-        
-        # Debug: Log the status of each recording being returned
-        print("[DEBUG] Recordings being returned:")
-        for rec in deduplicated_recordings[:5]:  # Show first 5
-            print(f"  - ID: {rec.id}, Status: {rec.status}, Name: {rec.name}")
-        
-        recordings_info = deduplicated_recordings
-        
-        return recordings_info
-
-    except Exception as e:
-        print(f"Unexpected error listing transcript files for user {user_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Unexpected error listing transcript files: {str(e)}")
-
-from fastapi.responses import PlainTextResponse
-
+    return await get_user_recordings_firestore(user_id, current_user_id, request)
 @app.get("/api/v1/transcript/{user_id}/{transcript_id}")
 async def get_transcript_details(
     user_id: str = Path(..., description="User's unique identifier"),
@@ -1362,11 +703,7 @@ async def get_transcript_details(
     request: Request = None
 ):
     """Get transcript details including content from Firestore"""
-    if USE_FIRESTORE:
-        return await get_transcript_details_firestore(user_id, transcript_id, current_user_id, request)
-    else:
-        # Fallback to GCS-based approach
-        raise HTTPException(status_code=501, detail="Non-Firestore transcript details not implemented")
+    return await get_transcript_details_firestore(user_id, transcript_id, current_user_id, request)
 
 @app.get("/api/v1/gcs_object_content", response_class=PlainTextResponse)
 async def get_gcs_object_content(
@@ -1411,6 +748,210 @@ async def get_gcs_object_content(
     except Exception as e:
         print(f"Unexpected error fetching object {gcs_key}: {e}")
         raise HTTPException(status_code=500, detail=f"Unexpected error fetching object: {str(e)}")
+# --- Patient Management API Endpoints --- #
+
+class PatientCreateRequest(BaseModel):
+    first_name: str
+    last_name: str
+    date_of_birth: datetime
+    date_of_accident: Optional[datetime] = None
+
+class PatientUpdateRequest(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    date_of_birth: Optional[datetime] = None
+    date_of_accident: Optional[datetime] = None
+
+class PatientResponse(BaseModel):
+    id: str
+    first_name: str
+    last_name: str
+    date_of_birth: datetime
+    date_of_accident: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+    active: bool
+
+@app.post("/api/v1/patients", response_model=PatientResponse)
+async def create_patient(
+    patient_data: PatientCreateRequest,
+    current_user_id: str = Depends(get_user_id),
+    request: Request = None
+):
+    """Create a new patient profile for the authenticated user"""
+    try:
+        # Add user_id to patient data
+        patient_dict = patient_data.dict()
+        patient_dict['user_id'] = current_user_id
+        
+        # Create patient in Firestore
+        from firestore_client import firestore_client
+        patient_id = await firestore_client.create_patient(patient_dict)
+        
+        # Retrieve the created patient
+        patient = await firestore_client.get_patient(patient_id, current_user_id)
+        
+        # Log PHI access for HIPAA compliance
+        AuditLogger.log_data_access(
+            user_id=current_user_id,
+            operation="CREATE",
+            data_type="patient_profile",
+            resource_id=patient_id,
+            request=request,
+            success=True
+        )
+        
+        return PatientResponse(**patient)
+        
+    except Exception as e:
+        logger.error(f"Error creating patient for user {current_user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create patient profile")
+
+@app.get("/api/v1/patients", response_model=List[PatientResponse])
+async def list_patients(
+    active_only: bool = True,
+    search: Optional[str] = None,
+    current_user_id: str = Depends(get_user_id),
+    request: Request = None
+):
+    """List all patients for the authenticated user"""
+    try:
+        from firestore_client import firestore_client
+        
+        if search:
+            # Search patients by name
+            patients = await firestore_client.search_patients(current_user_id, search, active_only)
+        else:
+            # List all patients
+            patients = await firestore_client.list_user_patients(current_user_id, active_only)
+        
+        # Log PHI access for HIPAA compliance
+        AuditLogger.log_data_access(
+            user_id=current_user_id,
+            operation="LIST",
+            data_type="patient_profiles",
+            resource_id=f"count:{len(patients)}",
+            request=request,
+            success=True
+        )
+        
+        return [PatientResponse(**patient) for patient in patients]
+        
+    except Exception as e:
+        logger.error(f"Error listing patients for user {current_user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to list patients")
+
+@app.get("/api/v1/patients/{patient_id}", response_model=PatientResponse)
+async def get_patient(
+    patient_id: str = Path(..., description="Patient ID"),
+    current_user_id: str = Depends(get_user_id),
+    request: Request = None
+):
+    """Get a specific patient profile"""
+    try:
+        from firestore_client import firestore_client
+        
+        patient = await firestore_client.get_patient(patient_id, current_user_id)
+        
+        if not patient:
+            raise HTTPException(status_code=404, detail="Patient not found")
+        
+        # Log PHI access for HIPAA compliance
+        AuditLogger.log_data_access(
+            user_id=current_user_id,
+            operation="READ",
+            data_type="patient_profile",
+            resource_id=patient_id,
+            request=request,
+            success=True
+        )
+        
+        return PatientResponse(**patient)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting patient {patient_id} for user {current_user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get patient")
+
+@app.put("/api/v1/patients/{patient_id}", response_model=PatientResponse)
+async def update_patient(
+    patient_id: str = Path(..., description="Patient ID"),
+    patient_updates: PatientUpdateRequest = ...,
+    current_user_id: str = Depends(get_user_id),
+    request: Request = None
+):
+    """Update a patient profile"""
+    try:
+        from firestore_client import firestore_client
+        
+        # Only include non-None fields in updates
+        updates = {k: v for k, v in patient_updates.dict().items() if v is not None}
+        
+        if not updates:
+            raise HTTPException(status_code=400, detail="No updates provided")
+        
+        # Update patient
+        success = await firestore_client.update_patient(patient_id, current_user_id, updates)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Patient not found or unauthorized")
+        
+        # Get updated patient
+        patient = await firestore_client.get_patient(patient_id, current_user_id)
+        
+        # Log PHI access for HIPAA compliance
+        AuditLogger.log_data_access(
+            user_id=current_user_id,
+            operation="UPDATE",
+            data_type="patient_profile",
+            resource_id=patient_id,
+            request=request,
+            success=True
+        )
+        
+        return PatientResponse(**patient)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating patient {patient_id} for user {current_user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update patient")
+
+@app.delete("/api/v1/patients/{patient_id}")
+async def delete_patient(
+    patient_id: str = Path(..., description="Patient ID"),
+    current_user_id: str = Depends(get_user_id),
+    request: Request = None
+):
+    """Soft delete a patient profile (sets active=False)"""
+    try:
+        from firestore_client import firestore_client
+        
+        success = await firestore_client.soft_delete_patient(patient_id, current_user_id)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Patient not found or unauthorized")
+        
+        # Log PHI access for HIPAA compliance
+        AuditLogger.log_data_access(
+            user_id=current_user_id,
+            operation="DELETE",
+            data_type="patient_profile",
+            resource_id=patient_id,
+            request=request,
+            success=True
+        )
+        
+        return {"message": "Patient deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting patient {patient_id} for user {current_user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete patient")
+
+# --- End Patient Management --- #
         
 if __name__ == "__main__":
     if not deepgram_api_key:

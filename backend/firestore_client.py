@@ -11,8 +11,9 @@ from google.cloud import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 import asyncio
 from firestore_models import (
-    UserDocument, TranscriptDocument, SessionDocument,
-    TranscriptStatus, create_user_document, create_transcript_document
+    UserDocument, TranscriptDocument, SessionDocument, PatientDocument,
+    TranscriptStatus, create_user_document, create_transcript_document,
+    create_patient_document
 )
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ class FirestoreClient:
         self.users_collection = self.db.collection('users')
         self.transcripts_collection = self.db.collection('transcripts')
         self.sessions_collection = self.db.collection('user_sessions')
+        self.patients_collection = self.db.collection('patients')
     
     # User operations
     async def get_or_create_user(self, user_id: str, email: str, name: Optional[str] = None) -> Dict[str, Any]:
@@ -308,6 +310,138 @@ class FirestoreClient:
         except Exception as e:
             logger.error(f"Error searching transcripts: {str(e)}")
             return []
+    
+    # Patient operations
+    async def create_patient(self, patient_data: Dict[str, Any]) -> str:
+        """Create a new patient profile"""
+        try:
+            # Generate a new document reference with auto ID
+            patient_ref = self.patients_collection.document()
+            patient_id = patient_ref.id
+            
+            # Create document using model
+            patient_doc = create_patient_document(patient_data)
+            patient_ref.set(patient_doc)
+            
+            logger.info(f"Created patient document {patient_id} for user {patient_data['user_id']}")
+            return patient_id
+            
+        except Exception as e:
+            logger.error(f"Error creating patient: {str(e)}")
+            raise
+    
+    async def get_patient(self, patient_id: str, user_id: str) -> Optional[Dict[str, Any]]:
+        """Get a patient profile by ID (with ownership check)"""
+        try:
+            patient_ref = self.patients_collection.document(patient_id)
+            patient_doc = patient_ref.get()
+            
+            if patient_doc.exists:
+                data = patient_doc.to_dict()
+                # Security check - ensure the requesting user owns this patient
+                if data.get('user_id') != user_id:
+                    logger.warning(f"User {user_id} attempted to access patient {patient_id} owned by {data.get('user_id')}")
+                    return None
+                data['id'] = patient_doc.id
+                return data
+            else:
+                logger.warning(f"No patient found with ID {patient_id}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error getting patient: {str(e)}")
+            return None
+    
+    async def update_patient(self, patient_id: str, user_id: str, updates: Dict[str, Any]) -> bool:
+        """Update a patient profile (with ownership check)"""
+        try:
+            # First check ownership
+            patient = await self.get_patient(patient_id, user_id)
+            if not patient:
+                return False
+            
+            patient_ref = self.patients_collection.document(patient_id)
+            
+            # Add updated_at timestamp
+            updates['updated_at'] = datetime.now(timezone.utc)
+            
+            patient_ref.update(updates)
+            logger.info(f"Updated patient {patient_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error updating patient: {str(e)}")
+            return False
+    
+    async def list_user_patients(
+        self, 
+        user_id: str, 
+        active_only: bool = True,
+        limit: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """List all patients for a user"""
+        try:
+            query = self.patients_collection.where(
+                filter=FieldFilter('user_id', '==', user_id)
+            )
+            
+            if active_only:
+                query = query.where(filter=FieldFilter('active', '==', True))
+            
+            # Order by last name, then first name
+            query = query.order_by('last_name').order_by('first_name')
+            
+            if limit:
+                query = query.limit(limit)
+            
+            patients = []
+            for doc in query.stream():
+                patient_data = doc.to_dict()
+                patient_data['id'] = doc.id
+                patients.append(patient_data)
+            
+            logger.info(f"Retrieved {len(patients)} patients for user {user_id}")
+            return patients
+            
+        except Exception as e:
+            logger.error(f"Error listing user patients: {str(e)}")
+            return []
+    
+    async def search_patients(
+        self, 
+        user_id: str, 
+        search_term: str,
+        active_only: bool = True
+    ) -> List[Dict[str, Any]]:
+        """Search patients by name (case-insensitive partial match)"""
+        try:
+            # Get all patients for the user
+            all_patients = await self.list_user_patients(user_id, active_only=active_only)
+            
+            # Filter by search term (case-insensitive)
+            search_lower = search_term.lower()
+            matching_patients = []
+            
+            for patient in all_patients:
+                first_name = patient.get('first_name', '').lower()
+                last_name = patient.get('last_name', '').lower()
+                
+                if search_lower in first_name or search_lower in last_name:
+                    matching_patients.append(patient)
+            
+            return matching_patients
+            
+        except Exception as e:
+            logger.error(f"Error searching patients: {str(e)}")
+            return []
+    
+    async def soft_delete_patient(self, patient_id: str, user_id: str) -> bool:
+        """Soft delete a patient (set active=False)"""
+        try:
+            return await self.update_patient(patient_id, user_id, {'active': False})
+        except Exception as e:
+            logger.error(f"Error soft deleting patient: {str(e)}")
+            return False
 
 # Create singleton instance
 firestore_client = FirestoreClient()
