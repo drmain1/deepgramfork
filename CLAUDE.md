@@ -1,17 +1,10 @@
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
--this project has been built and changed over and over again, CRITICAL if you run in to files that would significantly benefit from a refactor, or if you run in to components that are depricated please alert the human so we can clean this project up
--Also please advise if agents or MCP tools may help what we are working on
--this project is 100% going to be run on GCP so let's just delete AWS functions/code as we run accross it
--also as we work if you run in to code that could be slowling the project down let's fix it, we want to be live within a week
--when you run in to scenarios that we can avoid local storage in the browser we should do that to improve security for hipaa compliance 
 
 ## Project Overview
 
 This is a HIPAA-compliant medical transcription application that converts audio recordings into structured medical notes. The system uses speech-to-text services (Deepgram for medical, Speechmatics for multilingual) and LLM-based formatting (Google Vertex AI) to produce professional medical documentation.
-
-
 
 **Current Status**: Active migration from AWS to Google Cloud Platform (branch: `gcp-migration`)
 
@@ -34,17 +27,36 @@ pip install -r requirements.txt  # Install dependencies
 python main.py                   # Start API server (http://localhost:8000)
 ```
 
+### Testing & Utilities
+```bash
+cd backend
+python test_firestore_connection.py  # Test Firestore connection
+python test_gcs_operations.py        # Test Google Cloud Storage
+python test_firebase_token.py        # Test Firebase authentication
+python test_gcs_health.py           # Test GCS health
+```
+
+### Deployment
+```bash
+./deploy.sh                # Deploy to GCP (App Engine + Cloud Storage)
+firebase deploy           # Deploy Firebase (Firestore rules, hosting)
+firebase deploy --only firestore  # Deploy only Firestore rules
+```
+
 ## Architecture Overview
 
 ### Backend Architecture
 - **Framework**: FastAPI with WebSocket support
 - **Main Entry**: `backend/main.py`
 - **Authentication**: Firebase Admin SDK via `gcp_auth_middleware.py`
-- **Storage**: Google Cloud Storage via `gcs_utils.py`
+- **Storage**: Hybrid approach
+  - Firestore for metadata and transcripts
+  - Google Cloud Storage for audio files only
 - **Speech Processing**: 
   - `deepgram_utils.py` - Medical transcription
   - `speechmatics_utils.py` - Multilingual support
 - **AI Processing**: `gcp_utils.py` - Vertex AI integration
+- **Session Management**: `FirestoreSessionManager` with 25-minute timeout
 
 **Key WebSocket Endpoints**:
 - `/stream` - Deepgram medical transcription
@@ -63,10 +75,10 @@ python main.py                   # Start API server (http://localhost:8000)
 ### Frontend Architecture
 - **Framework**: React 19 with Vite
 - **Routing**: React Router v7
-- **State Management**: React Context API
-  - `FirebaseAuthContext` - Authentication
-  - `RecordingsContext` - Recording management
-  - `UserSettingsContext` - User preferences
+- **State Management**: Zustand (recently migrated from Context API)
+  - `recordingsStore.js` - Recording management
+  - `userSettingsStore.js` - User preferences
+  - No PHI stored in browser storage (HIPAA compliance)
 - **Key Components**:
   - `RecordingView.jsx` - Live recording/transcription
   - `TranscriptionPage.jsx` - Main workflow
@@ -114,18 +126,25 @@ Both frontend and backend require environment variables:
 - API keys (Deepgram, Speechmatics)
 - Firebase service account
 - GCS bucket names
+- Secret Manager for sensitive keys
 
 **Frontend (.env)**:
 - Firebase configuration
 - API base URL
 - Feature flags
 
+**Production Runtime**:
+- Python 3.10 on App Engine
+- Instance class: F4
+- Auto-scaling: 1-10 instances
+- Gunicorn with 4 workers and Uvicorn
+
 ## Development Guidelines
 
 1. **API Changes**: Update both WebSocket and REST endpoints in main.py
-2. **State Management**: Use existing Context providers for global state
+2. **State Management**: Use Zustand stores (no localStorage for PHI)
 3. **Authentication**: All API calls must include Firebase auth token
-4. **Storage**: Use structured paths in GCS (see data organization above)
+4. **Storage**: Use Firestore for transcripts/metadata, GCS for audio only
 5. **Error Handling**: Implement proper error boundaries and WebSocket reconnection
 6. **Testing**: No automated tests currently - manual testing required
 
@@ -153,6 +172,8 @@ See `HIPAA_COMPLIANCE_TECH_DEBT.md` for compliance-related items:
 - Role-Based Access Control (RBAC)
 - Automated data retention policies
 - MFA enforcement
+- Timestamp display issues (see `TIMESTAMP_TECH_DEBT.md`)
+- Complex state synchronization between local and backend
 
 
 ## Useful Resources
