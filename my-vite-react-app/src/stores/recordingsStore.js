@@ -74,7 +74,7 @@ const useRecordingsStore = create(
                 id,
                 name: `Loading...`,
                 status: meta.status,
-                date: meta.lastUpdated,
+                // Don't set date here - let it come from backend
                 lastUpdated: meta.lastUpdated
               }))
             });
@@ -91,13 +91,27 @@ const useRecordingsStore = create(
           set({ isFetchingRecordings: true });
           
           try {
-            const accessToken = await getToken();
             const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-            const response = await fetch(`${API_BASE_URL}/api/v1/user_recordings/${currentUser.uid}`, {
+            
+            // First attempt
+            let accessToken = await getToken();
+            let response = await fetch(`${API_BASE_URL}/api/v1/user_recordings/${currentUser.uid}`, {
               headers: {
                 Authorization: `Bearer ${accessToken}`,
               },
             });
+            
+            // Retry with fresh token on 401
+            if (response.status === 401) {
+              console.log('Got 401, retrying with fresh token...');
+              // Force token refresh and retry once
+              accessToken = await getToken();
+              response = await fetch(`${API_BASE_URL}/api/v1/user_recordings/${currentUser.uid}`, {
+                headers: {
+                  Authorization: `Bearer ${accessToken}`,
+                },
+              });
+            }
             
             if (!response.ok) {
               const errorData = await response.json().catch(() => ({ detail: 'Failed to fetch recordings.' }));
@@ -163,10 +177,21 @@ const useRecordingsStore = create(
                 gcsVersion.name = patientNameCache[localRec.id];
               }
               
+              // Preserve the earlier date (recording start time) between local and backend
+              // Only preserve local date if it exists and is valid
+              if (localRec.date) {
+                const localDate = new Date(localRec.date);
+                const backendDate = new Date(gcsVersion.date);
+                if (localDate < backendDate) {
+                  gcsVersion.date = localRec.date;
+                  console.log(`[Recording Merge] Preserving local recording start time for ${gcsVersion.id}: ${localRec.date}`);
+                }
+              }
+              
               merged.push(gcsVersion);
               newMetadata[gcsVersion.id] = {
                 status: gcsVersion.status || 'saved',
-                lastUpdated: gcsVersion.date || new Date().toISOString()
+                lastUpdated: new Date().toISOString()
               };
               gcsMap.delete(localRec.id);
             } else {
@@ -176,7 +201,7 @@ const useRecordingsStore = create(
                 merged.push(localRec);
                 newMetadata[localRec.id] = {
                   status: localRec.status,
-                  lastUpdated: localRec.lastUpdated || localRec.date
+                  lastUpdated: new Date().toISOString()
                 };
               }
             }
@@ -190,7 +215,7 @@ const useRecordingsStore = create(
             merged.push(gcsRec);
             newMetadata[gcsRec.id] = {
               status: gcsRec.status || 'saved',
-              lastUpdated: gcsRec.date || new Date().toISOString()
+              lastUpdated: new Date().toISOString()
             };
           });
           
@@ -250,14 +275,14 @@ const useRecordingsStore = create(
           set(state => ({
             recordings: state.recordings.map(rec =>
               rec.id === sessionId 
-                ? { ...rec, ...updates, date: rec.date, lastUpdated: new Date().toISOString() } 
+                ? { ...rec, ...updates, date: rec.date || updates.date, lastUpdated: updates.lastUpdated || rec.lastUpdated || new Date().toISOString() } 
                 : rec
             ),
             recordingMetadata: {
               ...state.recordingMetadata,
               [sessionId]: {
                 status: updates.status || state.recordingMetadata[sessionId]?.status || 'pending',
-                lastUpdated: new Date().toISOString()
+                lastUpdated: updates.lastUpdated || state.recordingMetadata[sessionId]?.lastUpdated || new Date().toISOString()
               }
             }
           }));

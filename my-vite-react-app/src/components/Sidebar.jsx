@@ -64,6 +64,27 @@ function Sidebar() {
     });
   };
 
+  // Parse timestamp from session ID (format: YYYYMMDDHHMMSSxxxxxx)
+  const parseSessionIdTime = (sessionId) => {
+    if (!sessionId || sessionId.length < 14 || !sessionId.substring(0, 14).match(/^\d{14}$/)) {
+      return null;
+    }
+    
+    try {
+      const year = sessionId.substring(0, 4);
+      const month = sessionId.substring(4, 6);
+      const day = sessionId.substring(6, 8);
+      const hour = sessionId.substring(8, 10);
+      const minute = sessionId.substring(10, 12);
+      const second = sessionId.substring(12, 14);
+      
+      // Create date in local time (session IDs are generated in server's local time)
+      return new Date(year, month - 1, day, hour, minute, second);
+    } catch (error) {
+      return null;
+    }
+  };
+
   // Filter out 'pending' recordings from display if they have an associated 'saved' or 'failed' recording
   const processedRecordings = recordings.reduce((acc, current) => {
     const existingRecording = acc.find((recording) => recording.id === current.id);
@@ -78,7 +99,12 @@ function Sidebar() {
     }
   }, []);
 
-  const sortedRecordings = processedRecordings.sort((a, b) => new Date(b.date) - new Date(a.date));
+  const sortedRecordings = processedRecordings.sort((a, b) => {
+    // Sort by session ID timestamp for accuracy
+    const timeA = parseSessionIdTime(a.id) || new Date(a.date || 0);
+    const timeB = parseSessionIdTime(b.id) || new Date(b.date || 0);
+    return timeB - timeA;
+  });
 
   // Group recordings by date
   const groupRecordingsByDate = (recordings) => {
@@ -88,9 +114,10 @@ function Sidebar() {
     yesterday.setDate(yesterday.getDate() - 1);
     
     recordings.forEach(recording => {
-      if (!recording.date) return;
+      // Use session ID timestamp for accurate grouping
+      const recordingDate = parseSessionIdTime(recording.id) || new Date(recording.date || 0);
+      if (!recordingDate || recordingDate.toString() === 'Invalid Date') return;
       
-      const recordingDate = new Date(recording.date);
       const dateKey = recordingDate.toDateString();
       
       let groupKey;
@@ -127,7 +154,17 @@ function Sidebar() {
 
   const groupedRecordings = groupRecordingsByDate(sortedRecordings);
 
-  const formatTime = (isoString) => {
+  const formatTime = (isoString, sessionId) => {
+    // First try to parse from session ID for accuracy
+    const sessionTime = parseSessionIdTime(sessionId);
+    if (sessionTime) {
+      return sessionTime.toLocaleString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+    
+    // Fallback to ISO string if available
     if (!isoString) return '';
     try {
       return new Date(isoString).toLocaleString(undefined, {
@@ -228,9 +265,6 @@ function Sidebar() {
                       </span>
                       <span className={`status-indicator ${recording.status || 'pending'} ml-2 mt-1.5`}></span>
                     </div>
-                    <span className="text-sm text-gray-500 mt-1">
-                      {recording.date ? formatTime(recording.date) : 'No time'}
-                    </span>
                   </button>
                   {isAuthenticated && (
                     <button

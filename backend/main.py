@@ -60,7 +60,8 @@ from firestore_endpoints import (
     update_user_settings_firestore,
     save_session_data_firestore,
     delete_recording_firestore,
-    get_transcript_details_firestore
+    get_transcript_details_firestore,
+    save_draft_firestore
 )
 
 # Environment already loaded at the top of the file
@@ -963,9 +964,15 @@ class SaveDraftRequest(BaseModel):
 @app.post("/api/v1/save_draft")
 async def save_draft_endpoint(
     request_data: SaveDraftRequest,
-    current_user_id: str = Depends(get_user_id)
+    current_user_id: str = Depends(get_user_id),
+    request: Request = None
 ):
-    """Save a draft recording to GCS for later resumption."""
+    """Save a draft recording - uses Firestore for speed when enabled."""
+    # Use Firestore endpoint if enabled
+    if USE_FIRESTORE:
+        return await save_draft_firestore(request_data.dict(), current_user_id, request)
+    
+    # Otherwise use GCS (legacy)
     # Verify user authorization
     if request_data.user_id != current_user_id:
         raise HTTPException(status_code=403, detail="You can only save your own drafts")

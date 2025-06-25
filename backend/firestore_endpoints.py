@@ -68,15 +68,18 @@ async def get_user_recordings_firestore(
         
         recordings_info = []
         for transcript in transcripts:
-            # Parse the date string
-            date_str = transcript.get('updated_at', transcript.get('created_at', ''))
+            # Parse the date string - use created_at as primary timestamp (when recording was made)
+            # Only fall back to updated_at if created_at is missing
+            date_str = transcript.get('created_at', transcript.get('updated_at', ''))
             try:
                 date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00')) if date_str else datetime.now(timezone.utc)
             except:
                 date_obj = datetime.now(timezone.utc)
             
             # Convert Firestore document to RecordingInfo
-            transcript_content = transcript.get('transcript_original', '')
+            # Ensure we always get a string, never None
+            transcript_content = transcript.get('transcript_original') or ''
+            polished_content = transcript.get('transcript_polished') or ''
             
             recording = RecordingInfo(
                 id=transcript['session_id'],
@@ -94,12 +97,12 @@ async def get_user_recordings_firestore(
                 profileId=transcript.get('llm_template_id'),
                 # Include transcript content directly
                 transcript=transcript_content,
-                polishedTranscript=transcript.get('transcript_polished')
+                polishedTranscript=polished_content
             )
             
-            # Debug logging
+            # Debug logging - transcript_content is now guaranteed to be a string
             logger.info(f"Recording {recording.id}: has transcript content: {bool(transcript_content)}, length: {len(transcript_content)}, "
-                       f"has polished: {bool(transcript.get('transcript_polished'))}")
+                       f"has polished: {bool(polished_content)}")
             
             recordings_info.append(recording)
         
@@ -260,6 +263,22 @@ async def save_session_data_firestore(
     logger.info(f"Saving session {session_id} for user {user_id}")
     
     try:
+        # Parse created_at from session_id if it's a timestamp format
+        created_at = datetime.now(timezone.utc)
+        logger.info(f"Processing session_id: {session_id} (length: {len(session_id)})")
+        
+        if len(session_id) >= 14 and session_id[:14].isdigit():
+            try:
+                # Session ID format: YYYYMMDDHHMMSSxxxxxx (generated in UTC)
+                timestamp_part = session_id[:14]
+                logger.info(f"Attempting to parse timestamp from: {timestamp_part}")
+                created_at = datetime.strptime(timestamp_part, "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
+                logger.info(f"Successfully parsed recording start time from session_id: {created_at.isoformat()}")
+            except ValueError as e:
+                logger.warning(f"Could not parse timestamp from session_id: {session_id}, error: {e}")
+        else:
+            logger.warning(f"Session ID format not recognized for timestamp parsing: {session_id}")
+        
         # Create transcript document in Firestore
         transcript_data = {
             'user_id': user_id,
@@ -271,14 +290,49 @@ async def save_session_data_firestore(
             'location': request_data.get('location'),
             'llm_template': request_data.get('llm_template'),
             'llm_template_id': request_data.get('llm_template_id'),
-            'duration_seconds': request_data.get('duration')
+            'duration_seconds': request_data.get('duration'),
+            # Use parsed created_at from session_id or current time
+            'created_at': created_at.isoformat(),
+            'updated_at': datetime.now(timezone.utc).isoformat()
         }
         
-        # Create in Firestore
-        await firestore_client.create_transcript(transcript_data)
+        # Check if transcript already exists
+        existing_transcript = await firestore_client.get_transcript(session_id)
+        
+        if existing_transcript:
+            # Update existing transcript, preserving created_at if we have a better one
+            existing_created_at = existing_transcript.get('created_at')
+            if existing_created_at:
+                try:
+                    existing_date = datetime.fromisoformat(existing_created_at.replace('Z', '+00:00'))
+                    # Only update created_at if our parsed date is earlier (more accurate)
+                    if created_at < existing_date:
+                        logger.info(f"Updating created_at from {existing_created_at} to {created_at.isoformat()}")
+                        await firestore_client.update_transcript(session_id, {'created_at': created_at.isoformat()})
+                except Exception as e:
+                    logger.warning(f"Error comparing dates: {e}")
+            
+            # Update other fields
+            await firestore_client.update_transcript(session_id, {
+                'patient_name': transcript_data['patient_name'],
+                'patient_context': transcript_data.get('patient_context'),
+                'encounter_type': transcript_data.get('encounter_type'),
+                'location': transcript_data.get('location'),
+                'llm_template': transcript_data.get('llm_template'),
+                'llm_template_id': transcript_data.get('llm_template_id'),
+                'duration_seconds': transcript_data.get('duration_seconds'),
+                'status': transcript_data['status']
+            })
+        else:
+            # Create new transcript
+            await firestore_client.create_transcript(transcript_data)
         
         # Get transcript content (support both field names for compatibility)
         transcript_content = request_data.get('transcript') or request_data.get('final_transcript_text', '')
+        
+        # Ensure transcript_content is never None
+        if transcript_content is None:
+            transcript_content = ''
         
         logger.info(f"Transcript content length: {len(transcript_content)}")
         logger.info(f"First 100 chars: {transcript_content[:100] if transcript_content else 'Empty'}")
@@ -386,8 +440,13 @@ async def save_session_data_firestore(
         await firestore_client.update_transcript(session_id, update_data)
         
         # Delete draft if exists
-        draft_key = f"{user_id}/drafts/{session_id}.txt"
-        gcs_client.delete_gcs_object(draft_key)
+        if gcs_client:
+            draft_key = f"{user_id}/drafts/{session_id}.txt"
+            try:
+                gcs_client.delete_gcs_object(draft_key)
+                logger.info(f"Deleted draft {draft_key}")
+            except Exception as e:
+                logger.warning(f"Failed to delete draft {draft_key}: {e}")
         
         return {
             "message": "Session data saved successfully",
@@ -430,17 +489,24 @@ async def get_transcript_details_firestore(
         if transcript.get('user_id') != user_id:
             raise HTTPException(status_code=403, detail="Unauthorized access to transcript")
         
-        # Log for debugging
-        logger.info(f"Transcript data: has original: {bool(transcript.get('transcript_original'))}, "
-                   f"has polished: {bool(transcript.get('transcript_polished'))}")
-        logger.info(f"Original transcript length: {len(transcript.get('transcript_original', ''))}")
-        logger.info(f"Polished transcript length: {len(transcript.get('transcript_polished', ''))}")
+        # Get transcript content, ensuring we always have strings
+        original_transcript = transcript.get('transcript_original') or ''
+        polished_transcript = transcript.get('transcript_polished') or ''
+        
+        # Safe logging with extra protection
+        try:
+            logger.info(f"Transcript data: has original: {bool(original_transcript)}, "
+                       f"has polished: {bool(polished_transcript)}")
+            logger.info(f"Original transcript length: {len(original_transcript)}")
+            logger.info(f"Polished transcript length: {len(polished_transcript)}")
+        except Exception as e:
+            logger.warning(f"Error logging transcript details: {e}. Original type: {type(original_transcript)}, Polished type: {type(polished_transcript)}")
         
         # Return transcript with content
         return {
             'id': transcript['session_id'],
-            'originalTranscript': transcript.get('transcript_original', ''),
-            'polishedTranscript': transcript.get('transcript_polished', ''),
+            'originalTranscript': original_transcript,
+            'polishedTranscript': polished_transcript,
             'patientName': transcript.get('patient_name'),
             'status': transcript.get('status'),
             'createdAt': transcript.get('created_at'),
@@ -452,6 +518,82 @@ async def get_transcript_details_firestore(
     except Exception as e:
         logger.error(f"Error fetching transcript details: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to fetch transcript details")
+
+async def save_draft_firestore(
+    request_data: dict,
+    current_user_id: str = Depends(get_user_id),
+    request: Request = None
+):
+    """
+    Save a draft recording directly to Firestore for faster access.
+    """
+    session_id = request_data.get("session_id")
+    user_id = request_data.get("user_id")
+    
+    # Log PHI access
+    AuditLogger.log_data_access(
+        user_id=current_user_id,
+        operation="CREATE",
+        data_type="draft_recording",
+        resource_id=session_id,
+        request=request,
+        success=True
+    )
+    
+    # Verify authorization
+    if user_id != current_user_id:
+        raise HTTPException(status_code=403, detail="You can only save your own drafts")
+    
+    logger.info(f"Saving draft {session_id} for user {user_id}")
+    
+    try:
+        # Check if transcript already exists
+        existing = await firestore_client.get_transcript(session_id)
+        
+        if existing:
+            # Update existing transcript
+            update_data = {
+                'status': TranscriptStatus.DRAFT,
+                'transcript_original': request_data.get('transcript', ''),
+                'patient_name': request_data.get('patient_name', 'Draft Session'),
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }
+            
+            if request_data.get('profile_id'):
+                update_data['llm_template_id'] = request_data['profile_id']
+                
+            await firestore_client.update_transcript(session_id, update_data)
+        else:
+            # Parse created_at from session_id if it's a timestamp format
+            created_at = datetime.now(timezone.utc)
+            if len(session_id) >= 14 and session_id[:14].isdigit():
+                try:
+                    # Session ID format: YYYYMMDDHHMMSSxxxxxx (generated in UTC)
+                    created_at = datetime.strptime(session_id[:14], "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
+                    logger.info(f"Draft: Parsed recording start time from session_id: {created_at.isoformat()}")
+                except ValueError:
+                    logger.warning(f"Draft: Could not parse timestamp from session_id: {session_id}")
+            
+            # Create new draft transcript
+            transcript_data = {
+                'user_id': user_id,
+                'session_id': session_id,
+                'status': TranscriptStatus.DRAFT,
+                'patient_name': request_data.get('patient_name', 'Draft Session'),
+                'transcript_original': request_data.get('transcript', ''),
+                'llm_template_id': request_data.get('profile_id'),
+                'created_at': created_at.isoformat(),
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }
+            
+            await firestore_client.create_transcript(transcript_data)
+        
+        logger.info(f"Draft saved successfully for session {session_id}")
+        return {"message": "Draft saved successfully", "session_id": session_id}
+        
+    except Exception as e:
+        logger.error(f"Error saving draft: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to save draft: {str(e)}")
 
 async def delete_recording_firestore(
     user_id: str,

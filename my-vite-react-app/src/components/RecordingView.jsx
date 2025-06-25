@@ -462,7 +462,7 @@ function RecordingView({
         updateRecording(sessionId, {
           status: 'saved',
           name: savedName,
-          date: new Date().toISOString(),
+          // Don't update date - preserve the original recording start time
           gcsPathTranscript: result.saved_paths?.original_transcript,
           gcsPathPolished: result.saved_paths?.polished_transcript,
           gcsPathAudio: result.saved_paths?.audio,

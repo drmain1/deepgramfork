@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 from fastapi import WebSocket, WebSocketDisconnect
 import speechmatics

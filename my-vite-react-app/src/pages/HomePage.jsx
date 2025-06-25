@@ -8,6 +8,15 @@ function HomePage() {
   const { recordings } = useRecordings();
   const navigate = useNavigate();
 
+  // Debug log to check recording dates
+  console.log('[HomePage] Recordings:', recordings.map(r => ({
+    id: r.id,
+    name: r.name,
+    date: r.date,
+    dateType: typeof r.date,
+    dateObject: r.date ? new Date(r.date) : null
+  })));
+
   const handleStartNewEncounter = () => {
     navigate('/transcription');
   };
@@ -113,7 +122,13 @@ function HomePage() {
                         {recording.name || `Session ${recording.id.substring(0, 8)}`}
                       </p>
                       <p className="text-sm text-gray-500">
-                        {recording.date ? new Date(recording.date).toLocaleString() : 'No date'}
+                        {recording.date ? new Date(recording.date).toLocaleString(undefined, {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        }) : 'No date'}
                       </p>
                     </div>
                   </div>

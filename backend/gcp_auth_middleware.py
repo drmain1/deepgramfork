@@ -123,12 +123,14 @@ def validate_firebase_token(token: str) -> str:
         logger.info(f"User authenticated via Firebase: {user_id}")
         return user_id
         
-    except firebase_auth.InvalidIdTokenError:
+    except firebase_auth.InvalidIdTokenError as e:
+        logger.error(f"Invalid Firebase token: {str(e)}")
         raise HTTPException(status_code=401, detail="Invalid Firebase token")
-    except firebase_auth.ExpiredIdTokenError:
+    except firebase_auth.ExpiredIdTokenError as e:
+        logger.error(f"Firebase token expired: {str(e)}")
         raise HTTPException(status_code=401, detail="Firebase token expired")
     except Exception as e:
-        logger.error(f"Firebase token validation failed: {str(e)}")
+        logger.error(f"Firebase token validation failed: {type(e).__name__}: {str(e)}")
         raise HTTPException(status_code=401, detail=f"Token validation failed: {str(e)}")
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security)) -> dict:
@@ -136,22 +138,21 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Security(
     Unified authentication function that works with both IAP and Firebase tokens.
     Returns a user dict to maintain compatibility with AWS middleware.
     """
-    user_info = validate_firebase_token(credentials.credentials)
-    
-    # Extract user_id first
-    user_id = user_info.get('user_id', user_info.get('uid')) if isinstance(user_info, dict) else user_info
+    # validate_firebase_token returns a string (user_id), not a dict
+    user_id = validate_firebase_token(credentials.credentials)
     
     # Check session validity with Firestore
     session_valid = await session_manager.check_session(user_id)
     
     if not session_valid:
+        logger.info(f"Session check failed for user: {user_id}, attempting to create new session")
         # Try to create a new session if the user has a valid token
         # This handles cases where the session expired but the Firebase token is still valid
         try:
             await session_manager.create_session(user_id)
             logger.info(f"Created new session for user with valid token: {user_id}")
         except Exception as e:
-            logger.warning(f"Session expired and couldn't create new one for user: {user_id}, error: {str(e)}")
+            logger.error(f"Failed to create session for user: {user_id}, error: {type(e).__name__}: {str(e)}")
             raise HTTPException(
                 status_code=401,
                 detail="Session expired. Please log in again."
@@ -163,8 +164,8 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Security(
     return {
         'sub': user_id,
         'username': user_id,
-        'email': user_info.get('email') if isinstance(user_info, dict) else None,
-        'email_verified': user_info.get('email_verified', False) if isinstance(user_info, dict) else False,
+        'email': None,  # We only have the user_id from validate_firebase_token
+        'email_verified': True,  # Already verified in validate_firebase_token
         'token_use': 'id'
     }
 
@@ -172,10 +173,8 @@ async def get_current_user_async(credentials: HTTPAuthorizationCredentials = Sec
     """
     Async version of get_current_user that can properly handle session checks.
     """
-    user_info = validate_firebase_token(credentials.credentials)
-    
-    # Extract user_id first
-    user_id = user_info.get('user_id', user_info.get('uid')) if isinstance(user_info, dict) else user_info
+    # validate_firebase_token returns a string (user_id), not a dict
+    user_id = validate_firebase_token(credentials.credentials)
     
     # Check session validity
     session_valid = await session_manager.check_session(user_id)
@@ -191,8 +190,8 @@ async def get_current_user_async(credentials: HTTPAuthorizationCredentials = Sec
     return {
         'sub': user_id,
         'username': user_id,
-        'email': user_info.get('email') if isinstance(user_info, dict) else None,
-        'email_verified': user_info.get('email_verified', False) if isinstance(user_info, dict) else False,
+        'email': None,  # We only have the user_id from validate_firebase_token
+        'email_verified': True,  # Already verified in validate_firebase_token
         'token_use': 'id'
     }
 
