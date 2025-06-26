@@ -106,8 +106,21 @@ function Sidebar() {
       const minute = sessionId.substring(10, 12);
       const second = sessionId.substring(12, 14);
       
-      // Create date in local time (session IDs are generated in server's local time)
-      return new Date(year, month - 1, day, hour, minute, second);
+      // Create UTC date string and parse it
+      // Session IDs are now generated in UTC on the backend
+      // For backward compatibility: session IDs created before June 26, 2025 are in server local time
+      const sessionDate = parseInt(year + month + day);
+      const migrationDate = 20250626; // Date when we switched to UTC
+      
+      if (sessionDate < migrationDate) {
+        // Old session IDs - parse as local time (server was likely in UTC or US timezone)
+        // This is a best-effort approach since we don't know the exact server timezone
+        return new Date(year, month - 1, day, hour, minute, second);
+      } else {
+        // New session IDs - parse as UTC
+        const utcDateString = `${year}-${month}-${day}T${hour}:${minute}:${second}Z`;
+        return new Date(utcDateString);
+      }
     } catch (error) {
       return null;
     }
@@ -199,7 +212,8 @@ function Sidebar() {
     if (sessionTime) {
       return sessionTime.toLocaleString(undefined, {
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
+        timeZoneName: 'short'  // Shows timezone like "PST" or "EST"
       });
     }
     
@@ -208,7 +222,8 @@ function Sidebar() {
     try {
       return new Date(isoString).toLocaleString(undefined, {
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
+        timeZoneName: 'short'
       });
     } catch (error) {
       return 'Invalid time';

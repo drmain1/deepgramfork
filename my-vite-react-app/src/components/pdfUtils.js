@@ -213,10 +213,13 @@ export const generateOptimizedPdf = async (textContent, fileName = "document.pdf
       // Add date
       pdf.setFont("helvetica", "normal");
       pdf.setFontSize(9);
-      pdf.text(`Electronically signed on ${new Date().toLocaleDateString('en-US', { 
+      pdf.text(`Electronically signed on ${new Date().toLocaleString('en-US', { 
         year: 'numeric', 
         month: 'long', 
-        day: 'numeric' 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZoneName: 'short'  // Shows timezone like "PST" or "EST"
       })}`, margins.left, yPosition);
     }
 

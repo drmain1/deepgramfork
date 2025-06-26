@@ -44,7 +44,8 @@ function RecentRecordingItem({ recording, onDelete }) {
     try {
       return new Date(isoString).toLocaleString(undefined, { 
         year: 'numeric', month: 'short', day: 'numeric', 
-        hour: '2-digit', minute: '2-digit' 
+        hour: '2-digit', minute: '2-digit',
+        timeZoneName: 'short'  // Shows timezone like "PST" or "EST"
       });
     } catch (e) {
       return isoString; // Fallback to raw string if date is invalid

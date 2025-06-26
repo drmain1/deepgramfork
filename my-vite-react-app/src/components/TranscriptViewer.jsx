@@ -243,7 +243,14 @@ function TranscriptViewer() {
         
         {isSigned && selectedRec.signedAt && (
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Signed on {new Date(selectedRec.signedAt).toLocaleString()}
+            Signed on {new Date(selectedRec.signedAt).toLocaleString(undefined, {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+              timeZoneName: 'short'  // Shows timezone like "PST" or "EST"
+            })}
           </Typography>
         )}
       </Paper>

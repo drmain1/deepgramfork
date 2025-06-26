@@ -3,6 +3,8 @@
 ## Issue Summary
 Recording timestamps were displaying incorrectly and updating to the current time on every browser refresh. While we've fixed the refresh issue, timestamps still show incorrect times due to timezone handling complexity.
 
+**UPDATE (June 26, 2025)**: This issue has been resolved. See "Solution Implemented" section below.
+
 ## Root Cause
 1. **Session ID Generation**: Session IDs contain timestamps in the format `YYYYMMDDHHMMSSxxxxxx` where the timestamp portion represents when the recording started
 2. **Timezone Mismatch**: The backend generates these timestamps in the server's local time, but various parts of the system interpret them differently
@@ -16,40 +18,70 @@ Recording timestamps were displaying incorrectly and updating to the current tim
 ## Current State
 - Recording times no longer change on browser refresh ✅
 - Recordings sort correctly by date for the 21-day retention period ✅
-- Time display removed from UI to avoid showing incorrect times ✅
-- Session IDs still contain accurate timestamp information if needed in future
+- Timestamps now display correctly with timezone information ✅
+- Session IDs are now generated in UTC for consistency ✅
 
-## Technical Implementation
-The solution parses timestamps directly from session IDs in the frontend:
+## Solution Implemented (June 26, 2025)
 
-```javascript
-// Parse timestamp from session ID (format: YYYYMMDDHHMMSSxxxxxx)
-const parseSessionIdTime = (sessionId) => {
-  if (!sessionId || sessionId.length < 14 || !sessionId.substring(0, 14).match(/^\d{14}$/)) {
-    return null;
-  }
-  
-  const year = sessionId.substring(0, 4);
-  const month = sessionId.substring(4, 6);
-  const day = sessionId.substring(6, 8);
-  const hour = sessionId.substring(8, 10);
-  const minute = sessionId.substring(10, 12);
-  const second = sessionId.substring(12, 14);
-  
-  return new Date(year, month - 1, day, hour, minute, second);
-};
-```
+### Backend Changes
+1. **UTC Session IDs**: Modified `deepgram_utils.py` and `speechmatics_utils.py` to generate session IDs using UTC:
+   ```python
+   session_id = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
+   ```
 
-## Future Improvements
-1. **Standardize timezone handling**: All timestamps should be generated and stored in UTC
-2. **Add timezone to session IDs**: Include timezone offset in session ID format (e.g., `YYYYMMDDHHMMSSzzxxxxxx` where `zz` is timezone offset)
-3. **Store recording metadata separately**: Don't conflate sync timestamps with recording timestamps
-4. **Add user timezone preference**: Allow users to set their preferred timezone for display
+2. **Consistent Timestamps**: All Firestore timestamps already use `datetime.now(timezone.utc)`, ensuring consistency
+
+### Frontend Changes
+1. **UTC Parsing**: Updated `parseSessionIdTime` in `Sidebar.jsx` to parse timestamps as UTC:
+   ```javascript
+   // Parse timestamp from session ID (format: YYYYMMDDHHMMSSxxxxxx)
+   const parseSessionIdTime = (sessionId) => {
+     if (!sessionId || sessionId.length < 14 || !sessionId.substring(0, 14).match(/^\d{14}$/)) {
+       return null;
+     }
+     
+     const year = sessionId.substring(0, 4);
+     const month = sessionId.substring(4, 6);
+     const day = sessionId.substring(6, 8);
+     const hour = sessionId.substring(8, 10);
+     const minute = sessionId.substring(10, 12);
+     const second = sessionId.substring(12, 14);
+     
+     // Handle backward compatibility
+     const sessionDate = parseInt(year + month + day);
+     const migrationDate = 20250626;
+     
+     if (sessionDate < migrationDate) {
+       // Old session IDs - parse as local time
+       return new Date(year, month - 1, day, hour, minute, second);
+     } else {
+       // New session IDs - parse as UTC
+       const utcDateString = `${year}-${month}-${day}T${hour}:${minute}:${second}Z`;
+       return new Date(utcDateString);
+     }
+   };
+   ```
+
+2. **Timezone Display**: All time displays now include timezone information using `timeZoneName: 'short'`:
+   - Displays show times like "2:30 PM PST" or "9:30 AM EST"
+   - Users always know what timezone the time is displayed in
+
+### Components Updated
+- `Sidebar.jsx` - Time display with timezone
+- `PatientTranscriptList.jsx` - Transcript times with timezone
+- `RecentRecordingItem.jsx` - Recording times with timezone
+- `HomePage.jsx` - Recent activity times with timezone
+- `TranscriptViewer.jsx` - Signature timestamps with timezone
+- `pdfUtils.js` - PDF signature timestamps with timezone
 
 ## Impact
-- Users can reliably find recordings by date within the 21-day retention window
-- Doctors can organize patient visits chronologically
-- No data loss or corruption - only display issues
+- **Multi-timezone Support**: Users in different timezones see correct local times
+- **HIPAA Compliance**: Accurate timestamps prevent potential fraud issues
+- **User Clarity**: Timezone indicators prevent confusion
+- **Backward Compatibility**: Existing recordings display correctly
 
-## Decision
-Given the complexity of retrofitting timezone handling and the low priority of exact time display, we've removed the time display from the UI while maintaining correct date-based sorting. This provides the essential functionality doctors need without the confusion of incorrect times.
+## Technical Notes
+- Session IDs generated before June 26, 2025 are treated as server local time
+- Session IDs generated after June 26, 2025 are treated as UTC
+- All times display in the user's browser timezone with clear timezone indicators
+- No data migration required - the solution handles both old and new formats

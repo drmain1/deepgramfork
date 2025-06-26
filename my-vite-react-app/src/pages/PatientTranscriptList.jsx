@@ -152,7 +152,11 @@ function PatientTranscriptList() {
   const formatTime = (dateString) => {
     if (!dateString) return 'N/A';
     try {
-      return format(new Date(dateString), 'h:mm a');
+      return new Date(dateString).toLocaleString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZoneName: 'short'  // Shows timezone like "PST" or "EST"
+      });
     } catch {
       return 'Invalid time';
     }

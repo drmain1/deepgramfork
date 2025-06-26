@@ -38,7 +38,8 @@ async def handle_speechmatics_websocket(websocket: WebSocket, get_user_settings_
     logger.info(f"Speechmatics WebSocket connection accepted from: {websocket.client.host}:{websocket.client.port} for user: {authenticated_user_id}")
 
     # Generate default session ID - may be overridden by client
-    session_id = datetime.now().strftime("%Y%m%d%H%M%S%f")
+    # Using UTC for consistent timestamps across timezones
+    session_id = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
     
     # Initialize Speechmatics settings
     user_profile_utterances = False  # Default value
