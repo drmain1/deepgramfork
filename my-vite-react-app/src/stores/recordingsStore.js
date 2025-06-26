@@ -323,8 +323,21 @@ const useRecordingsStore = create(
           console.log(`[selectRecording] Found recording:`, {
             id: recording?.id,
             hasTranscript: !!recording?.transcript,
-            transcriptLength: recording?.transcript?.length || 0
+            transcriptLength: recording?.transcript?.length || 0,
+            status: recording?.status
           });
+          
+          // Check if recording is still processing
+          if (recording?.status === 'processing' || recording?.status === 'saving') {
+            set({ 
+              selectedRecordingId: recordingId,
+              originalTranscriptContent: null,
+              polishedTranscriptContent: null,
+              selectedTranscriptError: 'PROCESSING',
+              isLoadingSelectedTranscript: false
+            });
+            return;
+          }
           
           // If recording has inline transcript, set it immediately
           if (recording?.transcript) {
@@ -355,8 +368,8 @@ const useRecordingsStore = create(
           }
           
           try {
-            const cleanedKey = gcsKey.replace(/^(s3|gs):\/\/[^\/]+\//, '');
-            const [userId, ...pathParts] = cleanedKey.split('/');
+            const cleanedKey = gcsKey.replace(/^(s3|gs):\/\/[^/]+\//, '');
+            const [userId] = cleanedKey.split('/');
             
             if (userId !== currentUser?.uid) {
               throw new Error('Unauthorized access to transcript');
@@ -393,6 +406,16 @@ const useRecordingsStore = create(
           
           const recording = recordings.find(r => r.id === selectedRecordingId);
           if (!recording) return;
+          
+          // Check if still processing
+          if (recording.status === 'processing' || recording.status === 'saving') {
+            console.log(`[loadSelectedTranscript] Recording ${selectedRecordingId} is still processing`);
+            set({ 
+              selectedTranscriptError: 'PROCESSING',
+              isLoadingSelectedTranscript: false 
+            });
+            return;
+          }
           
           set({ isLoadingSelectedTranscript: true, selectedTranscriptError: null });
           
@@ -431,10 +454,29 @@ const useRecordingsStore = create(
             );
             
             if (!response.ok) {
+              // Check if it's still processing
+              if (response.status === 404) {
+                // Transcript not ready yet, set processing state
+                set({
+                  selectedTranscriptError: 'PROCESSING',
+                  isLoadingSelectedTranscript: false
+                });
+                return;
+              }
               throw new Error(`Failed to fetch transcript: ${response.status}`);
             }
             
             const transcriptData = await response.json();
+            
+            // Check if transcript content is actually available
+            if (!transcriptData.originalTranscript || transcriptData.originalTranscript === '') {
+              // Transcript exists but content not ready yet
+              set({
+                selectedTranscriptError: 'PROCESSING',
+                isLoadingSelectedTranscript: false
+              });
+              return;
+            }
             
             set({
               originalTranscriptContent: transcriptData.originalTranscript || 'No original transcript available.',
@@ -461,7 +503,7 @@ const useRecordingsStore = create(
                   polishedTranscriptContent: polishedContent || 'No polished transcript available.',
                   isLoadingSelectedTranscript: false
                 });
-              } catch (gcsError) {
+              } catch {
                 set({
                   selectedTranscriptError: error.message,
                   isLoadingSelectedTranscript: false

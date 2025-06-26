@@ -19,7 +19,14 @@ import {
   FormControlLabel,
   Divider,
   Breadcrumbs,
-  Link
+  Link,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -78,8 +85,11 @@ function PatientTranscriptList() {
       
       if (transcriptsResponse.ok) {
         const transcriptsData = await transcriptsResponse.json();
+        console.log(`Fetched ${transcriptsData.length} transcripts for patient ${patientId}`);
         setTranscripts(transcriptsData);
       } else {
+        const errorText = await transcriptsResponse.text();
+        console.error('Failed to fetch transcripts:', transcriptsResponse.status, errorText);
         throw new Error('Failed to fetch transcripts');
       }
     } catch (error) {
@@ -252,23 +262,7 @@ function PatientTranscriptList() {
         </Box>
       </Box>
 
-      {/* Select All */}
-      {transcripts.length > 0 && (
-        <Box mb={2}>
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={selectedTranscripts.size === transcripts.length}
-                indeterminate={selectedTranscripts.size > 0 && selectedTranscripts.size < transcripts.length}
-                onChange={handleSelectAll}
-              />
-            }
-            label="Select all transcripts"
-          />
-        </Box>
-      )}
-
-      {/* Transcripts List */}
+      {/* Transcripts Table */}
       {transcripts.length === 0 ? (
         <Card>
           <CardContent>
@@ -284,88 +278,79 @@ function PatientTranscriptList() {
           </CardContent>
         </Card>
       ) : (
-        <Grid container spacing={3}>
-          {transcripts.map((transcript) => (
-            <Grid item xs={12} key={transcript.id}>
-              <Card
-                sx={{
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  backgroundColor: selectedTranscripts.has(transcript.id) ? 'action.selected' : 'background.paper',
-                  '&:hover': {
-                    boxShadow: 2,
-                  }
-                }}
-              >
-                <CardContent>
-                  <Box display="flex" alignItems="flex-start" gap={2}>
+        <TableContainer component={Paper} elevation={1}>
+          <Table sx={{ minWidth: 650 }}>
+            <TableHead>
+              <TableRow sx={{ backgroundColor: 'grey.50' }}>
+                <TableCell padding="checkbox">
+                  <Checkbox
+                    indeterminate={selectedTranscripts.size > 0 && selectedTranscripts.size < transcripts.length}
+                    checked={transcripts.length > 0 && selectedTranscripts.size === transcripts.length}
+                    onChange={handleSelectAll}
+                  />
+                </TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Date & Time</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Encounter Type</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Location</TableCell>
+                <TableCell sx={{ fontWeight: 600 }} align="center">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {transcripts.map((transcript) => (
+                <TableRow
+                  key={transcript.id}
+                  hover
+                  selected={selectedTranscripts.has(transcript.id)}
+                  sx={{ 
+                    cursor: 'pointer',
+                    '&:hover': {
+                      backgroundColor: 'action.hover',
+                    }
+                  }}
+                  onClick={() => navigate(`/transcription?id=${transcript.id}`)}
+                >
+                  <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
                     <Checkbox
                       checked={selectedTranscripts.has(transcript.id)}
                       onChange={() => handleSelectTranscript(transcript.id)}
-                      onClick={(e) => e.stopPropagation()}
                     />
-                    
-                    <Box
-                      flex={1}
-                      onClick={() => navigate(`/transcription?id=${transcript.id}`)}
-                    >
-                      <Box display="flex" justifyContent="space-between" alignItems="flex-start">
-                        <Box>
-                          <Typography variant="h6" gutterBottom>
-                            {transcript.encounterType || 'Medical Encounter'}
-                          </Typography>
-                          <Box display="flex" gap={2} flexWrap="wrap">
-                            <Chip
-                              icon={<CalendarIcon />}
-                              label={formatDate(transcript.date)}
-                              size="small"
-                              variant="outlined"
-                            />
-                            <Chip
-                              icon={<AccessTimeIcon />}
-                              label={formatTime(transcript.date)}
-                              size="small"
-                              variant="outlined"
-                            />
-                            {transcript.durationSeconds && (
-                              <Chip
-                                label={`Duration: ${formatDuration(transcript.durationSeconds)}`}
-                                size="small"
-                                variant="outlined"
-                              />
-                            )}
-                            {transcript.location && (
-                              <Chip
-                                label={transcript.location}
-                                size="small"
-                                variant="outlined"
-                              />
-                            )}
-                          </Box>
-                        </Box>
-                        
-                        <IconButton
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleMenuClick(e, transcript);
-                          }}
-                        >
-                          <MoreVertIcon />
-                        </IconButton>
+                  </TableCell>
+                  <TableCell>
+                    <Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <CalendarIcon fontSize="small" color="action" />
+                        <Typography variant="body2">{formatDate(transcript.date)}</Typography>
                       </Box>
-                      
-                      {transcript.patientContext && (
-                        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                          {transcript.patientContext}
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                        <AccessTimeIcon fontSize="small" color="action" />
+                        <Typography variant="caption" color="text.secondary">
+                          {formatTime(transcript.date)}
                         </Typography>
-                      )}
+                      </Box>
                     </Box>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                      {transcript.encounterType || 'Medical Encounter'}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>{transcript.location || '—'}</TableCell>
+                  <TableCell align="center">
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleMenuClick(e, transcript);
+                      }}
+                    >
+                      <MoreVertIcon />
+                    </IconButton>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
       )}
 
       {/* Context Menu */}

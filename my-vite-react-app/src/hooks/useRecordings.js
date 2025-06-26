@@ -48,25 +48,50 @@ export function useRecordings() {
     }
   }, [selectedRecordingId, currentUser, loadSelectedTranscript, getToken]);
 
-  // Poll for recordings with 'saving' status
+  // Poll for recordings with 'saving' or 'processing' status
   useEffect(() => {
     if (!currentUser?.uid) return;
 
-    const hasSavingRecordings = recordings.some(rec => rec.status === 'saving');
-    if (!hasSavingRecordings) return;
+    const hasProcessingRecordings = recordings.some(rec => 
+      rec.status === 'saving' || rec.status === 'processing'
+    );
+    if (!hasProcessingRecordings) return;
 
-    console.log('Detected recordings with saving status, setting up periodic refresh...');
+    console.log('Detected recordings with saving/processing status, setting up periodic refresh...');
     
     const intervalId = setInterval(() => {
       console.log('Checking for completed recordings...');
       fetchUserRecordings(currentUser, getToken);
-    }, 5000);
+    }, 3000); // Reduced to 3 seconds for better UX
 
     return () => {
       console.log('Clearing periodic refresh interval');
       clearInterval(intervalId);
     };
   }, [recordings, currentUser, fetchUserRecordings, getToken]);
+
+  // Poll when selected transcript is processing
+  useEffect(() => {
+    if (!currentUser?.uid || !selectedRecordingId || selectedTranscriptError !== 'PROCESSING') return;
+
+    console.log('Selected transcript is processing, setting up polling...');
+    
+    const intervalId = setInterval(() => {
+      console.log('Retrying to load processing transcript...');
+      loadSelectedTranscript(currentUser, getToken);
+    }, 3000); // Poll every 3 seconds
+
+    // Also fetch recordings to update status
+    const recordingsIntervalId = setInterval(() => {
+      fetchUserRecordings(currentUser, getToken);
+    }, 5000); // Poll recordings every 5 seconds
+
+    return () => {
+      console.log('Clearing transcript processing poll');
+      clearInterval(intervalId);
+      clearInterval(recordingsIntervalId);
+    };
+  }, [selectedTranscriptError, selectedRecordingId, currentUser, loadSelectedTranscript, fetchUserRecordings, getToken]);
 
   // Return compatible API
   return {

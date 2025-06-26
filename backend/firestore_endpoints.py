@@ -280,12 +280,16 @@ async def save_session_data_firestore(
             logger.warning(f"Session ID format not recognized for timestamp parsing: {session_id}")
         
         # Create transcript document in Firestore
+        # Log patient_id for debugging
+        patient_id = request_data.get('patient_id')
+        logger.info(f"Saving session with patient_id: {patient_id}, patient_name: {request_data.get('patient_name')}")
+        
         transcript_data = {
             'user_id': user_id,
             'session_id': session_id,
             'status': TranscriptStatus.PROCESSING,
             'patient_name': request_data.get('patient_name', 'Unknown Patient'),
-            'patient_id': request_data.get('patient_id'),  # Add patient profile reference
+            'patient_id': patient_id,  # Add patient profile reference
             'patient_context': request_data.get('patient_context'),
             'encounter_type': request_data.get('encounter_type'),
             'location': request_data.get('location'),

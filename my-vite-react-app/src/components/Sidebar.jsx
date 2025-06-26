@@ -477,7 +477,7 @@ function Sidebar() {
                   onClick={() => navigate('/patients')}
                 >
                   <span className="material-icons text-xl">group</span>
-                  <span>View Patients</span>
+                  <span>Manage Patients</span>
                 </button>
                 <button
                   className="sidebar-link flex items-center gap-3 p-3 rounded-lg w-full text-base"

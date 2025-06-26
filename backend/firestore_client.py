@@ -474,14 +474,17 @@ class FirestoreClient:
             ).order_by('created_at', direction=firestore.Query.DESCENDING)
             
             transcripts = []
+            docs_found = 0
             for doc in query.stream():
+                docs_found += 1
                 transcript_data = doc.to_dict()
                 transcript_data['id'] = doc.id
+                logger.info(f"Found transcript {doc.id} with patient_id: {transcript_data.get('patient_id')}, patient_name: {transcript_data.get('patient_name')}")
                 
                 # Format the transcript data to match RecordingInfo model
                 recording_info = {
                     'id': doc.id,
-                    'name': transcript_data.get('patient_context', 'Unknown Patient'),
+                    'name': transcript_data.get('patient_name', 'Unknown Patient'),
                     'date': transcript_data.get('created_at', datetime.now()),
                     'status': transcript_data.get('status', 'saved'),
                     'gcsPathTranscript': transcript_data.get('gcs_path_transcript'),
@@ -499,7 +502,7 @@ class FirestoreClient:
                 }
                 transcripts.append(recording_info)
             
-            logger.info(f"Retrieved {len(transcripts)} transcripts for patient {patient_id}")
+            logger.info(f"Query found {docs_found} documents, returning {len(transcripts)} transcripts for patient {patient_id}")
             return transcripts
             
         except Exception as e:

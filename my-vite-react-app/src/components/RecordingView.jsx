@@ -369,10 +369,10 @@ function RecordingView({
       return;
     }
 
-    // Update status to 'saving' immediately to show processing indicator
+    // Update status to 'processing' immediately to show processing indicator
     updateRecording(sessionId, { 
-      status: 'saving', 
-      name: `Processing: ${patientDetails || 'New Note'}...` 
+      status: 'processing', 
+      name: `${patientDetails || 'New Note'}` 
     });
 
     setSaveStatusMessage('Generating and saving notes...');
@@ -412,6 +412,8 @@ function RecordingView({
       console.log('- llmTemplateId:', llmTemplateId);
       console.log('- encounterType:', encounterType);
       console.log('- hasInstructions:', !!llmInstructions);
+      console.log('- patient_id:', selectedPatient?.id || 'No patient selected');
+      console.log('- patient_name:', patientDetails);
       console.log('==========================')
       
       // Embed location data in the transcript content itself as a backup
@@ -461,8 +463,9 @@ function RecordingView({
         const savedName = patientDetails || `Session ${sessionId}`;
         
         // Update with correct property names that match RecordingsContext expectations
+        // Keep status as 'processing' until transcript is ready
         updateRecording(sessionId, {
-          status: 'saved',
+          status: 'processing', // Keep as processing until backend confirms completion
           name: savedName,
           // Don't update date - preserve the original recording start time
           gcsPathTranscript: result.saved_paths?.original_transcript,
@@ -479,14 +482,13 @@ function RecordingView({
           selectRecording(null);
         }
         
-        // Trigger a fetch of recordings after a longer delay to ensure backend metadata is fully saved
-        // This prevents the patient name from reverting to timestamp
-        setTimeout(() => {
-          if (fetchUserRecordings) {
-            console.log('Fetching updated recordings after save...');
-            fetchUserRecordings();
-          }
-        }, 3000); // Increased from 1000ms to 3000ms
+        // Immediately fetch recordings to get initial status
+        if (fetchUserRecordings) {
+          console.log('Fetching updated recordings after save...');
+          fetchUserRecordings();
+        }
+        
+        // The polling mechanism in useRecordings will handle checking for completion
       } else {
         const errorText = result.error || result.detail || `HTTP ${response.status}: ${response.statusText}`;
         console.error('Server responded with error:', errorText);
