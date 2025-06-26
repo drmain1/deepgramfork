@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import PatientSelector from './PatientSelector';
+import { useAuth } from '../contexts/FirebaseAuthContext';
 
 function SetupView({
   patientDetails,
@@ -19,7 +20,11 @@ function SetupView({
   error,
   onStartEncounter,
   selectedPatient,
-  setSelectedPatient
+  setSelectedPatient,
+  isDictationMode,
+  setIsDictationMode,
+  dateOfService,
+  setDateOfService
 }) {
   // Debug logging
   // TEMPORARILY DISABLED FOR DEBUGGING
@@ -35,6 +40,10 @@ function SetupView({
   const [micStatus, setMicStatus] = useState('checking'); // 'checking', 'active', 'error', 'denied'
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [showPatientSelector, setShowPatientSelector] = useState(false);
+  const [showLastTranscript, setShowLastTranscript] = useState(false);
+  const [lastTranscript, setLastTranscript] = useState(null);
+  const [loadingTranscript, setLoadingTranscript] = useState(false);
+  const { getToken, user } = useAuth();
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const micStreamRef = useRef(null);
@@ -238,6 +247,7 @@ function SetupView({
                             setSelectedPatient(null);
                           }
                         }}
+                        autoComplete="off"
                         required
                       />
                       <button
@@ -250,24 +260,95 @@ function SetupView({
                       </button>
                     </div>
                     {selectedPatient && (
-                      <div className="mt-3 p-3 bg-blue-50 rounded-lg flex items-center justify-between">
-                        <div className="text-lg text-blue-700">
-                          <span className="font-medium">Selected:</span> {selectedPatient.last_name}, {selectedPatient.first_name}
-                          {selectedPatient.date_of_accident && (
-                            <span className="text-base text-blue-600 ml-2">
-                              (DOA: {new Date(selectedPatient.date_of_accident).toLocaleDateString()})
-                            </span>
-                          )}
+                      <div className="mt-3 p-3 bg-blue-50 rounded-lg">
+                        <div className="flex items-center justify-between">
+                          <div className="text-lg text-blue-700">
+                            <span className="font-medium">Selected:</span> {selectedPatient.last_name}, {selectedPatient.first_name}
+                            {selectedPatient.date_of_accident && (
+                              <span className="text-base text-blue-600 ml-2">
+                                (DOA: {new Date(selectedPatient.date_of_accident).toLocaleDateString()})
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            className="text-blue-600 hover:text-blue-800"
+                            onClick={() => {
+                              setSelectedPatient(null);
+                              setPatientDetails('');
+                            }}
+                          >
+                            <span className="material-icons">close</span>
+                          </button>
                         </div>
                         <button
                           type="button"
-                          className="text-blue-600 hover:text-blue-800"
-                          onClick={() => {
-                            setSelectedPatient(null);
-                            setPatientDetails('');
+                          className="mt-2 flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 transition-colors"
+                          onClick={async () => {
+                            setLoadingTranscript(true);
+                            setShowLastTranscript(true);
+                            
+                            try {
+                              const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+                              const accessToken = await getToken();
+                              
+                              // First, fetch all user recordings to find ones matching this patient
+                              const recordingsResponse = await fetch(
+                                `${API_BASE_URL}/api/v1/user_recordings/${user.uid}`,
+                                {
+                                  headers: {
+                                    Authorization: `Bearer ${accessToken}`,
+                                  },
+                                }
+                              );
+                              
+                              if (recordingsResponse.ok) {
+                                const recordings = await recordingsResponse.json();
+                                
+                                // Filter recordings that match the patient name
+                                const patientName = `${selectedPatient.last_name}, ${selectedPatient.first_name}`;
+                                const patientRecordings = recordings.filter(r => 
+                                  r.name && r.name.toLowerCase().includes(patientName.toLowerCase())
+                                );
+                                
+                                if (patientRecordings.length > 0) {
+                                  // Sort by date to get the most recent
+                                  patientRecordings.sort((a, b) => new Date(b.date) - new Date(a.date));
+                                  const lastRecording = patientRecordings[0];
+                                  
+                                  // Fetch the actual transcript content
+                                  const transcriptResponse = await fetch(
+                                    `${API_BASE_URL}/api/v1/transcript/${user.uid}/${lastRecording.id}`,
+                                    {
+                                      headers: {
+                                        Authorization: `Bearer ${accessToken}`,
+                                      },
+                                    }
+                                  );
+                                  
+                                  if (transcriptResponse.ok) {
+                                    const transcriptData = await transcriptResponse.json();
+                                    setLastTranscript({
+                                      date: new Date(lastRecording.date).toLocaleDateString(),
+                                      content: transcriptData.polishedTranscript || transcriptData.originalTranscript || 'No transcript content available.'
+                                    });
+                                  } else {
+                                    setLastTranscript(null);
+                                  }
+                                } else {
+                                  setLastTranscript(null);
+                                }
+                              }
+                            } catch (error) {
+                              console.error('Error fetching last transcript:', error);
+                              setLastTranscript(null);
+                            } finally {
+                              setLoadingTranscript(false);
+                            }
                           }}
                         >
-                          <span className="material-icons">close</span>
+                          <span className="material-icons text-sm">history</span>
+                          View Last Visit
                         </button>
                       </div>
                     )}
@@ -276,6 +357,53 @@ function SetupView({
                         <span className="material-icons text-xl">error</span>
                         Please enter patient details
                       </p>
+                    )}
+                    
+                    {/* Dictation Mode Section - Only show when a patient is selected */}
+                    {selectedPatient && (
+                      <div className="mt-6 p-4 bg-indigo-50 rounded-lg border border-indigo-200">
+                        <label className="flex items-center cursor-pointer">
+                          <input
+                            className="checkbox-custom"
+                            type="checkbox"
+                            checked={isDictationMode}
+                            onChange={(e) => {
+                              setIsDictationMode(e.target.checked);
+                              // Clear date of service when unchecking
+                              if (!e.target.checked) {
+                                setDateOfService('');
+                              }
+                            }}
+                          />
+                          <span className="ml-4">
+                            <span className="text-lg font-medium text-indigo-700">Dictation Mode</span>
+                            <span className="block text-base text-indigo-600 mt-1">
+                              Record notes for a past patient visit
+                            </span>
+                          </span>
+                        </label>
+                        
+                        {isDictationMode && (
+                          <div className="mt-4">
+                            <label className="form-label text-lg" htmlFor="date-of-service">
+                              Date of Service <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              className="input-field text-lg py-4"
+                              id="date-of-service"
+                              name="date-of-service"
+                              type="date"
+                              value={dateOfService}
+                              onChange={(e) => setDateOfService(e.target.value)}
+                              max={new Date().toISOString().split('T')[0]} // Can't select future dates
+                              required={isDictationMode}
+                            />
+                            <p className="text-base text-indigo-600 mt-2">
+                              Select the date when you saw this patient
+                            </p>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
 
@@ -597,7 +725,7 @@ function SetupView({
                     <button
                       className="w-full bg-blue-600 text-white font-semibold text-xl py-5 px-8 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-300 disabled:text-blue-100"
                       type="submit"
-                      disabled={!patientDetails.trim()}
+                      disabled={!patientDetails.trim() || (isDictationMode && !dateOfService)}
                       onClick={(e) => {
                         console.log('Button clicked!', e);
                         console.log('Patient details:', patientDetails);
@@ -609,45 +737,6 @@ function SetupView({
                         Start Encounter
                       </span>
                     </button>
-                  </div>
-                </div>
-
-                {/* Quick Tips Card */}
-                <div className="bg-blue-50 border border-blue-200 p-8 rounded-lg shadow-sm">
-                  <h3 className="text-lg font-semibold text-blue-900 mb-6 flex items-center gap-3">
-                    <span className="material-icons text-blue-600 text-2xl">lightbulb</span>
-                    Recording Best Practices
-                  </h3>
-                  <ul className="space-y-4 text-lg text-blue-800">
-                    <li className="flex items-start gap-3">
-                      <span className="material-icons text-lg mt-1">check_circle</span>
-                      <span>Speak clearly and at a normal pace</span>
-                    </li>
-                    <li className="flex items-start gap-3">
-                      <span className="material-icons text-lg mt-1">check_circle</span>
-                      <span>Minimize background noise and distractions</span>
-                    </li>
-                    <li className="flex items-start gap-3">
-                      <span className="material-icons text-lg mt-1">check_circle</span>
-                      <span>Test your microphone before starting</span>
-                    </li>
-                    <li className="flex items-start gap-3">
-                      <span className="material-icons text-lg mt-1">check_circle</span>
-                      <span>Include all relevant clinical details</span>
-                    </li>
-                  </ul>
-                </div>
-
-
-
-                {/* Status Indicator */}
-                <div className="bg-green-50 border border-green-200 p-6 rounded-lg shadow-sm">
-                  <div className="flex items-center gap-3">
-                    <span className="material-icons text-green-600 text-2xl">check_circle</span>
-                    <div>
-                      <h4 className="text-lg font-semibold text-green-900">System Ready</h4>
-                      <p className="text-base text-green-700 mt-1">All services are operational</p>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -677,6 +766,87 @@ function SetupView({
               }}
               onClose={() => setShowPatientSelector(false)}
             />
+          </div>
+        </div>
+      )}
+      
+      {/* Last Transcript Modal */}
+      {showLastTranscript && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowLastTranscript(false)}>
+          <div 
+            className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[85vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-semibold flex items-center gap-3">
+                    <span className="material-icons">medical_information</span>
+                    Previous Visit Summary
+                  </h2>
+                  <p className="text-blue-100 mt-1">
+                    {selectedPatient?.last_name}, {selectedPatient?.first_name}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowLastTranscript(false)}
+                  className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                >
+                  <span className="material-icons text-2xl">close</span>
+                </button>
+              </div>
+            </div>
+            
+            {/* Content */}
+            <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(85vh - 180px)' }}>
+              {loadingTranscript ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
+                  <p className="text-gray-600">Loading transcript...</p>
+                </div>
+              ) : lastTranscript ? (
+                <div>
+                  {/* Date Badge */}
+                  <div className="mb-6">
+                    <span className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-full text-gray-700">
+                      <span className="material-icons text-sm">calendar_today</span>
+                      <span className="font-medium">Visit Date: {lastTranscript.date}</span>
+                    </span>
+                  </div>
+                  
+                  {/* Transcript Content */}
+                  <div className="prose prose-lg max-w-none">
+                    <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                      <pre className="whitespace-pre-wrap font-sans text-gray-800 leading-relaxed">
+                        {lastTranscript.content}
+                      </pre>
+                    </div>
+                  </div>
+                  
+                  {/* Quick Actions */}
+                  <div className="mt-6 flex gap-3">
+                    <button
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors"
+                      onClick={() => {
+                        // Copy relevant info to context
+                        const relevantInfo = `Previous visit (${lastTranscript.date}): ${lastTranscript.content.split('\n')[0]}`;
+                        setPatientContext(prev => prev ? `${prev}\n\n${relevantInfo}` : relevantInfo);
+                        setShowLastTranscript(false);
+                      }}
+                    >
+                      <span className="material-icons text-sm">content_copy</span>
+                      Copy Summary to Context
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <span className="material-icons text-6xl text-gray-300 mb-4">description</span>
+                  <p className="text-gray-600">No previous transcripts found for this patient.</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

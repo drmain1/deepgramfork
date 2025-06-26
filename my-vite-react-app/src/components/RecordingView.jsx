@@ -29,6 +29,8 @@ function RecordingView({
   targetLanguage,
   userSettings,
   selectedPatient,
+  isDictationMode,
+  dateOfService,
   onClose,
   resumeData
 }) {
@@ -140,7 +142,9 @@ function RecordingView({
             is_multilingual: isMultilingual,
             target_language: targetLanguage,
             // Include session_id if resuming a draft to reuse the same session
-            session_id: resumeData?.sessionId || undefined
+            session_id: resumeData?.sessionId || undefined,
+            // Include date_of_service if in dictation mode
+            date_of_service: isDictationMode && dateOfService ? dateOfService : undefined
           };
           
           try {
@@ -600,6 +604,11 @@ function RecordingView({
             <p className="text-lg text-gray-500 mt-2">
               {patientDetails || 'New Session'} {sessionId && `(${sessionId})`}
               {resumeData && <span className="text-blue-600 ml-2">[Resumed Draft]</span>}
+              {isDictationMode && (
+                <span className="text-purple-600 ml-2">
+                  [Dictation Mode - Service Date: {new Date(dateOfService).toLocaleDateString()}]
+                </span>
+              )}
             </p>
             {currentProfileId && userSettings.transcriptionProfiles && (
               <p className="text-sm text-gray-600 mt-1">

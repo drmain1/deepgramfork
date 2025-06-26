@@ -23,6 +23,8 @@ function TranscriptionPage() {
   const [isMultilingual, setIsMultilingual] = useState(false);
   const [targetLanguage, setTargetLanguage] = useState('');
   const [selectedPatient, setSelectedPatient] = useState(null);
+  const [isDictationMode, setIsDictationMode] = useState(false);
+  const [dateOfService, setDateOfService] = useState('');
 
   // Initialize component state
   useEffect(() => {
@@ -103,6 +105,9 @@ function TranscriptionPage() {
     // Navigate back to clean transcription URL
     navigate('/transcription', { replace: true });
     setError(null);
+    // Clear dictation mode when closing recording
+    setIsDictationMode(false);
+    setDateOfService('');
     // Clear selected recording if it was a draft
     if (selectedRecordingId) {
       const recording = recordings.find(r => r.id === selectedRecordingId);
@@ -218,6 +223,10 @@ function TranscriptionPage() {
         onStartEncounter={handleStartEncounter}
         selectedPatient={selectedPatient}
         setSelectedPatient={setSelectedPatient}
+        isDictationMode={isDictationMode}
+        setIsDictationMode={setIsDictationMode}
+        dateOfService={dateOfService}
+        setDateOfService={setDateOfService}
       />
     );
   } else if (currentView === 'recording') {
@@ -231,6 +240,8 @@ function TranscriptionPage() {
         targetLanguage={targetLanguage}
         userSettings={userSettings}
         selectedPatient={selectedPatient}
+        isDictationMode={isDictationMode}
+        dateOfService={dateOfService}
         onClose={handleCloseRecording}
       />
     );

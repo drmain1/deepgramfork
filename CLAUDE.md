@@ -97,6 +97,7 @@ firebase deploy --only firestore  # Deploy only Firestore rules
    - Real-time transcription via WebSocket
    - Draft auto-save functionality
    - Post-processing with AI polish
+   - **Dictation Mode**: When selecting an existing patient, doctors can enable dictation mode to record notes for past visits by specifying the date of service
 
 2. **Authentication Flow**:
    - Firebase Auth for user management

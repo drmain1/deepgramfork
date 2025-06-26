@@ -317,11 +317,25 @@ async def handle_speechmatics_websocket(websocket: WebSocket, get_user_settings_
             is_multilingual_from_client = config_data.get("is_multilingual", False)
             target_language_from_client = config_data.get("target_language", None)
             session_id_from_client = config_data.get("session_id", None)  # Support resuming draft sessions
+            date_of_service = config_data.get("date_of_service", None)  # Support dictation mode with past dates
             
             # Update session_id if provided by client (for resuming drafts)
             if session_id_from_client:
                 session_id = session_id_from_client
                 logger.info(f"Using session_id from client for draft resumption: {session_id}")
+            elif date_of_service:
+                # Generate session ID using the provided date of service for dictation mode
+                try:
+                    # Parse the date string (expected format: YYYY-MM-DD)
+                    service_date = datetime.strptime(date_of_service, "%Y-%m-%d")
+                    # Use the service date with current time for the session ID
+                    current_time = datetime.now(timezone.utc)
+                    session_id = service_date.strftime("%Y%m%d") + current_time.strftime("%H%M%S%f")
+                    logger.info(f"Generated session_id using date_of_service {date_of_service}: {session_id}")
+                except ValueError as e:
+                    logger.error(f"Invalid date_of_service format: {date_of_service}. Expected YYYY-MM-DD")
+                    # Fall back to default session ID
+                    session_id = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
             
             # Update target language from client
             target_language = target_language_from_client or "multi"

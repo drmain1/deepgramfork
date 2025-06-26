@@ -29,16 +29,25 @@ class FirestoreSessionManager:
     def __init__(self, timeout_minutes: int = 25):
         self.timeout_minutes = timeout_minutes
         # Use Firebase project ID for Firestore
-        firebase_project_id = os.getenv('FIREBASE_PROJECT_ID', 'medlegaldoc-b31df')
-        logger.info(f"Initializing Firestore client for project: {firebase_project_id}")
-        self.db = firestore.Client(project=firebase_project_id)
-        self.sessions_collection = self.db.collection('user_sessions')
+        self.firebase_project_id = os.getenv('FIREBASE_PROJECT_ID', 'medlegaldoc-b31df')
+        logger.info(f"Initializing Firestore client for project: {self.firebase_project_id}")
+        self._init_firestore_client()
         
         # Create index for efficient cleanup queries
         self._ensure_indexes()
         
         # Flag to track if cleanup task has been started
         self._cleanup_task_started = False
+    
+    def _init_firestore_client(self):
+        """Initialize or reinitialize the Firestore client."""
+        try:
+            self.db = firestore.Client(project=self.firebase_project_id)
+            self.sessions_collection = self.db.collection('user_sessions')
+            logger.info("Firestore client initialized successfully")
+        except Exception as e:
+            logger.error(f"Error initializing Firestore client: {str(e)}")
+            raise
     
     def _ensure_indexes(self):
         """Ensure Firestore indexes are created for efficient queries."""
@@ -151,33 +160,69 @@ class FirestoreSessionManager:
     
     async def _periodic_cleanup(self):
         """Background task to clean up expired sessions."""
+        consecutive_failures = 0
+        max_consecutive_failures = 3
+        
         while True:
             try:
                 await asyncio.sleep(300)  # Run every 5 minutes
                 
-                now = datetime.now(timezone.utc)
-                
-                # Find and mark expired sessions
-                expired_sessions = self.sessions_collection.where(
-                    filter=FieldFilter('expires_at', '<', now)
-                ).where(
-                    filter=FieldFilter('active', '==', True)
-                ).limit(100).get()  # Process in batches
-                
-                expired_count = 0
-                for session_doc in expired_sessions:
-                    session_ref = self.sessions_collection.document(session_doc.id)
-                    session_ref.update({
-                        'active': False,
-                        'expired_at': now
-                    })
-                    expired_count += 1
-                
-                if expired_count > 0:
-                    logger.info(f"Cleaned up {expired_count} expired sessions")
-                
+                # Try to perform cleanup with retry logic
+                for attempt in range(3):
+                    try:
+                        now = datetime.now(timezone.utc)
+                        
+                        # Find and mark expired sessions
+                        expired_sessions = self.sessions_collection.where(
+                            filter=FieldFilter('expires_at', '<', now)
+                        ).where(
+                            filter=FieldFilter('active', '==', True)
+                        ).limit(100).get()  # Process in batches
+                        
+                        expired_count = 0
+                        for session_doc in expired_sessions:
+                            session_ref = self.sessions_collection.document(session_doc.id)
+                            session_ref.update({
+                                'active': False,
+                                'expired_at': now
+                            })
+                            expired_count += 1
+                        
+                        if expired_count > 0:
+                            logger.info(f"Cleaned up {expired_count} expired sessions")
+                        
+                        consecutive_failures = 0  # Reset on success
+                        break  # Success, exit retry loop
+                        
+                    except (gcp_exceptions.ServiceUnavailable, gcp_exceptions.DeadlineExceeded, 
+                            gcp_exceptions.InternalServerError, Exception) as e:
+                        if attempt < 2:  # Still have retries left
+                            logger.warning(f"Cleanup attempt {attempt + 1} failed, retrying: {str(e)}")
+                            await asyncio.sleep(10 * (attempt + 1))  # Exponential backoff
+                            
+                            # Try to reinitialize client on connection errors
+                            if "transport" in str(e).lower() or "connection" in str(e).lower():
+                                try:
+                                    self._init_firestore_client()
+                                    logger.info("Reinitialized Firestore client after connection error")
+                                except Exception:
+                                    pass
+                        else:
+                            raise  # Re-raise on final attempt
+                        
             except Exception as e:
-                logger.error(f"Error in session cleanup: {str(e)}")
+                consecutive_failures += 1
+                logger.error(f"Error in session cleanup (failure {consecutive_failures}/{max_consecutive_failures}): {str(e)}")
+                
+                # If too many consecutive failures, try to reinitialize the client
+                if consecutive_failures >= max_consecutive_failures:
+                    logger.warning("Too many consecutive cleanup failures, reinitializing Firestore client")
+                    try:
+                        self._init_firestore_client()
+                        consecutive_failures = 0
+                    except Exception as reinit_error:
+                        logger.error(f"Failed to reinitialize Firestore client: {str(reinit_error)}")
+                        # Continue anyway, will retry on next iteration
 
 # Create singleton instance
 firestore_session_manager = FirestoreSessionManager(
