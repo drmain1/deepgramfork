@@ -54,6 +54,10 @@ class PatientDocument(BaseModel):
     date_of_birth: datetime
     date_of_accident: Optional[datetime] = None
     
+    # Patient notes
+    notes_private: Optional[str] = None  # Private notes not shared with AI
+    notes_ai_context: Optional[str] = None  # Notes shared with AI for context
+    
     # Timestamps
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

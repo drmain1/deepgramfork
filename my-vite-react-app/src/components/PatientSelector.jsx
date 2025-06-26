@@ -30,75 +30,54 @@ import {
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { useAuth } from '../contexts/FirebaseAuthContext';
+import { sessionManager } from '../utils/sessionManager';
+import usePatientsStore from '../stores/patientsStore';
 
-const PatientSelector = ({ selectedPatient, onSelectPatient, onClose }) => {
+const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDialogImmediately = false }) => {
   const { getToken } = useAuth();
-  const [patients, setPatients] = useState([]);
+  const { patients, fetchPatients, addPatient, updatePatient, removePatient } = usePatientsStore();
   const [searchTerm, setSearchTerm] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [showAddDialog, setShowAddDialog] = useState(false);
-  const [editingPatient, setEditingPatient] = useState(null);
+  const [showAddDialog, setShowAddDialog] = useState(openAddDialogImmediately || !!selectedPatient);
+  const [editingPatient, setEditingPatient] = useState(selectedPatient);
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
     date_of_birth: '',
-    date_of_accident: ''
+    date_of_accident: '',
+    notes_private: '',
+    notes_ai_context: ''
   });
 
-  // Ensure user has a backend session
-  const ensureBackendSession = async () => {
-    try {
-      const token = await getToken();
-      const response = await fetch('/api/v1/login', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (!response.ok) {
-        console.error('Failed to create backend session:', response.status);
-      } else {
-        console.log('Backend session created/verified');
-      }
-    } catch (error) {
-      console.error('Error creating backend session:', error);
-    }
-  };
-
-  // Fetch patients on component mount
+  // Fetch patients on component mount if not already loaded
   useEffect(() => {
     const init = async () => {
-      await ensureBackendSession();
-      await fetchPatients();
-    };
-    init();
-  }, []);
-
-  const fetchPatients = async () => {
-    try {
       setLoading(true);
-      const token = await getToken();
-      const response = await fetch('/api/v1/patients', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch patients');
-      }
-
-      const data = await response.json();
-      setPatients(data);
-    } catch (err) {
-      setError(err.message);
-    } finally {
+      await sessionManager.ensureSession(getToken);
+      await fetchPatients();
       setLoading(false);
+    };
+    if (patients.length === 0 && !openAddDialogImmediately && !selectedPatient) {
+      init();
     }
-  };
+  }, [fetchPatients, getToken, patients.length, openAddDialogImmediately, selectedPatient]);
+
+  // If we have a selectedPatient (editing mode), populate the form
+  useEffect(() => {
+    if (selectedPatient) {
+      setEditingPatient(selectedPatient);
+      setFormData({
+        first_name: selectedPatient.first_name,
+        last_name: selectedPatient.last_name,
+        date_of_birth: selectedPatient.date_of_birth.split('T')[0],
+        date_of_accident: selectedPatient.date_of_accident ? selectedPatient.date_of_accident.split('T')[0] : '',
+        notes_private: selectedPatient.notes_private || '',
+        notes_ai_context: selectedPatient.notes_ai_context || ''
+      });
+      setShowAddDialog(true);
+    }
+  }, [selectedPatient]);
 
   const handleAddPatient = async () => {
     try {
@@ -113,7 +92,9 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose }) => {
         first_name: formData.first_name,
         last_name: formData.last_name,
         date_of_birth: new Date(formData.date_of_birth).toISOString(),
-        date_of_accident: formData.date_of_accident ? new Date(formData.date_of_accident).toISOString() : null
+        date_of_accident: formData.date_of_accident ? new Date(formData.date_of_accident).toISOString() : null,
+        notes_private: formData.notes_private || null,
+        notes_ai_context: formData.notes_ai_context || null
       };
       
       console.log('Adding patient with data:', requestData);
@@ -133,11 +114,12 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose }) => {
 
       const newPatient = await response.json();
       console.log('Patient created successfully:', newPatient);
+      
+      // Add to store immediately
+      addPatient(newPatient);
+      
       setShowAddDialog(false);
       resetForm();
-      
-      // Re-fetch patients to ensure we have the latest data
-      await fetchPatients();
       
       // Auto-select the newly created patient
       onSelectPatient(newPatient);
@@ -153,7 +135,9 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose }) => {
       const requestData = {
         ...formData,
         date_of_birth: formData.date_of_birth ? new Date(formData.date_of_birth).toISOString() : null,
-        date_of_accident: formData.date_of_accident ? new Date(formData.date_of_accident).toISOString() : null
+        date_of_accident: formData.date_of_accident ? new Date(formData.date_of_accident).toISOString() : null,
+        notes_private: formData.notes_private || null,
+        notes_ai_context: formData.notes_ai_context || null
       };
       
       const token = await getToken();
@@ -171,7 +155,10 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose }) => {
       }
 
       const updatedPatient = await response.json();
-      setPatients(patients.map(p => p.id === updatedPatient.id ? updatedPatient : p));
+      
+      // Update in store immediately
+      updatePatient(updatedPatient.id, updatedPatient);
+      
       setEditingPatient(null);
       resetForm();
     } catch (err) {
@@ -197,7 +184,8 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose }) => {
         throw new Error('Failed to delete patient');
       }
 
-      setPatients(patients.filter(p => p.id !== patientId));
+      // Remove from store immediately
+      removePatient(patientId);
       
       // Clear selection if deleted patient was selected
       if (selectedPatient?.id === patientId) {
@@ -213,7 +201,9 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose }) => {
       first_name: '',
       last_name: '',
       date_of_birth: '',
-      date_of_accident: ''
+      date_of_accident: '',
+      notes_private: '',
+      notes_ai_context: ''
     });
   };
 
@@ -223,7 +213,9 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose }) => {
       first_name: patient.first_name,
       last_name: patient.last_name,
       date_of_birth: patient.date_of_birth.split('T')[0], // Convert to YYYY-MM-DD
-      date_of_accident: patient.date_of_accident ? patient.date_of_accident.split('T')[0] : ''
+      date_of_accident: patient.date_of_accident ? patient.date_of_accident.split('T')[0] : '',
+      notes_private: patient.notes_private || '',
+      notes_ai_context: patient.notes_ai_context || ''
     });
   };
 
@@ -243,14 +235,25 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose }) => {
     );
   }
 
+  // If we're opening directly to add/edit, skip the patient list
+  if ((openAddDialogImmediately || selectedPatient) && !showAddDialog) {
+    // Skip loading state and show add/edit dialog directly
+    if (loading) {
+      return null;
+    }
+  }
+
   return (
-    <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography variant="h6">Select Patient</Typography>
-        <IconButton onClick={onClose} size="small">
-          <CloseIcon />
-        </IconButton>
-      </Box>
+    <Dialog open={true} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>
+        <Box display="flex" justifyContent="space-between" alignItems="center">
+          <Typography variant="h6">{showAddDialog ? (editingPatient ? 'Edit Patient' : 'Add New Patient') : 'Select Patient'}</Typography>
+          <IconButton onClick={onClose} size="small">
+            <CloseIcon />
+          </IconButton>
+        </Box>
+      </DialogTitle>
+      <DialogContent>
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
@@ -258,31 +261,33 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose }) => {
         </Alert>
       )}
 
-      <Box display="flex" gap={2} mb={2}>
-        <TextField
-          fullWidth
-          size="small"
-          placeholder="Search patients..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon />
-              </InputAdornment>
-            ),
-          }}
-        />
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => setShowAddDialog(true)}
-        >
-          Add
-        </Button>
-      </Box>
+      {!showAddDialog && (
+        <>
+          <Box display="flex" gap={2} mb={2}>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Search patients..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => setShowAddDialog(true)}
+            >
+              Add
+            </Button>
+          </Box>
 
-      <Paper variant="outlined" sx={{ maxHeight: 400, overflow: 'auto' }}>
+          <Paper variant="outlined" sx={{ maxHeight: 400, overflow: 'auto' }}>
         {filteredPatients.length === 0 ? (
           <Box p={3} textAlign="center">
             <Typography color="text.secondary">
@@ -340,22 +345,13 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose }) => {
           </List>
         )}
       </Paper>
+        </>
+      )}
 
-      {/* Add/Edit Patient Dialog */}
-      <Dialog
-        open={showAddDialog || editingPatient !== null}
-        onClose={() => {
-          setShowAddDialog(false);
-          setEditingPatient(null);
-          resetForm();
-        }}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>
-          {editingPatient ? 'Edit Patient' : 'Add New Patient'}
-        </DialogTitle>
-        <DialogContent>
+      {/* Add/Edit Patient Form */}
+      {(showAddDialog || editingPatient !== null) && (
+        <>
+          <Divider sx={{ my: 2 }} />
           <Box display="flex" flexDirection="column" gap={2} mt={1}>
             <TextField
               label="First Name"
@@ -388,13 +384,39 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose }) => {
               fullWidth
               InputLabelProps={{ shrink: true }}
             />
+            <TextField
+              label="Private Notes (Not shared with AI)"
+              value={formData.notes_private}
+              onChange={(e) => setFormData({ ...formData, notes_private: e.target.value })}
+              fullWidth
+              multiline
+              rows={3}
+              placeholder="Private notes about this patient that won't be shared with AI"
+              helperText="These notes are only visible to you and will never be shared with AI"
+            />
+            <TextField
+              label="AI Context Notes (Shared with AI)"
+              value={formData.notes_ai_context}
+              onChange={(e) => setFormData({ ...formData, notes_ai_context: e.target.value })}
+              fullWidth
+              multiline
+              rows={3}
+              placeholder="Important context about this patient that AI should know when transcribing"
+              helperText="These notes will be shared with AI to improve transcription accuracy"
+            />
           </Box>
-        </DialogContent>
+        </>
+      )}
+      </DialogContent>
+      {(showAddDialog || editingPatient !== null) && (
         <DialogActions>
           <Button onClick={() => {
             setShowAddDialog(false);
             setEditingPatient(null);
             resetForm();
+            if (openAddDialogImmediately || selectedPatient) {
+              onClose();
+            }
           }}>
             Cancel
           </Button>
@@ -406,8 +428,8 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose }) => {
             {editingPatient ? 'Update' : 'Add'}
           </Button>
         </DialogActions>
-      </Dialog>
-    </Box>
+      )}
+    </Dialog>
   );
 };
 

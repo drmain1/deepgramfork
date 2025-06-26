@@ -112,6 +112,13 @@ ip_rate_limiter = RateLimiter(
     burst_size=20
 )
 
+# Lenient rate limiter for read operations
+read_rate_limiter = RateLimiter(
+    requests_per_minute=200,  # Much more lenient for reads
+    requests_per_hour=5000,
+    burst_size=50  # Allow bursts for navigation
+)
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """
     FastAPI middleware for rate limiting.
@@ -127,10 +134,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             "/api/v1/user_settings"
         ]
         
-        # Endpoints that should have relaxed limits
+        # Endpoints that should have relaxed limits (read operations)
         self.relaxed_endpoints = [
             "/api/v1/user_recordings",
-            "/api/v1/test-gcp"
+            "/api/v1/test-gcp",
+            "/api/v1/patients",
+            "/api/v1/patients/",  # Patient-specific endpoints
+            "/api/v1/login"  # Session creation should be lenient
         ]
     
     async def dispatch(self, request: Request, call_next):
@@ -163,12 +173,20 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         
         # Apply user-based rate limiting if authenticated
         if user_id:
-            # Stricter limits for certain endpoints
-            if any(request.url.path.startswith(ep) for ep in self.strict_endpoints):
-                # Use stricter limits
+            # Check if this is a read operation (GET request or relaxed endpoint)
+            is_read_operation = (
+                request.method == "GET" or 
+                any(request.url.path.startswith(ep) for ep in self.relaxed_endpoints)
+            )
+            
+            if is_read_operation:
+                # Use lenient limits for read operations
+                allowed, reason = read_rate_limiter.check_rate_limit(user_id)
+            elif any(request.url.path.startswith(ep) for ep in self.strict_endpoints):
+                # Use stricter limits for certain endpoints
                 allowed, reason = user_rate_limiter.check_rate_limit(user_id)
             else:
-                # Normal limits
+                # Normal limits for other operations
                 allowed, reason = user_rate_limiter.check_rate_limit(user_id)
             
             if not allowed:

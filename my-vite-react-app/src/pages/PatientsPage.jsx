@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/FirebaseAuthContext';
 import { auth } from '../firebaseConfig';
+import usePatientsStore from '../stores/patientsStore';
+import { sessionManager } from '../utils/sessionManager';
 import {
   Table,
   TableBody,
@@ -24,73 +26,62 @@ import {
   Refresh as RefreshIcon,
   Add as AddIcon,
   CalendarMonth as CalendarIcon,
-  LocalHospital as LocalHospitalIcon
+  LocalHospital as LocalHospitalIcon,
+  Delete as DeleteIcon,
+  Build as BuildIcon
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import PatientSelector from '../components/PatientSelector';
 
 function PatientsPage() {
   const navigate = useNavigate();
-  const { isAuthenticated, isLoading } = useAuth();
-  const [patients, setPatients] = useState([]);
-  const [isLoadingPatients, setIsLoadingPatients] = useState(true);
+  const { isAuthenticated, isLoading, getToken } = useAuth();
+  const { patients, isLoading: isLoadingPatients, fetchPatients, removePatient } = usePatientsStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [deletingPatientId, setDeletingPatientId] = useState(null);
+  const [editingPatient, setEditingPatient] = useState(null);
 
   useEffect(() => {
     if (isAuthenticated) {
       const init = async () => {
-        await ensureBackendSession();
+        await sessionManager.ensureSession(getToken);
         await fetchPatients();
       };
       init();
     }
-  }, [isAuthenticated]);
-
-  const ensureBackendSession = async () => {
-    try {
-      const token = await auth.currentUser?.getIdToken();
-      const response = await fetch('/api/v1/login', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (!response.ok) {
-        console.error('Failed to create backend session:', response.status);
-      } else {
-        console.log('Backend session created/verified');
-      }
-    } catch (error) {
-      console.error('Error creating backend session:', error);
-    }
-  };
-
-  const fetchPatients = async () => {
-    try {
-      setIsLoadingPatients(true);
-      const token = await auth.currentUser?.getIdToken();
-      const response = await fetch('/api/v1/patients', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setPatients(data);
-      } else {
-        console.error('Failed to fetch patients');
-      }
-    } catch (error) {
-      console.error('Error fetching patients:', error);
-    } finally {
-      setIsLoadingPatients(false);
-    }
-  };
+  }, [isAuthenticated, getToken, fetchPatients]);
 
   const handlePatientClick = (patient) => {
     navigate(`/patients/${patient.id}/transcripts`);
+  };
+
+  const handleDeletePatient = async (patient) => {
+    if (!window.confirm(`Are you sure you want to delete ${patient.first_name} ${patient.last_name}?`)) {
+      return;
+    }
+
+    try {
+      setDeletingPatientId(patient.id);
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch(`/api/v1/patients/${patient.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        // Remove patient from store
+        removePatient(patient.id);
+      } else {
+        console.error('Failed to delete patient');
+        alert('Failed to delete patient');
+      }
+    } catch (error) {
+      console.error('Error deleting patient:', error);
+      alert('Error deleting patient');
+    } finally {
+      setDeletingPatientId(null);
+    }
   };
 
   // Filter patients based on search term
@@ -153,7 +144,7 @@ function PatientsPage() {
           </Typography>
           <Box sx={{ display: 'flex', gap: 2 }}>
             <IconButton
-              onClick={fetchPatients}
+              onClick={() => fetchPatients(true)}
               color="primary"
               title="Refresh patients"
             >
@@ -257,16 +248,32 @@ function PatientsPage() {
                   </TableCell>
                   <TableCell>{formatDate(patient.created_at)}</TableCell>
                   <TableCell align="center">
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handlePatientClick(patient);
-                      }}
-                    >
-                      View Transcripts
-                    </Button>
+                    <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingPatient(patient);
+                          setShowAddDialog(true);
+                        }}
+                        title="Edit Patient"
+                      >
+                        <BuildIcon />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeletePatient(patient);
+                        }}
+                        disabled={deletingPatientId === patient.id}
+                        title="Delete Patient"
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </Box>
                   </TableCell>
                 </TableRow>
               ))}
@@ -275,17 +282,22 @@ function PatientsPage() {
         </TableContainer>
       )}
 
-      {/* Add Patient Dialog */}
+      {/* Add/Edit Patient Dialog */}
       {showAddDialog && (
         <PatientSelector
-          selectedPatient={null}
+          selectedPatient={editingPatient}
           onSelectPatient={(patient) => {
             setShowAddDialog(false);
+            setEditingPatient(null);
             if (patient) {
-              fetchPatients();
+              fetchPatients(true);
             }
           }}
-          onClose={() => setShowAddDialog(false)}
+          onClose={() => {
+            setShowAddDialog(false);
+            setEditingPatient(null);
+          }}
+          openAddDialogImmediately={!editingPatient}
         />
       )}
     </Box>
