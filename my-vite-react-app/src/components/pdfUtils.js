@@ -660,6 +660,7 @@ export const generateProfessionalMedicalPdf = async (textContent, fileName = "me
     phoneNumber = "",
     clinicLogo = "",
     includeLogoOnPdf = false,
+    previewMode = false,
     ...styleOptions
   } = options;
 
@@ -745,9 +746,28 @@ export const generateProfessionalMedicalPdf = async (textContent, fileName = "me
       yPosition += pdfHeight;
     }
 
-    // Save the PDF
-    pdf.save(fileName);
-    console.log("Professional medical PDF saved successfully!");
+    // Save or preview PDF
+    if (previewMode) {
+      // Generate blob and open in new tab
+      const pdfBlob = pdf.output('blob');
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      const newTab = window.open(pdfUrl, '_blank');
+      
+      // Clean up the object URL after the tab loads
+      if (newTab) {
+        newTab.addEventListener('load', () => {
+          setTimeout(() => URL.revokeObjectURL(pdfUrl), 1000);
+        });
+      } else {
+        // If popup was blocked, clean up after a delay
+        setTimeout(() => URL.revokeObjectURL(pdfUrl), 5000);
+      }
+      console.log("Professional medical PDF opened in preview!");
+    } else {
+      // Download the PDF
+      pdf.save(fileName);
+      console.log("Professional medical PDF saved successfully!");
+    }
 
   } catch (error) {
     console.error("Error generating professional medical PDF:", error);
@@ -859,7 +879,8 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
     lineHeight = 1.2,
     backgroundColor = '#faf9f5',
     includePageNumbers = true,
-    includeHeaderOnAllPages = true
+    includeHeaderOnAllPages = true,
+    previewMode = false
   } = options;
 
   try {
@@ -1147,9 +1168,28 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
       document.body.removeChild(pageContainer);
     }
 
-    // Save PDF
-    pdf.save(fileName);
-    console.log("Professional paged medical PDF saved successfully!");
+    // Save or preview PDF
+    if (previewMode) {
+      // Generate blob and open in new tab
+      const pdfBlob = pdf.output('blob');
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      const newTab = window.open(pdfUrl, '_blank');
+      
+      // Clean up the object URL after the tab loads
+      if (newTab) {
+        newTab.addEventListener('load', () => {
+          setTimeout(() => URL.revokeObjectURL(pdfUrl), 1000);
+        });
+      } else {
+        // If popup was blocked, clean up after a delay
+        setTimeout(() => URL.revokeObjectURL(pdfUrl), 5000);
+      }
+      console.log("Professional paged medical PDF opened in preview!");
+    } else {
+      // Download the PDF
+      pdf.save(fileName);
+      console.log("Professional paged medical PDF saved successfully!");
+    }
 
   } catch (error) {
     console.error("Error generating paged medical PDF:", error);
@@ -1174,6 +1214,11 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
  * @param {boolean} [options.useProfessionalFormat=true] - Whether to use professional medical formatting.
  */
 export const generatePdfFromText = async (textContent, fileName = "document.pdf", location = "", options = {}) => {
+  // Handle preview mode
+  if (options.previewMode) {
+    return await generatePdfPreview(textContent, fileName, location, options);
+  }
+  
   // Use optimized text-based PDF generation only if explicitly requested
   if (options.useOptimized === true) {
     return await generateOptimizedPdf(textContent, fileName, location, options);
@@ -1721,5 +1766,20 @@ export const convertFormattedTextToHtml = (content, options = {}) => {
   }
 
   return htmlContent;
+};
+
+/**
+ * Generates a PDF and opens it in a new tab for preview instead of downloading
+ */
+const generatePdfPreview = async (textContent, fileName = "document.pdf", location = "", options = {}) => {
+  // Simply pass through to the appropriate generator with previewMode enabled
+  const pdfOptions = { ...options, previewMode: true };
+  
+  // Generate the PDF using the paged format
+  if (pdfOptions.usePagedFormat !== false) {
+    await generatePagedMedicalPdf(textContent, fileName, location, pdfOptions);
+  } else {
+    await generateProfessionalMedicalPdf(textContent, fileName, location, pdfOptions);
+  }
 };
 

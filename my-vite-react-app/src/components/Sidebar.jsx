@@ -243,7 +243,7 @@ function Sidebar() {
     const parts = text.split(new RegExp(`(${searchTerm})`, 'gi'));
     return parts.map((part, index) => 
       part.toLowerCase() === searchTerm.toLowerCase() 
-        ? <mark key={index} className="bg-primary/30 text-white rounded px-0.5">{part}</mark>
+        ? <mark key={index} className="bg-purple-600/40 text-white rounded px-0.5">{part}</mark>
         : part
     );
   };
@@ -324,7 +324,7 @@ function Sidebar() {
             )}
           </button>
         </div>
-        <nav className="space-y-4 overflow-y-auto max-h-[calc(100vh-400px)] pr-2">
+        <nav className="space-y-4 overflow-y-auto max-h-[calc(100vh-450px)] pr-2">
           {isFetchingRecordings && recordings.length === 0 && (
             <div className="text-center py-8">
               <div className="spinner mx-auto mb-3"></div>

@@ -445,7 +445,8 @@ function RecordingView({
           llm_template: llmTemplate,
           llm_template_id: llmTemplateId,
           location: selectedLocation === '__LEAVE_OUT__' ? '' : selectedLocation,
-          user_id: user.uid || user.sub
+          user_id: user.uid || user.sub,
+          date_of_service: isDictationMode && dateOfService ? dateOfService : null
         }),
       });
 

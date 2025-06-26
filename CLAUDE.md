@@ -8,6 +8,34 @@ This is a HIPAA-compliant medical transcription application that converts audio 
 
 **Current Status**: Active migration from AWS to Google Cloud Platform (branch: `gcp-migration`)
 
+### Core Dependencies
+
+**Backend (Python 3.10)**:
+- FastAPI - Web framework with WebSocket support
+- Uvicorn/Gunicorn - ASGI server
+- Firebase Admin SDK - Authentication and Firestore
+- Google Cloud SDK - Storage, Vertex AI, Secret Manager
+- Deepgram SDK - Medical transcription
+- Speechmatics - Multilingual transcription
+- python-jose - JWT token handling
+- python-multipart - File upload support
+- websockets - WebSocket client/server
+
+**Frontend (React 19)**:
+- Vite - Build tool and dev server
+- React Router v7 - Client-side routing
+- Zustand - State management
+- Firebase SDK - Authentication
+- Material-UI (MUI) - UI components
+- date-fns - Date manipulation
+- react-audio-voice-recorder - Audio recording
+
+**Infrastructure**:
+- Google Cloud Platform (App Engine, Cloud Storage, Firestore, Vertex AI)
+- Firebase (Authentication, Firestore Database)
+- Cloudflare (CDN, DNS)
+- Google Secret Manager (API keys)
+
 ## Development Commands
 
 ### Frontend Development (React/Vite)
@@ -97,7 +125,50 @@ firebase deploy --only firestore  # Deploy only Firestore rules
    - Real-time transcription via WebSocket
    - Draft auto-save functionality
    - Post-processing with AI polish
-   - **Dictation Mode**: When selecting an existing patient, doctors can enable dictation mode to record notes for past visits by specifying the date of service
+   - **Dictation Mode**: Advanced feature for recording notes for past patient visits
+     - **How it works**:
+       - Only available when selecting an existing patient from the patient selector
+       - Doctor enables "Dictation Mode" checkbox in the setup view
+       - Must specify the "Date of Service" (the actual date when the patient was seen)
+       - Recording happens in real-time but is tagged with the historical service date
+     - **Technical Implementation**:
+       - Session ID format: `YYYYMMDD` (service date) + `HHMMSS` (current time) + random suffix
+       - Frontend sends `date_of_service` field in WebSocket metadata and save request
+       - Backend uses the service date for `created_at` timestamp to maintain chronological order
+       - Transcripts are marked with `is_dictation: true` flag in Firestore
+       - Special handling in `get_recent_transcripts` to include dictation transcripts based on `updated_at` rather than `created_at`
+       - Files involved:
+         - `SetupView.jsx` (lines 363-407): UI for enabling dictation mode
+         - `RecordingView.jsx`: Passes `date_of_service` to WebSocket and save endpoint
+         - `deepgram_utils.py` (lines 172-190): Generates special session ID format
+         - `speechmatics_utils.py`: Similar session ID generation
+         - `firestore_endpoints.py` (lines 270-299): Handles date parsing for dictation mode
+         - `firestore_client.py` (lines 267-294): Special query logic for dictation transcripts
+     - **UI Behavior**:
+       - Blue-highlighted section appears below patient selection when enabled
+       - Date picker prevents future dates
+       - Form validation requires date selection before proceeding
+       - Session header shows "[Dictation Mode - Service Date: MM/DD/YYYY]" during recording
+       - Transcripts appear in the sidebar with the historical date
+     - **Data Flow**:
+       1. User selects existing patient → dictation mode checkbox appears
+       2. User enables dictation mode → date picker becomes visible and required
+       3. User selects past date → stored in component state
+       4. Start recording → WebSocket sends `date_of_service` in initial metadata
+       5. Session ID generated with format: `YYYYMMDD` (service date) + `HHMMSS` (current time)
+       6. Save transcript → `date_of_service` included in POST request
+       7. Backend sets `created_at` to service date, `updated_at` to current time
+       8. Transcript marked with `is_dictation: true` in Firestore
+       9. Recording list queries include both recent and dictation transcripts
+     - **Use Cases**:
+       - Recording notes after seeing a patient (e.g., end of day documentation)
+       - Catching up on documentation from previous days
+       - Creating records for phone consultations that happened earlier
+       - Documenting home visits or off-site consultations retroactively
+     - **Known Limitations**:
+       - Cannot set custom time, only date (time is always current time)
+       - Requires existing patient profile (cannot use for new patients)
+       - Date validation prevents future dates but doesn't check business logic (e.g., weekends)
 
 2. **Authentication Flow**:
    - Firebase Auth for user management
@@ -108,6 +179,42 @@ firebase deploy --only firestore  # Deploy only Firestore rules
    - English (Deepgram) for medical accuracy
    - Spanish/English code-switching (Speechmatics)
    - Configurable per transcription profile
+
+4. **Patient Management**:
+   - Create, edit, soft-delete patient profiles
+   - Store demographics, medical history, medications
+   - Link transcripts to patient records
+   - Search patients by name
+   - Patient context auto-populates in recordings
+
+5. **Transcription Profiles**:
+   - Custom templates for different encounter types
+   - Configurable AI formatting instructions
+   - Speech-to-text settings (smart format, diarization)
+   - Language preferences per profile
+   - Quick selection during recording setup
+
+6. **Draft System**:
+   - Auto-save transcripts as drafts every 30 seconds
+   - Resume interrupted sessions
+   - Backend persistence in Firestore
+   - Draft indicator in recordings list
+   - One-click draft recovery
+
+7. **AI Post-Processing**:
+   - Google Vertex AI (Gemini models) for formatting
+   - Custom prompts per transcription profile
+   - Preserves medical terminology accuracy
+   - Structures notes into sections
+   - Maintains both original and polished versions
+
+8. **User Settings & Customization**:
+   - Doctor name and signature
+   - Medical specialty
+   - Clinic logo upload (base64 encoded)
+   - Custom vocabulary for speech recognition
+   - Macro phrases (text expansion)
+   - Office information for reports
 
 ## Security & Compliance
 

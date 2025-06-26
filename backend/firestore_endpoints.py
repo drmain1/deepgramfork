@@ -63,8 +63,8 @@ async def get_user_recordings_firestore(
     logger.info(f"Fetching recordings for user {user_id} from Firestore")
     
     try:
-        # Get recent transcripts from Firestore (last 15 days by default)
-        transcripts = await firestore_client.get_recent_transcripts(user_id, days=15)
+        # Get recent transcripts from Firestore (last 365 days to support dictation mode)
+        transcripts = await firestore_client.get_recent_transcripts(user_id, days=365)
         
         recordings_info = []
         for transcript in transcripts:
@@ -267,7 +267,30 @@ async def save_session_data_firestore(
         created_at = datetime.now(timezone.utc)
         logger.info(f"Processing session_id: {session_id} (length: {len(session_id)})")
         
-        if len(session_id) >= 14 and session_id[:14].isdigit():
+        # Check if date_of_service is provided (dictation mode)
+        date_of_service = request_data.get('date_of_service')
+        if date_of_service:
+            try:
+                # For dictation mode, use the provided service date as created_at
+                service_date = datetime.strptime(date_of_service, "%Y-%m-%d")
+                # Preserve the time portion from session_id if available
+                if len(session_id) >= 14 and session_id[8:14].isdigit():
+                    time_part = session_id[8:14]  # HHMMSS portion
+                    created_at = datetime.strptime(f"{date_of_service} {time_part[:2]}:{time_part[2:4]}:{time_part[4:6]}", "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                else:
+                    # Use the service date with current time
+                    created_at = service_date.replace(hour=datetime.now(timezone.utc).hour, 
+                                                    minute=datetime.now(timezone.utc).minute,
+                                                    second=datetime.now(timezone.utc).second,
+                                                    tzinfo=timezone.utc)
+                logger.info(f"Dictation mode: Using date_of_service {date_of_service}, created_at: {created_at.isoformat()}")
+            except ValueError as e:
+                logger.warning(f"Could not parse date_of_service: {date_of_service}, error: {e}")
+                # Fall back to parsing from session_id
+                date_of_service = None
+        
+        # If no date_of_service, try to parse from session_id
+        if not date_of_service and len(session_id) >= 14 and session_id[:14].isdigit():
             try:
                 # Session ID format: YYYYMMDDHHMMSSxxxxxx (generated in UTC)
                 timestamp_part = session_id[:14]
@@ -276,7 +299,7 @@ async def save_session_data_firestore(
                 logger.info(f"Successfully parsed recording start time from session_id: {created_at.isoformat()}")
             except ValueError as e:
                 logger.warning(f"Could not parse timestamp from session_id: {session_id}, error: {e}")
-        else:
+        elif not date_of_service:
             logger.warning(f"Session ID format not recognized for timestamp parsing: {session_id}")
         
         # Create transcript document in Firestore
@@ -298,7 +321,9 @@ async def save_session_data_firestore(
             'duration_seconds': request_data.get('duration'),
             # Use parsed created_at from session_id or current time
             'created_at': created_at.isoformat(),
-            'updated_at': datetime.now(timezone.utc).isoformat()
+            'updated_at': datetime.now(timezone.utc).isoformat(),
+            'date_of_service': date_of_service,  # Store the original service date if provided
+            'is_dictation': bool(date_of_service)  # Flag to identify dictation mode transcripts
         }
         
         # Check if transcript already exists

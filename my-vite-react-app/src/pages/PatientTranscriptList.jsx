@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/FirebaseAuthContext';
 import { auth } from '../firebaseConfig';
+import { generatePdfFromText } from '../components/pdfUtils';
+import { useUserSettings } from '../contexts/UserSettingsContext';
 import {
   Box,
   Typography,
@@ -46,6 +48,7 @@ function PatientTranscriptList() {
   const { patientId } = useParams();
   const navigate = useNavigate();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { userSettings } = useUserSettings();
   
   const [patient, setPatient] = useState(null);
   const [transcripts, setTranscripts] = useState([]);
@@ -54,6 +57,8 @@ function PatientTranscriptList() {
   const [selectedTranscripts, setSelectedTranscripts] = useState(new Set());
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedTranscript, setSelectedTranscript] = useState(null);
+  const [generatingPreview, setGeneratingPreview] = useState(false);
+  const [generatingDownload, setGeneratingDownload] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated && patientId) {
@@ -118,16 +123,137 @@ function PatientTranscriptList() {
     setSelectedTranscripts(newSelected);
   };
 
-  const handleViewMultiple = () => {
-    if (selectedTranscripts.size > 0) {
-      const ids = Array.from(selectedTranscripts).join(',');
-      navigate(`/patients/${patientId}/transcripts/view?ids=${ids}`);
+  // Shared function for generating PDFs
+  const generateTranscriptsPDF = async (previewMode = false) => {
+    if (selectedTranscripts.size === 0) return;
+    
+    // Set the appropriate loading state based on mode
+    if (previewMode) {
+      setGeneratingPreview(true);
+    } else {
+      setGeneratingDownload(true);
+    }
+    
+    try {
+      // Get selected transcript objects
+      const selectedTranscriptObjects = transcripts.filter(t => 
+        selectedTranscripts.has(t.id)
+      );
+      
+      // Sort by date (oldest first)
+      selectedTranscriptObjects.sort((a, b) => 
+        new Date(a.date) - new Date(b.date)
+      );
+      
+      // Check if any transcripts have content
+      const hasContent = selectedTranscriptObjects.some(t => 
+        t.polishedTranscript || t.transcript
+      );
+      
+      if (!hasContent) {
+        // If no content, we need to fetch individual transcripts
+        console.log('No transcript content in list, fetching individual transcripts...');
+        const token = await auth.currentUser?.getIdToken();
+        
+        for (let i = 0; i < selectedTranscriptObjects.length; i++) {
+          const transcript = selectedTranscriptObjects[i];
+          try {
+            const response = await fetch(`/api/v1/transcript/${auth.currentUser.uid}/${transcript.id}`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            
+            if (response.ok) {
+              const detailedTranscript = await response.json();
+              // Update the transcript object with the fetched content
+              transcript.transcript = detailedTranscript.originalTranscript || detailedTranscript.transcript;
+              transcript.polishedTranscript = detailedTranscript.polishedTranscript;
+            }
+          } catch (fetchError) {
+            console.error(`Error fetching transcript ${transcript.id}:`, fetchError);
+          }
+        }
+      }
+      
+      // Create combined transcript content
+      let combinedContent = '';
+      
+      // Add patient header
+      combinedContent += `PATIENT: ${patient.first_name} ${patient.last_name}\n`;
+      combinedContent += `DOB: ${formatDate(patient.date_of_birth)}\n`;
+      if (patient.phone) combinedContent += `PHONE: ${patient.phone}\n`;
+      combinedContent += `\n${'='.repeat(80)}\n\n`;
+      
+      // Add each transcript
+      for (const transcript of selectedTranscriptObjects) {
+        // Add transcript header
+        combinedContent += `DATE: ${formatDate(transcript.date)} at ${formatTime(transcript.date)}\n`;
+        combinedContent += `ENCOUNTER TYPE: ${transcript.encounterType || 'General Visit'}\n`;
+        if (transcript.location) combinedContent += `LOCATION: ${transcript.location}\n`;
+        combinedContent += `\n${'-'.repeat(60)}\n\n`;
+        
+        // Add transcript content (prefer polished over original)
+        const content = transcript.polishedTranscript || transcript.transcript || 'No transcript content available';
+        combinedContent += content;
+        
+        // Add separator between transcripts
+        combinedContent += `\n\n${'='.repeat(80)}\n\n`;
+      }
+      
+      // Generate PDF with patient information
+      const patientInfo = {
+        name: `${patient.first_name} ${patient.last_name}`,
+        dob: patient.date_of_birth,
+        phone: patient.phone || '',
+        email: patient.email || ''
+      };
+      
+      // PDF options
+      const pdfOptions = {
+        usePagedFormat: true, // Use paged mode for better multi-transcript support
+        doctorName: userSettings.doctorName || '',
+        doctorSignature: userSettings.doctorSignature || '',
+        clinicLogo: userSettings.clinicLogo || '',
+        includeLogoOnPdf: userSettings.includeLogoOnPdf || false,
+        patientName: patientInfo.name,
+        dateOfBirth: patientInfo.dob,
+        phoneNumber: patientInfo.phone,
+        email: patientInfo.email,
+        previewMode: previewMode // Add preview mode flag
+      };
+      
+      await generatePdfFromText(
+        combinedContent,
+        `${patient.last_name}_${patient.first_name}_transcripts`,
+        '', // location will be extracted from content
+        pdfOptions
+      );
+      
+      // Clear selections after successful PDF generation (only if downloading)
+      if (!previewMode) {
+        setSelectedTranscripts(new Set());
+      }
+      
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Error generating PDF. Please try again.');
+    } finally {
+      // Reset the appropriate loading state based on mode
+      if (previewMode) {
+        setGeneratingPreview(false);
+      } else {
+        setGeneratingDownload(false);
+      }
     }
   };
 
-  const handlePrintAll = () => {
-    // TODO: Implement print functionality
-    window.print();
+  const handleViewMultiple = async () => {
+    // Call the shared function with preview mode
+    await generateTranscriptsPDF(true);
+  };
+
+  const handlePrintAll = async () => {
+    // Call the shared function with download mode
+    await generateTranscriptsPDF(false);
   };
 
   const handleMenuClick = (event, transcript) => {
@@ -241,17 +367,19 @@ function PatientTranscriptList() {
               <>
                 <Button
                   variant="outlined"
-                  startIcon={<DescriptionIcon />}
+                  startIcon={generatingPreview ? <CircularProgress size={20} /> : <DescriptionIcon />}
                   onClick={handleViewMultiple}
+                  disabled={generatingPreview || generatingDownload}
                 >
-                  View Selected ({selectedTranscripts.size})
+                  {generatingPreview ? 'Generating Preview...' : `View Selected (${selectedTranscripts.size})`}
                 </Button>
                 <Button
                   variant="outlined"
-                  startIcon={<PrintIcon />}
+                  startIcon={generatingDownload ? <CircularProgress size={20} /> : <PrintIcon />}
                   onClick={handlePrintAll}
+                  disabled={generatingPreview || generatingDownload}
                 >
-                  Print Selected
+                  {generatingDownload ? 'Generating PDF...' : 'Print Selected'}
                 </Button>
               </>
             )}
@@ -311,7 +439,7 @@ function PatientTranscriptList() {
                       backgroundColor: 'action.hover',
                     }
                   }}
-                  onClick={() => navigate(`/transcription?id=${transcript.id}`)}
+                  onClick={() => handleSelectTranscript(transcript.id)}
                 >
                   <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
                     <Checkbox
