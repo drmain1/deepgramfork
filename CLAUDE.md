@@ -79,7 +79,7 @@ firebase deploy --only firestore  # Deploy only Firestore rules
 - **Authentication**: Firebase Admin SDK via `gcp_auth_middleware.py`
 - **Storage**: Hybrid approach
   - Firestore for metadata and transcripts
-  - Google Cloud Storage for audio files only
+  - Google Cloud Storage for graphical signatures and logos
 - **Speech Processing**: 
   - `deepgram_utils.py` - Medical transcription
   - `speechmatics_utils.py` - Multilingual support
@@ -292,3 +292,6 @@ See `HIPAA_COMPLIANCE_TECH_DEBT.md` for compliance-related items:
 - WebSocket connections require authentication token
 
 
+## pdf 
+pdfUtils.js
+ generatePagedMedicalPdf for patients with profiles

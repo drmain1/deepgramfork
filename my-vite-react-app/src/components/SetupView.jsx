@@ -756,6 +756,11 @@ function SetupView({
                 if (patient) {
                   // Set patient details when a patient is selected
                   setPatientDetails(`${patient.last_name}, ${patient.first_name}`);
+                  // Add date of birth to context
+                  if (patient.date_of_birth && !patientContext.includes('DOB:')) {
+                    const dobFormatted = new Date(patient.date_of_birth).toLocaleDateString();
+                    setPatientContext(prev => prev ? `${prev}\nDOB: ${dobFormatted}` : `DOB: ${dobFormatted}`);
+                  }
                   // If patient has date of accident, add it to context
                   if (patient.date_of_accident && !patientContext.includes('DOA:')) {
                     const doaFormatted = new Date(patient.date_of_accident).toLocaleDateString();

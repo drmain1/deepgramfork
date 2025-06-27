@@ -304,7 +304,7 @@ function Sidebar() {
       </div>
 
       {/* Recordings Section */}
-      <div className="flex-1 px-4 overflow-hidden">
+      <div className="flex-1 px-4 overflow-hidden flex flex-col">
         <div className="flex items-center justify-between mb-3">
           <h3 className="section-header px-2 mb-0">Recent Recordings</h3>
           <button
@@ -324,7 +324,7 @@ function Sidebar() {
             )}
           </button>
         </div>
-        <nav className="space-y-4 overflow-y-auto max-h-[calc(100vh-450px)] pr-2">
+        <nav className="space-y-4 overflow-y-auto flex-1 pr-2 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
           {isFetchingRecordings && recordings.length === 0 && (
             <div className="text-center py-8">
               <div className="spinner mx-auto mb-3"></div>

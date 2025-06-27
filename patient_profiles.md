@@ -97,12 +97,7 @@
   - All API endpoints validate ownership
   - HIPAA-compliant audit logging for all patient data access
 
-  Code Cleanup
-
-  - Removed 664 lines of legacy GCS code from main.py
-  - Reduced main.py from 1624 to 960 lines
-  - Removed all conditional USE_FIRESTORE logic
-
+  
   UI/UX Improvements
 
   - Consistent table-based UI for patient and transcript lists
@@ -111,3 +106,125 @@
   - Empty states with helpful guidance
   - Hover effects and visual feedback
   - Breadcrumb navigation for context
+
+## Technical Implementation Details
+
+### Data Flow Architecture
+
+1. **Patient Profile Creation/Selection Flow**:
+   ```
+   SetupView → PatientSelector → POST /api/v1/patients → Firestore
+                     ↓
+   Selected Patient → Patient Context → Recording Session
+   ```
+
+2. **Patient Context Integration with AI**:
+   - **Frontend Context Building** (SetupView.jsx):
+     - DOB: Added to patient_context as "DOB: MM/DD/YYYY" (lines 760-763)
+     - DOA: Added to patient_context as "DOA: MM/DD/YYYY" (lines 765-768)
+     - Patient notes_ai_context: Automatically included when patient selected
+   
+   - **Backend Processing** (firestore_endpoints.py):
+     - patient_context passed through save_session_data endpoint
+     - Forwarded to polish_transcript_with_gemini in gcp_utils.py
+     - Included in LLM prompt as "Patient Context: {context}"
+
+3. **Session-Patient Linking**:
+   - RecordingView sends patient_id in save request
+   - TranscriptDocument stores patient_id reference
+   - Enables patient-centric transcript queries
+
+### Key Data Models
+
+1. **PatientDocument** (firestore_models.py):
+   ```python
+   - user_id: str (Firebase UID - ownership)
+   - first_name: str
+   - last_name: str  
+   - date_of_birth: datetime
+   - date_of_accident: Optional[datetime]
+   - notes_private: Optional[str] (doctor-only)
+   - notes_ai_context: Optional[str] (shared with AI)
+   - created_at/updated_at: datetime
+   - active: bool (soft delete)
+   ```
+
+2. **Patient-Transcript Relationship**:
+   - One-to-Many: Patient → Transcripts
+   - Transcripts reference patients via patient_id field
+   - Enables filtering transcripts by patient
+
+### Frontend State Management
+
+1. **Zustand Stores**:
+   - `usePatientsStore.js`: 
+     - Caches patient list (30s TTL)
+     - Handles CRUD operations
+     - Prevents duplicate API calls
+   
+   - `usePatientTranscriptsStore.js`:
+     - Caches transcripts per patient (60s TTL)
+     - Separate cache keys by patient_id
+     - Optimistic updates for UI responsiveness
+
+2. **Component Hierarchy**:
+   ```
+   PatientsPage
+   ├── PatientSelector (modal)
+   ├── PatientTranscriptList
+   └── SetupView (patient selection)
+       └── RecordingView (session creation)
+   ```
+
+### API Endpoint Details
+
+1. **Patient CRUD Operations**:
+   - **Authentication**: All endpoints require Firebase auth token
+   - **Ownership Validation**: user_id must match authenticated user
+   - **Soft Delete**: DELETE sets active=false, preserving data
+   - **Error Handling**: Consistent 4xx/5xx responses with messages
+
+2. **Transcript-Patient Integration**:
+   - `save_session_data`: Accepts optional patient_id
+   - `get_recent_transcripts`: Can filter by patient_id
+   - Patient data enrichment in transcript responses
+
+### Performance Considerations
+
+1. **Caching Strategy**:
+   - Frontend: Zustand stores with TTL
+   - Backend: Cache-Control headers (30s patients, 60s transcripts)
+   - Database: Composite indexes for common queries
+
+2. **Request Optimization**:
+   - Debounced search in PatientSelector
+   - Request deduplication in Zustand stores
+   - Lazy loading of transcript content
+
+### Security & Compliance
+
+1. **Data Access Control**:
+   - Row-level security via user_id checks
+   - Firestore rules enforce ownership
+   - API validates user permissions
+
+2. **HIPAA Considerations**:
+   - Patient names stored separately from medical data
+   - Audit logging for all patient data access
+   - Soft delete preserves audit trail
+   - Private notes never sent to AI
+
+### Future Enhancements
+
+1. **Planned Features**:
+   - Patient photo upload
+   - Medical history tracking
+   - Insurance information
+   - Medication lists
+   - Allergies tracking
+
+2. **Technical Debt**:
+   - Consider patient data encryption at rest
+   - Implement patient merge functionality
+   - Add patient export/import features
+   - Enhanced search with fuzzy matching
