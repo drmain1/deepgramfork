@@ -36,6 +36,7 @@ class RecordingInfo(BaseModel):
     transcript: Optional[str] = None
     polishedTranscript: Optional[str] = None
     profileId: Optional[str] = None
+    patientId: Optional[str] = None
 
 async def get_user_recordings_firestore(
     user_id: str = Path(..., description="User's unique identifier"),
@@ -95,6 +96,7 @@ async def get_user_recordings_firestore(
                 location=transcript.get('location'),
                 durationSeconds=transcript.get('duration_seconds'),
                 profileId=transcript.get('llm_template_id'),
+                patientId=transcript.get('patient_id'),
                 # Include transcript content directly
                 transcript=transcript_content,
                 polishedTranscript=polished_content

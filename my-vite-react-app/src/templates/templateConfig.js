@@ -5,6 +5,7 @@ import { chiropracticFollowupInstructions } from './llm-instructions/chiropracti
 import { chiropracticFollowupCodesInstructions } from './llm-instructions/chiropractic-followup-codes.js';
 import { chiropracticMultipleVisitsInstructions } from './llm-instructions/chiropractic-multiple-visits.js';
 import { chiropracticSOAPImprovedInstructions } from './llm-instructions/chiropractic-soap-improved.js';
+import { chiropracticFollowupNarrativeInstructions } from './llm-instructions/chiropractic-followup-narrative.js';
 import { testGCPTemplateInstructions } from './llm-instructions/test-gcp-template.js';
 
 export const medicalSpecialties = [
@@ -231,6 +232,12 @@ CA License #A123456`
       name: 'SOAP Enhanced', 
       llmInstructions: chiropracticSOAPImprovedInstructions, 
       sampleNarrative: 'Enhanced SOAP note generation with intelligent auto-expansion from minimal input, ensuring comprehensive documentation and billing compliance.' 
+    },
+    { 
+      id: 'chiro_followup_narrative', 
+      name: 'Follow-up Narrative', 
+      llmInstructions: chiropracticFollowupNarrativeInstructions, 
+      sampleNarrative: 'Professional narrative-style documentation for chiropractic follow-up visits that flows naturally while capturing all clinical and billing requirements.' 
     },
     { 
       id: 'test_gcp_template', 

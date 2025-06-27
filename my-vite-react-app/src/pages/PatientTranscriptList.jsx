@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/FirebaseAuthContext';
 import { auth } from '../firebaseConfig';
 import { generatePdfFromText } from '../components/pdfUtils';
 import { useUserSettings } from '../contexts/UserSettingsContext';
+import { shouldShowClinicHeader } from '../utils/encounterTypeUtils';
 import {
   Box,
   Typography,
@@ -177,47 +178,42 @@ function PatientTranscriptList() {
       // Create combined transcript content
       let combinedContent = '';
       
-      // Add patient header
-      combinedContent += `PATIENT: ${patient.first_name} ${patient.last_name}\n`;
-      combinedContent += `DOB: ${formatDate(patient.date_of_birth)}\n`;
-      if (patient.phone) combinedContent += `PHONE: ${patient.phone}\n`;
-      combinedContent += `\n${'='.repeat(80)}\n\n`;
-      
       // Add each transcript
-      for (const transcript of selectedTranscriptObjects) {
-        // Add transcript header
-        combinedContent += `DATE: ${formatDate(transcript.date)} at ${formatTime(transcript.date)}\n`;
-        combinedContent += `ENCOUNTER TYPE: ${transcript.encounterType || 'General Visit'}\n`;
-        if (transcript.location) combinedContent += `LOCATION: ${transcript.location}\n`;
-        combinedContent += `\n${'-'.repeat(60)}\n\n`;
+      for (let i = 0; i < selectedTranscriptObjects.length; i++) {
+        const transcript = selectedTranscriptObjects[i];
+        // Get transcript content (prefer polished over original)
+        let content = transcript.polishedTranscript || transcript.transcript || 'No transcript content available';
         
-        // Add transcript content (prefer polished over original)
-        const content = transcript.polishedTranscript || transcript.transcript || 'No transcript content available';
+        // Check if content already has a clinic location header
+        const hasClinicLocationHeader = content.startsWith('CLINIC LOCATION:');
+        
+        // Use utility function to determine if we should add a clinic header
+        // Only add if: content doesn't already have it, location exists, and encounter type warrants it
+        if (!hasClinicLocationHeader && 
+            transcript.location && 
+            transcript.location.trim() && 
+            shouldShowClinicHeader(transcript.encounterType)) {
+          const locationHeader = `CLINIC LOCATION:\n${transcript.location.trim()}\n\n---\n\n`;
+          content = locationHeader + content;
+        }
+        
         combinedContent += content;
         
-        // Add separator between transcripts
-        combinedContent += `\n\n${'='.repeat(80)}\n\n`;
+        // Add separator between transcripts if not the last one
+        if (i < selectedTranscriptObjects.length - 1) {
+          combinedContent += `\n\n${'='.repeat(80)}\n\n`;
+        }
       }
       
-      // Generate PDF with patient information
-      const patientInfo = {
-        name: `${patient.first_name} ${patient.last_name}`,
-        dob: patient.date_of_birth,
-        phone: patient.phone || '',
-        email: patient.email || ''
-      };
-      
-      // PDF options
+      // PDF options - match the format used in EditableNote
       const pdfOptions = {
-        usePagedFormat: true, // Use paged mode for better multi-transcript support
         doctorName: userSettings.doctorName || '',
         doctorSignature: userSettings.doctorSignature || '',
+        isSigned: true, // Assuming all saved transcripts are signed
         clinicLogo: userSettings.clinicLogo || '',
         includeLogoOnPdf: userSettings.includeLogoOnPdf || false,
-        patientName: patientInfo.name,
-        dateOfBirth: patientInfo.dob,
-        phoneNumber: patientInfo.phone,
-        email: patientInfo.email,
+        useProfessionalFormat: true,
+        usePagedFormat: true,
         previewMode: previewMode // Add preview mode flag
       };
       
@@ -288,12 +284,6 @@ function PatientTranscriptList() {
     }
   };
 
-  const formatDuration = (seconds) => {
-    if (!seconds) return 'N/A';
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
 
   if (authLoading || loading) {
     return (

@@ -98,15 +98,13 @@ generatePdfFromText(content, fileName, location, metadata)
   clinicLogo: "base64_logo_data",
   includeLogoOnPdf: true,
   
-  // Patient information
-  patientName: "John Doe",
-  dateOfBirth: "1980-01-01",
-  dateOfAccident: "2024-01-01",
-  phoneNumber: "555-1234",
-  email: "john@example.com",
+  // Patient information (NOT USED - removed for consistency)
+  // patientName, dateOfBirth, phoneNumber, email fields are deprecated
+  // All PDFs now use clinic header format only
   
   // Mode options
   previewMode: false,        // Opens in new tab if true
+  useProfessionalFormat: true, // Always use professional format
   usePagedFormat: true,      // Always true now
   
   // Styling (rarely used)
@@ -121,6 +119,8 @@ generatePdfFromText(content, fileName, location, metadata)
 1. **Location Extraction**
    - Checks for embedded location in content
    - Format: `CLINIC LOCATION:\n{location}\n\n---\n\n`
+   - Location header is embedded when saving from `/transcription`
+   - PatientTranscriptList adds header if missing for consistency
 
 2. **Section Parsing**
    - Identifies medical headers (CHIEF COMPLAINT, HPI, etc.)
@@ -212,20 +212,20 @@ await generatePdfFromText(
 );
 ```
 
-### PDF with Patient Information
+### PDF with Full Options
 ```javascript
 await generatePdfFromText(
   transcriptContent,
-  'patient-record.pdf',
+  'medical-record.pdf',
   clinicLocation,
   {
-    patientName: 'John Doe',
-    dateOfBirth: '1980-01-01',
     doctorName: 'Dr. Smith',
     doctorSignature: signatureBase64,
     isSigned: true,
     clinicLogo: logoBase64,
-    includeLogoOnPdf: true
+    includeLogoOnPdf: true,
+    useProfessionalFormat: true,
+    usePagedFormat: true
   }
 );
 ```
@@ -240,17 +240,29 @@ await generatePdfFromText(
 );
 ```
 
-### Multiple Transcripts
+### Multiple Transcripts (from PatientTranscriptList)
 ```javascript
-// Combine multiple transcripts
+// Combine multiple transcripts with clinic location headers
 let combinedContent = '';
-for (const transcript of selectedTranscripts) {
-  combinedContent += `DATE: ${transcript.date}\n\n`;
-  combinedContent += transcript.content;
-  combinedContent += '\n\n' + '='.repeat(80) + '\n\n';
+for (let i = 0; i < selectedTranscripts.length; i++) {
+  const transcript = selectedTranscripts[i];
+  let content = transcript.polishedTranscript || transcript.transcript;
+  
+  // Add clinic location header if missing
+  if (!content.startsWith('CLINIC LOCATION:') && transcript.location) {
+    const locationHeader = `CLINIC LOCATION:\n${transcript.location}\n\n---\n\n`;
+    content = locationHeader + content;
+  }
+  
+  combinedContent += content;
+  
+  // Add separator between transcripts
+  if (i < selectedTranscripts.length - 1) {
+    combinedContent += '\n\n' + '='.repeat(80) + '\n\n';
+  }
 }
 
-await generatePdfFromText(combinedContent, 'combined.pdf', location, options);
+await generatePdfFromText(combinedContent, 'combined.pdf', '', options);
 ```
 
 ## Common Issues and Solutions
@@ -270,6 +282,12 @@ await generatePdfFromText(combinedContent, 'combined.pdf', location, options);
 - **Cause**: Monolithic design with mixed concerns
 - **Solution**: Split into focused modules under 500 lines each
 
+### Issue: Inconsistent PDF Headers
+- **Problem**: PDFs from `/transcription` vs `/patients/patientID/transcripts` had different headers
+- **Cause**: Patient info was included in one but not the other
+- **Solution**: Standardized on clinic header format only, removed patient info from all PDFs
+- **Implementation**: PatientTranscriptList now adds `CLINIC LOCATION:` header if missing
+
 ## Future Improvements
 
 1. **Further Modularization**
@@ -288,6 +306,27 @@ await generatePdfFromText(combinedContent, 'combined.pdf', location, options);
    - Add unit tests for table parsing
    - Create visual regression tests for PDF output
 
+## PDF Consistency Guidelines
+
+### Clinic Location Header
+- **Format**: `CLINIC LOCATION:\n{location}\n\n---\n\n`
+- **When Added**: 
+  - Automatically by RecordingView when saving transcripts
+  - By PatientTranscriptList if missing from stored transcripts
+- **Purpose**: Ensures consistent PDF headers across all generation points
+
+### Standard PDF Format
+All PDFs should include:
+1. **Clinic Header** (extracted from content or passed as parameter)
+2. **Clinic Logo** (top left, if enabled in settings)
+3. **Medical Content** (formatted with sections)
+4. **Doctor Signature** (bottom, if provided)
+
+### Deprecated Features
+- Patient information headers (PATIENT:, DOB:, etc.) - removed for consistency
+- Multiple PDF generator functions - consolidated to `generatePagedMedicalPdf()`
+- Patient-specific options in PDF generation - use clinic format only
+
 ## Maintenance Notes
 
 - When adding new features, consider which module they belong in:
@@ -298,3 +337,4 @@ await generatePdfFromText(combinedContent, 'combined.pdf', location, options);
 - Keep files under 500 lines for optimal AI assistance
 - Document any deviations from the single PDF generator pattern
 - Test PDF generation from all entry points when making changes
+- Ensure clinic location headers are preserved in all workflows
