@@ -17,11 +17,387 @@ import {
 } from '@mui/material';
 import { Download, Visibility, Close } from '@mui/icons-material';
 import { 
-  generateProfessionalMedicalPdf, 
-  parseTranscriptSections,
-  createMedicalDocumentTemplate 
+  generatePdfFromText
 } from './pdfUtils';
 import { useUserSettings } from '../contexts/UserSettingsContext';
+
+/**
+ * Parses medical transcript content into structured sections
+ * @param {string} content - The medical transcript content
+ * @returns {object} - Parsed sections with headers and content
+ */
+const parseTranscriptSections = (content) => {
+  if (!content || typeof content !== 'string') {
+    return { sections: [], unstructuredContent: '' };
+  }
+
+  const sections = [];
+  const lines = content.split('\n');
+  let currentSection = null;
+  let unstructuredLines = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    // Check if line looks like a medical section header
+    const sectionHeaderPatterns = [
+      /^(CHIEF COMPLAINT|CC):\s*$/i,
+      /^(HISTORY OF PRESENT ILLNESS|HPI):\s*$/i,
+      /^(REVIEW OF SYSTEMS|ROS):\s*$/i,
+      /^(PAST MEDICAL HISTORY|PMH):\s*$/i,
+      /^(MEDICATIONS):\s*$/i,
+      /^(ALLERGIES):\s*$/i,
+      /^(SOCIAL HISTORY|SH):\s*$/i,
+      /^(FAMILY HISTORY|FH):\s*$/i,
+      /^(PHYSICAL EXAMINATION|EXAM):\s*$/i,
+      /^(ASSESSMENT|IMPRESSION):\s*$/i,
+      /^(PLAN|TREATMENT PLAN):\s*$/i,
+      /^(PATIENT INFORMATION|PATIENT DETAILS):\s*$/i,
+      /^(DATE OF BIRTH|DOB):\s*$/i,
+      /^(DATE OF ACCIDENT):\s*$/i,
+      /^(DATE OF CONSULTATION):\s*$/i,
+      /^[A-Z\s]+:\s*$/
+    ];
+
+    const isHeader = sectionHeaderPatterns.some(pattern => pattern.test(line));
+    
+    if (isHeader) {
+      // Save previous section if exists
+      if (currentSection) {
+        sections.push(currentSection);
+      }
+      
+      // Start new section
+      currentSection = {
+        header: line.replace(':', '').trim(),
+        content: []
+      };
+    } else if (currentSection) {
+      // Add to current section
+      if (line) {
+        currentSection.content.push(line);
+      }
+    } else {
+      // Add to unstructured content
+      if (line) {
+        unstructuredLines.push(line);
+      }
+    }
+  }
+
+  // Add last section
+  if (currentSection) {
+    sections.push(currentSection);
+  }
+
+  return {
+    sections,
+    unstructuredContent: unstructuredLines.join('\n')
+  };
+};
+
+/**
+ * Formats section content with proper medical formatting
+ * @param {string} content - Raw section content
+ * @returns {string} - Formatted HTML content
+ */
+const formatSectionContent = (content) => {
+  if (!content) return '';
+  
+  // Simple HTML escaping and paragraph formatting
+  const escaped = content
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+  
+  // Convert line breaks to HTML
+  return escaped.split('\n').map(line => 
+    line.trim() ? `<p style="margin: 5px 0;">${line}</p>` : ''
+  ).join('');
+};
+
+/**
+ * Creates a professional medical document HTML template
+ * @param {string} content - The medical transcript content
+ * @param {object} metadata - Document metadata (location, doctor info, etc.)
+ * @param {object} options - Styling options
+ * @returns {string} - HTML template for PDF generation
+ */
+const createMedicalDocumentTemplate = (content, metadata = {}, options = {}) => {
+  const {
+    location = '',
+    doctorName = '',
+    doctorSignature = '',
+    isSigned = false,
+    patientName = '',
+    dateOfBirth = '',
+    dateOfAccident = '',
+    dateOfConsultation = '',
+    phoneNumber = '',
+    clinicLogo = '',
+    includeLogoOnPdf = false
+  } = metadata;
+
+  const {
+    fontSize = 11,
+    headerFontSize = 14,
+    lineHeight = 1.4,
+    marginTop = 20,
+    marginBottom = 20,
+    marginLeft = 25,
+    marginRight = 25
+  } = options;
+
+  // Parse the content into sections
+  const { sections, unstructuredContent } = parseTranscriptSections(content);
+
+  // Header section with logo on left and location on right using table layout
+  let headerHTML = '';
+  if ((includeLogoOnPdf && clinicLogo) || location) {
+    headerHTML += `
+      <table style="
+        width: 100%;
+        margin-bottom: 20px;
+        border-collapse: collapse;
+        margin-top: -10px;
+      ">
+        <tr>
+          <td style="
+            width: 50%;
+            vertical-align: top;
+            padding: 0;
+            padding-left: 0;
+          ">
+    `;
+    
+    // Logo on the left
+    if (includeLogoOnPdf && clinicLogo) {
+      headerHTML += `
+        <img src="${clinicLogo}" alt="Clinic Logo" style="
+          max-width: 180px;
+          max-height: 180px;
+          object-fit: contain;
+          display: block;
+        " />
+      `;
+    }
+    
+    headerHTML += `
+          </td>
+          <td style="
+            width: 50%;
+            vertical-align: top;
+            text-align: right;
+            padding: 0;
+          ">
+    `;
+    
+    // Location on the right - Professional formatting
+    if (location) {
+      const locationLines = location.split('\n').filter(line => line.trim());
+      headerHTML += `
+        <div style="
+          text-align: right;
+          color: #000;
+          line-height: 1.4;
+        ">
+      `;
+      
+      locationLines.forEach((line, index) => {
+        if (index === 0) {
+          // Office name - bold and larger
+          headerHTML += `
+            <div style="
+              font-size: ${headerFontSize}px;
+              font-weight: bold;
+              margin-bottom: 4px;
+            ">${line.trim()}</div>
+          `;
+        } else {
+          // Address lines - normal weight
+          headerHTML += `
+            <div style="
+              font-size: ${headerFontSize - 2}px;
+              font-weight: normal;
+            ">${line.trim()}</div>
+          `;
+        }
+      });
+      
+      headerHTML += `</div>`;
+    }
+    
+    headerHTML += `
+          </td>
+        </tr>
+      </table>
+      <div style="
+        border-bottom: 2px solid #2c3e50;
+        margin-bottom: 20px;
+      "></div>
+    `;
+  }
+
+  // Patient information header (if available)
+  let patientInfoHTML = '';
+  if (patientName || dateOfBirth || phoneNumber) {
+    patientInfoHTML = `
+      <div style="
+        background: #f8f9fa;
+        padding: 15px;
+        margin-bottom: 20px;
+        border-left: 4px solid #3498db;
+        border-radius: 0 5px 5px 0;
+      ">
+        <h3 style="
+          margin: 0 0 10px 0;
+          color: #2c3e50;
+          font-size: ${fontSize + 2}px;
+          font-weight: 600;
+        ">PATIENT INFORMATION</h3>
+        ${patientName ? `<p style="margin: 5px 0;"><strong>Name:</strong> ${patientName}</p>` : ''}
+        ${dateOfBirth ? `<p style="margin: 5px 0;"><strong>Date of Birth:</strong> ${dateOfBirth}</p>` : ''}
+        ${dateOfAccident ? `<p style="margin: 5px 0;"><strong>Date of Accident:</strong> ${dateOfAccident}</p>` : ''}
+        ${dateOfConsultation ? `<p style="margin: 5px 0;"><strong>Date of Consultation:</strong> ${dateOfConsultation}</p>` : ''}
+        ${phoneNumber ? `<p style="margin: 5px 0;"><strong>Phone:</strong> ${phoneNumber}</p>` : ''}
+      </div>
+    `;
+  }
+
+  // Generate sections HTML
+  let sectionsHTML = '';
+  sections.forEach((section, index) => {
+    const sectionContent = section.content.join('\n').trim();
+    if (sectionContent) {
+      sectionsHTML += `
+        <div style="margin-bottom: 25px;">
+          <h3 style="
+            color: #2c3e50;
+            font-size: ${fontSize + 1}px;
+            font-weight: 600;
+            margin: 0 0 10px 0;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #bdc3c7;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          ">${section.header}</h3>
+          <div style="
+            padding-left: 10px;
+            line-height: ${lineHeight};
+            color: #34495e;
+          ">
+            ${formatSectionContent(sectionContent)}
+          </div>
+        </div>
+      `;
+    }
+  });
+
+  // Add unstructured content if any
+  if (unstructuredContent.trim()) {
+    sectionsHTML += `
+      <div style="margin-bottom: 25px;">
+        <h3 style="
+          color: #2c3e50;
+          font-size: ${fontSize + 1}px;
+          font-weight: 600;
+          margin: 0 0 10px 0;
+          padding-bottom: 5px;
+          border-bottom: 1px solid #bdc3c7;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        ">ADDITIONAL NOTES</h3>
+        <div style="
+          padding-left: 10px;
+          line-height: ${lineHeight};
+          color: #34495e;
+        ">
+          ${formatSectionContent(unstructuredContent)}
+        </div>
+      </div>
+    `;
+  }
+
+  // Signature section
+  let signatureHTML = '';
+  if (isSigned && doctorName) {
+    signatureHTML = `
+      <div style="
+        margin-top: 40px;
+        padding-top: 20px;
+        border-top: 2px solid #bdc3c7;
+      ">
+        ${doctorSignature ? `
+          <div style="margin-bottom: 15px;">
+            <img src="${doctorSignature}" alt="Doctor's signature" style="
+              max-width: 200px;
+              max-height: 80px;
+              display: block;
+            " />
+          </div>
+        ` : ''}
+        <div style="
+          font-weight: 600;
+          font-size: ${fontSize}px;
+          margin-bottom: 5px;
+          color: #2c3e50;
+        ">${doctorName}</div>
+        <div style="
+          font-size: ${fontSize - 1}px;
+          color: #7f8c8d;
+          font-style: italic;
+        ">Electronically signed on ${new Date().toLocaleDateString('en-US', { 
+          year: 'numeric', 
+          month: 'long', 
+          day: 'numeric' 
+        })}</div>
+      </div>
+    `;
+  }
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        @page {
+          margin: ${marginTop}mm ${marginRight}mm ${marginBottom}mm ${marginLeft}mm;
+        }
+        body {
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          font-size: ${fontSize}px;
+          line-height: ${lineHeight};
+          color: #2c3e50;
+          margin: 0;
+          padding: 0;
+          background: white;
+        }
+        h1, h2, h3, h4, h5, h6 {
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        ul, ol {
+          padding-left: 20px;
+        }
+        li {
+          margin-bottom: 5px;
+        }
+        .page-break {
+          page-break-before: always;
+        }
+      </style>
+    </head>
+    <body>
+      ${headerHTML}
+      ${patientInfoHTML}
+      ${sectionsHTML}
+      ${signatureHTML}
+    </body>
+    </html>
+  `;
+};
 
 function PdfPreviewModal({ 
   open, 
@@ -102,7 +478,7 @@ function PdfPreviewModal({
 
       const fileName = `medical-note-${recordingId || 'current'}-${new Date().toISOString().split('T')[0]}.pdf`;
       
-      await generateProfessionalMedicalPdf(content, fileName, location, metadata);
+      await generatePdfFromText(content, fileName, location, metadata);
     } catch (error) {
       console.error('Error generating PDF:', error);
     } finally {
