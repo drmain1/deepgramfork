@@ -288,6 +288,12 @@ await generatePdfFromText(combinedContent, 'combined.pdf', '', options);
 - **Solution**: Standardized on clinic header format only, removed patient info from all PDFs
 - **Implementation**: PatientTranscriptList now adds `CLINIC LOCATION:` header if missing
 
+### Issue: Different Margins Between Pages
+- **Problem**: Page 1 had 20px margins while subsequent pages had 75px margins
+- **Cause**: Conditional logic used different padding values (20px for page 1, margins * 3.77 for others)
+- **Solution**: Standardized all pages to use 20px margins for consistency
+- **Implementation**: Updated pdfUtils.js to use fixed 20px padding for all page containers
+
 ## Future Improvements
 
 1. **Further Modularization**

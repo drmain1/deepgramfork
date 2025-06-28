@@ -170,9 +170,9 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
     // Function to create page container with headers/footers
     const createPageContainer = (pageContent, pageNum, totalPageCount) => {
       const container = document.createElement('div');
-      // Use minimal padding for first page to allow logo to be close to corner
-      const topPadding = pageNum === 1 ? 20 : margins.top * 3.77;
-      const leftPadding = pageNum === 1 ? 20 : margins.left * 3.77;
+      // Use consistent padding for all pages
+      const topPadding = 20;
+      const leftPadding = 20;
       
       container.style.cssText = `
         width: 794px;
@@ -186,7 +186,7 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
         box-sizing: border-box;
-        padding: ${topPadding}px ${margins.right * 3.77}px ${margins.bottom * 3.77}px ${leftPadding}px;
+        padding: ${topPadding}px 20px 20px ${leftPadding}px;
       `;
 
       let html = '';
@@ -197,8 +197,8 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
           <div style="
             position: absolute;
             top: 15px;
-            left: ${margins.left * 3.77}px;
-            right: ${margins.right * 3.77}px;
+            left: 20px;
+            right: 20px;
             font-size: ${headerFontSize}px;
             color: #000;
             font-weight: 700;
@@ -236,8 +236,8 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
           <div style="
             position: absolute;
             bottom: 15px;
-            left: ${margins.left * 3.77}px;
-            right: ${margins.right * 3.77}px;
+            left: 20px;
+            right: 20px;
             font-size: ${footerFontSize}px;
             color: #333;
             text-align: center;
