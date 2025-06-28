@@ -628,9 +628,13 @@ function RecordingView({
             <p className="text-lg text-gray-500 mt-2">
               {patientDetails || 'New Session'} {sessionId && `(${sessionId})`}
               {resumeData && <span className="text-blue-600 ml-2">[Resumed Draft]</span>}
-              {isDictationMode && (
+              {isDictationMode && dateOfService && (
                 <span className="text-purple-600 ml-2">
-                  [Dictation Mode - Service Date: {new Date(dateOfService).toLocaleDateString()}]
+                  [Dictation Mode - Service Date: {(() => {
+                    // Parse YYYY-MM-DD format to avoid timezone issues
+                    const [year, month, day] = dateOfService.split('-').map(Number);
+                    return new Date(year, month - 1, day).toLocaleDateString();
+                  })()}]
                 </span>
               )}
             </p>
