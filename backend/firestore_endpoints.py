@@ -6,6 +6,7 @@ These will replace the existing endpoints in main.py.
 from fastapi import HTTPException, Depends, Path, Request
 from typing import List, Optional
 import logging
+import json
 from datetime import datetime, timezone, timedelta
 import asyncio
 
@@ -264,6 +265,14 @@ async def save_session_data_firestore(
     
     logger.info(f"Saving session {session_id} for user {user_id}")
     
+    # Log the raw request data to debug date_of_service
+    logger.info(f"Request data keys: {list(request_data.keys())}")
+    logger.info(f"Full request data: {json.dumps(request_data, indent=2)}")
+    if 'date_of_service' in request_data:
+        logger.info(f"date_of_service value: '{request_data['date_of_service']}' (type: {type(request_data['date_of_service'])})")
+    else:
+        logger.warning("date_of_service NOT found in request data!")
+    
     try:
         # Parse created_at from session_id if it's a timestamp format
         created_at = datetime.now(timezone.utc)
@@ -271,6 +280,8 @@ async def save_session_data_firestore(
         
         # Check if date_of_service is provided (dictation mode)
         date_of_service = request_data.get('date_of_service')
+        original_date_of_service = date_of_service  # Preserve original value
+        logger.info(f"Date of service from request: {date_of_service}")
         if date_of_service:
             try:
                 # For dictation mode, use the provided service date as created_at
@@ -370,6 +381,12 @@ async def save_session_data_firestore(
         logger.info(f"Transcript content length: {len(transcript_content)}")
         logger.info(f"First 100 chars: {transcript_content[:100] if transcript_content else 'Empty'}")
         
+        # Check if the problematic date is in the transcript
+        if transcript_content and "2024-05-16" in transcript_content:
+            logger.warning("Found date '2024-05-16' in transcript content!")
+            idx = transcript_content.find("2024-05-16")
+            logger.warning(f"Date appears at position {idx}, context: ...{transcript_content[max(0,idx-50):idx+60]}...")
+        
         # Update Firestore with transcript content directly
         update_data = {
             'transcript_original': transcript_content,
@@ -424,13 +441,23 @@ async def save_session_data_firestore(
                     patient_name = request_data.get('patient_name', '')
                     patient_context = request_data.get('patient_context', '')
                     encounter_type = request_data.get('encounter_type', '')
-                    custom_instructions = f"Patient Name: {patient_name}\nPatient Context: {patient_context}\nEncounter Type: {encounter_type}\nTemplate: {llm_template}"
+                    custom_instructions = f"Patient Name: {patient_name}\nPatient Context: {patient_context}\nEncounter Type: {encounter_type}"
+                    if original_date_of_service:
+                        custom_instructions += f"\nDate of Service: {original_date_of_service}"
+                    custom_instructions += f"\nTemplate: {llm_template}"
                 else:
                     # Append context to profile instructions
                     patient_name = request_data.get('patient_name', '')
                     patient_context = request_data.get('patient_context', '')
                     encounter_type = request_data.get('encounter_type', '')
                     custom_instructions += f"\n\nAdditional Context:\nPatient Name: {patient_name}\nPatient Context: {patient_context}\nEncounter Type: {encounter_type}"
+                    if original_date_of_service:
+                        custom_instructions += f"\nDate of Service: {original_date_of_service}"
+                        logger.info(f"Added date of service to instructions: {original_date_of_service}")
+                    else:
+                        logger.info("No date of service to add to instructions")
+                
+                logger.info(f"Custom instructions being sent to LLM: {custom_instructions[:200]}...")
                 
                 # Polish transcript using Gemini
                 polished_result = await asyncio.get_event_loop().run_in_executor(

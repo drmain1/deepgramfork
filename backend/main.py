@@ -625,6 +625,7 @@ class SaveSessionRequest(BaseModel):
     llm_template: Optional[str] = None
     llm_template_id: Optional[str] = None
     location: Optional[str] = None  # Add location field too
+    date_of_service: Optional[str] = None  # Add date of service for dictation mode
 
 @app.post("/api/v1/save_session_data") 
 async def save_session_data_endpoint(

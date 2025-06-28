@@ -137,13 +137,18 @@ firebase deploy --only firestore  # Deploy only Firestore rules
        - Backend uses the service date for `created_at` timestamp to maintain chronological order
        - Transcripts are marked with `is_dictation: true` flag in Firestore
        - Special handling in `get_recent_transcripts` to include dictation transcripts based on `updated_at` rather than `created_at`
-       - Files involved:
-         - `SetupView.jsx` (lines 363-407): UI for enabling dictation mode
+       - **Critical Files and Components**:
+         - `SetupView.jsx`: UI for enabling dictation mode with date picker
          - `RecordingView.jsx`: Passes `date_of_service` to WebSocket and save endpoint
-         - `deepgram_utils.py` (lines 172-190): Generates special session ID format
+         - `main.py`: **IMPORTANT** - `SaveSessionRequest` model MUST include `date_of_service: Optional[str] = None`
+         - `deepgram_utils.py`: Generates special session ID format for dictation mode
          - `speechmatics_utils.py`: Similar session ID generation
-         - `firestore_endpoints.py` (lines 270-299): Handles date parsing for dictation mode
-         - `firestore_client.py` (lines 267-294): Special query logic for dictation transcripts
+         - `firestore_endpoints.py`: Handles date parsing for dictation mode, passes date to LLM
+         - `firestore_client.py`: Special query logic for dictation transcripts
+       - **LLM Integration**:
+         - Date of service is passed to LLM in custom instructions as "Date of Service: YYYY-MM-DD"
+         - Templates should reference this date appropriately (e.g., "Follow up treatment date: [Date of Service]")
+         - Templates must NOT hallucinate dates - only use the provided date or indicate "[Date not specified]"
      - **UI Behavior**:
        - Blue-highlighted section appears below patient selection when enabled
        - Date picker prevents future dates
@@ -169,6 +174,10 @@ firebase deploy --only firestore  # Deploy only Firestore rules
        - Cannot set custom time, only date (time is always current time)
        - Requires existing patient profile (cannot use for new patients)
        - Date validation prevents future dates but doesn't check business logic (e.g., weekends)
+     - **Common Issues and Solutions**:
+       - **Date not appearing in polished notes**: Ensure `SaveSessionRequest` in `main.py` includes `date_of_service` field
+       - **LLM hallucinating dates**: Update template instructions to explicitly state not to generate dates
+       - **Date format issues**: Frontend sends YYYY-MM-DD format, backend expects and validates this format
 
 2. **Authentication Flow**:
    - Firebase Auth for user management

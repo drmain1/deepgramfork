@@ -144,12 +144,17 @@ function RecordingView({
             // Include session_id if resuming a draft to reuse the same session
             session_id: resumeData?.sessionId || undefined,
             // Include date_of_service if in dictation mode
-            date_of_service: isDictationMode && dateOfService ? dateOfService : undefined
+            date_of_service: (isDictationMode && dateOfService && dateOfService.trim()) ? dateOfService : undefined
           };
           
           try {
             webSocketRef.current.send(JSON.stringify(initialMetadata));
             console.log('[WebSocket] Sent initial_metadata:', initialMetadata);
+            console.log('[WebSocket] Dictation mode details:', {
+              isDictationMode,
+              dateOfService,
+              sentDateOfService: initialMetadata.date_of_service
+            });
           } catch (error) {
             console.error('[WebSocket] Error sending initial_metadata:', error);
             setError('Failed to send initial configuration. Please try again.');
@@ -388,6 +393,14 @@ function RecordingView({
       const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
       const url = `${API_BASE_URL}/api/v1/save_session_data`;
       
+      // Debug logging for date_of_service
+      console.log('Save session debug:', {
+        isDictationMode,
+        dateOfService,
+        trimmedDate: dateOfService?.trim(),
+        willSendDate: (isDictationMode && dateOfService && dateOfService.trim()) ? dateOfService : null
+      });
+      
       // Get the active transcription profile and its LLM instructions
       const activeProfile = userSettings.transcriptionProfiles?.find(p => p.id === currentProfileId);
       const llmTemplate = activeProfile ? activeProfile.name : 'General Summary';
@@ -418,6 +431,9 @@ function RecordingView({
       console.log('- hasInstructions:', !!llmInstructions);
       console.log('- patient_id:', selectedPatient?.id || 'No patient selected');
       console.log('- patient_name:', patientDetails);
+      console.log('- isDictationMode:', isDictationMode);
+      console.log('- dateOfService:', dateOfService);
+      console.log('- date_of_service being sent:', (isDictationMode && dateOfService && dateOfService.trim()) ? dateOfService : null);
       console.log('==========================')
       
       // Embed location data in the transcript content itself as a backup
@@ -428,6 +444,24 @@ function RecordingView({
         transcriptWithLocation = locationHeader + finalTranscriptContent;
       }
       
+      const requestBody = {
+        session_id: sessionId,
+        final_transcript_text: transcriptWithLocation,
+        patient_context: patientContext,
+        patient_name: patientDetails,
+        patient_id: selectedPatient?.id || null,
+        encounter_type: encounterType,
+        llm_template: llmTemplate,
+        llm_template_id: llmTemplateId,
+        location: selectedLocation === '__LEAVE_OUT__' ? '' : selectedLocation,
+        user_id: user.uid || user.sub,
+        date_of_service: (isDictationMode && dateOfService && dateOfService.trim()) ? dateOfService : null
+      };
+      
+      console.log('=== ACTUAL REQUEST BODY ===');
+      console.log(JSON.stringify(requestBody, null, 2));
+      console.log('===========================');
+      
       const accessToken = await getToken();
       const response = await fetch(url, {
         method: 'POST',
@@ -435,19 +469,7 @@ function RecordingView({
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({
-          session_id: sessionId,
-          final_transcript_text: transcriptWithLocation,
-          patient_context: patientContext,
-          patient_name: patientDetails,
-          patient_id: selectedPatient?.id || null,
-          encounter_type: encounterType,
-          llm_template: llmTemplate,
-          llm_template_id: llmTemplateId,
-          location: selectedLocation === '__LEAVE_OUT__' ? '' : selectedLocation,
-          user_id: user.uid || user.sub,
-          date_of_service: isDictationMode && dateOfService ? dateOfService : null
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       let result = {};
@@ -568,7 +590,8 @@ function RecordingView({
             transcript: combinedTranscript,
             patient_name: patientDetails || 'Untitled Session',
             profile_id: currentProfileId,
-            user_id: user.uid || user.sub
+            user_id: user.uid || user.sub,
+            date_of_service: (isDictationMode && dateOfService && dateOfService.trim()) ? dateOfService : null
           }),
         });
         

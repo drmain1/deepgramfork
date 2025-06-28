@@ -70,29 +70,18 @@ def polish_transcript_with_gemini(
         # Prepare the prompt
         prompt_parts = []
         
-        # Add system context
-        prompt_parts.append("You are a medical transcription assistant. Your task is to polish and format the following medical transcript according to the provided instructions.")
-        
-        # Add patient information
-        if patient_name:
-            prompt_parts.append(f"Patient Name: {patient_name}")
-        if patient_context:
-            prompt_parts.append(f"Patient Context: {patient_context}")
-        if encounter_type:
-            prompt_parts.append(f"Encounter Type: {encounter_type}")
-        if location:
-            prompt_parts.append(f"Location: {location}")
-        
-        # Add the LLM instructions
-        prompt_parts.append("\nInstructions for formatting:")
+        # Add the LLM instructions (which already contains patient info from firestore_endpoints.py)
         prompt_parts.append(llm_instructions)
         
         # Add the transcript
-        prompt_parts.append("\nTranscript to polish:")
+        prompt_parts.append("\n\nTranscript to polish:")
         prompt_parts.append(transcript)
         
         # Combine all parts
         full_prompt = "\n".join(prompt_parts)
+        
+        # Log the instructions portion for debugging
+        logger.info(f"LLM Instructions section: {llm_instructions[:300]}...")
         
         # Configure the model with fallback options
         model = None
