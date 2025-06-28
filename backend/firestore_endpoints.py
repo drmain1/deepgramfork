@@ -285,18 +285,32 @@ async def save_session_data_firestore(
         if date_of_service:
             try:
                 # For dictation mode, use the provided service date as created_at
+                # The date_of_service is in the user's local date (YYYY-MM-DD)
+                # We need to treat it as a date in the user's timezone, not UTC
+                
+                # Parse the date string
                 service_date = datetime.strptime(date_of_service, "%Y-%m-%d")
+                
                 # Preserve the time portion from session_id if available
                 if len(session_id) >= 14 and session_id[8:14].isdigit():
                     time_part = session_id[8:14]  # HHMMSS portion
-                    created_at = datetime.strptime(f"{date_of_service} {time_part[:2]}:{time_part[2:4]}:{time_part[4:6]}", "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                    # Create datetime with the service date and time from session_id
+                    # This represents the user's local time when they created the dictation
+                    local_datetime = datetime.strptime(f"{date_of_service} {time_part[:2]}:{time_part[2:4]}:{time_part[4:6]}", "%Y-%m-%d %H:%M:%S")
                 else:
                     # Use the service date with current time
-                    created_at = service_date.replace(hour=datetime.now(timezone.utc).hour, 
-                                                    minute=datetime.now(timezone.utc).minute,
-                                                    second=datetime.now(timezone.utc).second,
-                                                    tzinfo=timezone.utc)
-                logger.info(f"Dictation mode: Using date_of_service {date_of_service}, created_at: {created_at.isoformat()}")
+                    now = datetime.now()
+                    local_datetime = service_date.replace(hour=now.hour, 
+                                                         minute=now.minute,
+                                                         second=now.second)
+                
+                # IMPORTANT: We store this as if it were UTC, but it actually represents
+                # the user's local time. This ensures that when the frontend displays it,
+                # it shows the correct date without timezone shifting.
+                # This is a deliberate choice to handle the date_of_service correctly.
+                created_at = local_datetime.replace(tzinfo=timezone.utc)
+                
+                logger.info(f"Dictation mode: Using date_of_service {date_of_service}, created_at: {created_at.isoformat()} (stored as UTC but represents user's local time)")
             except ValueError as e:
                 logger.warning(f"Could not parse date_of_service: {date_of_service}, error: {e}")
                 # Fall back to parsing from session_id
