@@ -147,6 +147,136 @@ def polish_transcript_with_gemini(
             'polished_transcript': transcript  # Return original if processing fails
         }
 
+def generate_billing_with_gemini(
+    transcript: str,
+    patient_info: Dict[str, Any],
+    billing_instructions: str,
+    encounter_type: str,
+    service_date: Optional[str] = None,
+    model_name: str = "gemini-2.5-pro"
+) -> Dict[str, Any]:
+    """
+    Generate billing information from a medical transcript using Google Gemini 2.5 Pro.
+    
+    Args:
+        transcript: The medical transcript (polished or original)
+        patient_info: Patient information dictionary
+        billing_instructions: Custom billing instructions/template
+        encounter_type: Type of medical encounter
+        service_date: Date of service (YYYY-MM-DD format)
+        model_name: Gemini model to use (default: gemini-2.5-pro)
+    
+    Returns:
+        Dictionary with billing data and metadata
+    """
+    try:
+        # Initialize Vertex AI if not already done
+        if not hasattr(generate_billing_with_gemini, '_initialized'):
+            if initialize_vertex_ai():
+                generate_billing_with_gemini._initialized = True
+            else:
+                raise Exception("Failed to initialize Vertex AI")
+        
+        # Prepare the prompt
+        prompt_parts = []
+        
+        # Add billing context
+        prompt_parts.append("You are a medical billing specialist generating accurate billing information from medical transcripts.")
+        prompt_parts.append(f"\nEncounter Type: {encounter_type}")
+        
+        if service_date:
+            prompt_parts.append(f"Date of Service: {service_date}")
+        
+        # Add patient info
+        prompt_parts.append(f"\nPatient: {patient_info.get('first_name', '')} {patient_info.get('last_name', '')}")
+        if patient_info.get('date_of_birth'):
+            prompt_parts.append(f"DOB: {patient_info.get('date_of_birth')}")
+        if patient_info.get('insurance_info'):
+            prompt_parts.append(f"Insurance: {patient_info.get('insurance_info')}")
+        
+        # Add custom billing instructions
+        prompt_parts.append("\n\nBilling Instructions:")
+        prompt_parts.append(billing_instructions)
+        
+        # Add the transcript
+        prompt_parts.append("\n\nMedical Transcript:")
+        prompt_parts.append(transcript)
+        
+        # Add output format request
+        prompt_parts.append("\n\nGenerate a detailed billing summary including CPT codes, ICD-10 codes, and any necessary modifiers.")
+        
+        # Combine all parts
+        full_prompt = "\n".join(prompt_parts)
+        
+        # Configure the model with fallback options
+        model = None
+        model_used = model_name
+        
+        # Try different model name formats
+        model_options = [
+            model_name,
+            "gemini-1.5-pro-002",  # Fallback to stable model
+            "gemini-1.5-flash",    # Another fallback
+            "publishers/google/models/gemini-2.5-flash"  # Try with full path
+        ]
+        
+        for try_model in model_options:
+            try:
+                model = GenerativeModel(try_model)
+                model_used = try_model
+                logger.info(f"Using model for billing: {try_model}")
+                break
+            except Exception as e:
+                logger.warning(f"Billing model {try_model} not available: {str(e)}")
+                continue
+        
+        if not model:
+            raise Exception("No compatible Gemini model found for billing")
+        
+        # Configure generation parameters for accuracy
+        generation_config = GenerationConfig(
+            temperature=0.1,  # Very low for billing accuracy
+            top_p=0.95,
+            top_k=40,
+            max_output_tokens=8192,
+        )
+        
+        # Generate response
+        logger.info(f"Generating billing information with Gemini 2.5 Pro")
+        response = model.generate_content(
+            full_prompt,
+            generation_config=generation_config,
+            safety_settings={
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+            }
+        )
+        
+        # Extract the billing text
+        billing_text = response.text
+        
+        # Log success
+        logger.info(f"Successfully generated billing information")
+        
+        return {
+            'success': True,
+            'billing_data': billing_text,
+            'model_used': model_used,
+            'timestamp': datetime.utcnow().isoformat(),
+            'service_date': service_date,
+            'encounter_type': encounter_type
+        }
+        
+    except Exception as e:
+        logger.error(f"Error generating billing with Gemini: {str(e)}")
+        return {
+            'success': False,
+            'error': str(e),
+            'billing_data': None
+        }
+
 def test_gemini_connection():
     """Test the Gemini API connection with a simple request."""
     try:

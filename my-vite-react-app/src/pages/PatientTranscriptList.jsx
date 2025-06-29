@@ -29,7 +29,16 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Paper
+  Paper,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  LinearProgress,
+  Stepper,
+  Step,
+  StepLabel,
+  StepContent
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -41,7 +50,8 @@ import {
   MoreVert as MoreVertIcon,
   CheckBox as CheckBoxIcon,
   CheckBoxOutlineBlank as CheckBoxOutlineBlankIcon,
-  Person as PersonIcon
+  Person as PersonIcon,
+  Receipt as ReceiptIcon
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 
@@ -60,6 +70,11 @@ function PatientTranscriptList() {
   const [selectedTranscript, setSelectedTranscript] = useState(null);
   const [generatingPreview, setGeneratingPreview] = useState(false);
   const [generatingDownload, setGeneratingDownload] = useState(false);
+  const [generatingBilling, setGeneratingBilling] = useState(false);
+  const [showBillingDialog, setShowBillingDialog] = useState(false);
+  const [billingData, setBillingData] = useState(null);
+  const [billingProgress, setBillingProgress] = useState({ step: 0, message: '' });
+  const [showBillingProgress, setShowBillingProgress] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated && patientId) {
@@ -284,6 +299,71 @@ function PatientTranscriptList() {
     }
   };
 
+  const handleGenerateBilling = async () => {
+    if (selectedTranscripts.size === 0) return;
+    
+    setGeneratingBilling(true);
+    setShowBillingProgress(true);
+    setBillingProgress({ step: 1, message: 'Gathering selected transcripts...' });
+    
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      
+      // Simulate progress steps
+      setTimeout(() => {
+        setBillingProgress({ step: 2, message: 'Analyzing medical encounters...' });
+      }, 500);
+      
+      // Get selected transcript IDs
+      const transcriptIds = Array.from(selectedTranscripts);
+      
+      // Empty billing instructions - backend will use base + custom rules
+      const billingInstructions = "";
+      
+      setTimeout(() => {
+        setBillingProgress({ step: 3, message: 'Activating secret billing algorithms...' });
+      }, 1500);
+      
+      const response = await fetch(`/api/v1/patients/${patientId}/generate-billing`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          transcript_ids: transcriptIds,
+          billing_instructions: billingInstructions
+        })
+      });
+      
+      setBillingProgress({ step: 4, message: 'Finalizing billing codes...' });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        setTimeout(() => {
+          setBillingProgress({ step: 5, message: 'Complete!' });
+          setTimeout(() => {
+            setShowBillingProgress(false);
+            setBillingData(data);
+            setShowBillingDialog(true);
+          }, 500);
+        }, 500);
+      } else {
+        const errorText = await response.text();
+        console.error('Failed to generate billing:', errorText);
+        setShowBillingProgress(false);
+        alert('Failed to generate billing. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error generating billing:', error);
+      setShowBillingProgress(false);
+      alert('Error generating billing. Please try again.');
+    } finally {
+      setGeneratingBilling(false);
+    }
+  };
+
 
   if (authLoading || loading) {
     return (
@@ -359,7 +439,7 @@ function PatientTranscriptList() {
                   variant="outlined"
                   startIcon={generatingPreview ? <CircularProgress size={20} /> : <DescriptionIcon />}
                   onClick={handleViewMultiple}
-                  disabled={generatingPreview || generatingDownload}
+                  disabled={generatingPreview}
                 >
                   {generatingPreview ? 'Generating Preview...' : `View Selected (${selectedTranscripts.size})`}
                 </Button>
@@ -367,9 +447,18 @@ function PatientTranscriptList() {
                   variant="outlined"
                   startIcon={generatingDownload ? <CircularProgress size={20} /> : <PrintIcon />}
                   onClick={handlePrintAll}
-                  disabled={generatingPreview || generatingDownload}
+                  disabled={generatingDownload}
                 >
                   {generatingDownload ? 'Generating PDF...' : 'Print Selected'}
+                </Button>
+                <Button
+                  variant="contained"
+                  color="secondary"
+                  startIcon={generatingBilling ? <CircularProgress size={20} /> : <ReceiptIcon />}
+                  onClick={handleGenerateBilling}
+                  disabled={generatingBilling}
+                >
+                  {generatingBilling ? 'Generating Billing...' : 'Generate Billing'}
                 </Button>
               </>
             )}
@@ -498,6 +587,149 @@ function PatientTranscriptList() {
           Download
         </MenuItem>
       </Menu>
+
+      {/* Billing Progress Dialog */}
+      <Dialog
+        open={showBillingProgress}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)',
+          }
+        }}
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          <Box display="flex" alignItems="center" gap={1}>
+            <ReceiptIcon sx={{ color: 'primary.main' }} />
+            <Typography variant="h6">Billing Generation Magic ✨</Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Stepper activeStep={billingProgress.step - 1} orientation="vertical">
+              <Step>
+                <StepLabel>Gathering Transcripts</StepLabel>
+                <StepContent>
+                  <Typography variant="body2" color="text.secondary">
+                    Collecting selected medical encounters...
+                  </Typography>
+                </StepContent>
+              </Step>
+              <Step>
+                <StepLabel>Analyzing Encounters</StepLabel>
+                <StepContent>
+                  <Typography variant="body2" color="text.secondary">
+                    Reviewing procedures and services provided...
+                  </Typography>
+                </StepContent>
+              </Step>
+              <Step>
+                <StepLabel>🤫 Secret Sauce Processing</StepLabel>
+                <StepContent>
+                  <Typography variant="body2" color="text.secondary">
+                    Our classified billing algorithm at work...
+                  </Typography>
+                  <LinearProgress sx={{ mt: 1 }} />
+                </StepContent>
+              </Step>
+              <Step>
+                <StepLabel>Finalizing Codes</StepLabel>
+                <StepContent>
+                  <Typography variant="body2" color="text.secondary">
+                    Applying billing rules and modifiers...
+                  </Typography>
+                </StepContent>
+              </Step>
+              <Step>
+                <StepLabel>Complete</StepLabel>
+                <StepContent>
+                  <Typography variant="body2" color="text.secondary">
+                    Billing summary ready!
+                  </Typography>
+                </StepContent>
+              </Step>
+            </Stepper>
+            
+            {billingProgress.step === 3 && (
+              <Box sx={{ mt: 3, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  🔮 Magic happening... (30-90 seconds of pure wizardry)
+                </Typography>
+                <LinearProgress />
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+      </Dialog>
+
+      {/* Billing Dialog */}
+      <Dialog
+        open={showBillingDialog}
+        onClose={() => setShowBillingDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <ReceiptIcon />
+          Medical Billing Summary
+        </DialogTitle>
+        <DialogContent dividers>
+          {billingData && (
+            <Box>
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Generated: {new Date(billingData.generated_at).toLocaleString()}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Transcripts included: {billingData.transcript_count}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Model: {billingData.model_used}
+                </Typography>
+              </Box>
+              <Divider sx={{ my: 2 }} />
+              <Box sx={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.9rem' }}>
+                {billingData.billing_data}
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              // Copy billing data to clipboard
+              if (billingData?.billing_data) {
+                navigator.clipboard.writeText(billingData.billing_data);
+                alert('Billing data copied to clipboard!');
+              }
+            }}
+            startIcon={<DownloadIcon />}
+          >
+            Copy to Clipboard
+          </Button>
+          <Button
+            onClick={() => {
+              // Download as text file
+              if (billingData?.billing_data) {
+                const blob = new Blob([billingData.billing_data], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `billing_${patient?.last_name}_${patient?.first_name}_${new Date().toISOString().split('T')[0]}.txt`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }
+            }}
+            startIcon={<DownloadIcon />}
+          >
+            Download
+          </Button>
+          <Button onClick={() => setShowBillingDialog(false)}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

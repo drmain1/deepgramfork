@@ -4,6 +4,7 @@ import MacroPhrasesTab from './MacroPhrasesTab';
 import CustomVocabularyTab from './CustomVocabularyTab';
 import TranscriptionProfilesTab from './TranscriptionProfilesTab';
 import OfficeInformationTab from './OfficeInformationTab';
+import BillingRulesTab from './BillingRulesTab';
 
 function SettingsTabs({ 
   tabValue, 
@@ -16,6 +17,8 @@ function SettingsTabs({
   saveCustomVocabulary, 
   officeInformation, 
   saveOfficeInformation, 
+  customBillingRules,
+  saveCustomBillingRules,
   settingsLoading 
 }) { 
   return (
@@ -26,7 +29,8 @@ function SettingsTabs({
       {tabValue === 1 && <MacroPhrasesTab macroPhrases={macroPhrases} saveMacroPhrases={saveMacroPhrases} settingsLoading={settingsLoading} />}
       {tabValue === 2 && <CustomVocabularyTab customVocabulary={customVocabulary} saveCustomVocabulary={saveCustomVocabulary} settingsLoading={settingsLoading} />}
       {tabValue === 3 && <OfficeInformationTab officeInformation={officeInformation} saveOfficeInformation={saveOfficeInformation} settingsLoading={settingsLoading} />}
-      {tabValue === 4 && <TranscriptionProfilesTab transcriptionProfiles={transcriptionProfiles} deleteTranscriptionProfile={deleteTranscriptionProfile} settingsLoading={settingsLoading} />} 
+      {tabValue === 4 && <TranscriptionProfilesTab transcriptionProfiles={transcriptionProfiles} deleteTranscriptionProfile={deleteTranscriptionProfile} settingsLoading={settingsLoading} />}
+      {tabValue === 5 && <BillingRulesTab customBillingRules={customBillingRules} saveCustomBillingRules={saveCustomBillingRules} settingsLoading={settingsLoading} />} 
     </>
   );
 }

@@ -23,6 +23,7 @@ class UserSettingsData(BaseModel):
     clinicLogo: Optional[str] = Field(default=None, description="Base64 encoded clinic logo image")
     includeLogoOnPdf: bool = Field(default=False, description="Include clinic logo on PDF forms")
     medicalSpecialty: Optional[str] = Field(default="", description="Medical specialty of the doctor")
+    customBillingRules: Optional[str] = Field(default="", description="Custom billing rules to append to base rules")
 
 # Default user settings structure
 DEFAULT_USER_SETTINGS = UserSettingsData(

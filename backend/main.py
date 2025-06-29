@@ -46,7 +46,7 @@ from speechmatics_utils import handle_speechmatics_websocket
 # GCP utilities are imported above
 
 # Import GCP utility functions
-from gcp_utils import polish_transcript_with_gemini
+from gcp_utils import polish_transcript_with_gemini, generate_billing_with_gemini
 
 # Import authentication middleware
 # Use Firebase Admin SDK for production authentication
@@ -773,6 +773,10 @@ class PatientResponse(BaseModel):
     updated_at: datetime
     active: bool
 
+class BillingRequest(BaseModel):
+    transcript_ids: List[str]
+    billing_instructions: Optional[str] = ""
+
 @app.post("/api/v1/patients", response_model=PatientResponse)
 async def create_patient(
     patient_data: PatientCreateRequest,
@@ -987,6 +991,181 @@ async def get_patient_transcripts(
     except Exception as e:
         logger.error(f"Error getting transcripts for patient {patient_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get patient transcripts")
+
+@app.post("/api/v1/patients/{patient_id}/generate-billing")
+async def generate_patient_billing(
+    patient_id: str = Path(..., description="Patient ID"),
+    request: BillingRequest = None,
+    current_user_id: str = Depends(get_user_id),
+    req: Request = None
+):
+    """Generate billing information for patient transcripts using Gemini 2.5 Pro"""
+    try:
+        from firestore_client import firestore_client
+        from base_billing_rules import get_base_billing_rules
+        
+        # Verify the patient belongs to this user
+        patient = await firestore_client.get_patient(patient_id, current_user_id)
+        if not patient:
+            raise HTTPException(status_code=404, detail="Patient not found")
+        
+        # Validate request
+        if not request.transcript_ids or len(request.transcript_ids) == 0:
+            raise HTTPException(status_code=400, detail="At least one transcript ID is required")
+        
+        logger.info(f"Billing generation requested for transcripts: {request.transcript_ids}")
+        
+        # If no specific transcript IDs provided, get all patient transcripts
+        if not request.transcript_ids:
+            logger.info(f"No specific transcripts requested, fetching all for patient {patient_id}")
+            all_transcripts = await firestore_client.get_patient_transcripts(patient_id, current_user_id)
+        else:
+            # Fetch the specific transcripts
+            all_transcripts = []
+            for transcript_id in request.transcript_ids:
+                transcript_data = await firestore_client.get_transcript(transcript_id)
+                if transcript_data:
+                    # Check user ownership and patient linkage
+                    transcript_user_id = transcript_data.get('user_id') or transcript_data.get('userId')
+                    transcript_patient_id = transcript_data.get('patient_id') or transcript_data.get('patientId')
+                    
+                    logger.info(f"Transcript {transcript_id}: user={transcript_user_id}, patient={transcript_patient_id}")
+                    
+                    if transcript_user_id == current_user_id:
+                        # Verify it belongs to the requested patient
+                        if transcript_patient_id == patient_id:
+                            all_transcripts.append(transcript_data)
+                        else:
+                            logger.warning(f"Transcript {transcript_id} belongs to different patient")
+                    else:
+                        logger.warning(f"Transcript {transcript_id} does not belong to current user")
+                else:
+                    logger.warning(f"Transcript {transcript_id} not found")
+        
+        if not all_transcripts:
+            raise HTTPException(status_code=404, detail="No transcripts found for this patient")
+        
+        # Combine transcript content
+        combined_transcript = ""
+        service_dates = []
+        encounter_types = set()
+        
+        for transcript in all_transcripts:
+            # Get the content (prefer polished over original) - check both camelCase and snake_case
+            content = (transcript.get('polishedTranscript') or 
+                      transcript.get('polished_transcript') or 
+                      transcript.get('transcript') or 
+                      transcript.get('original_transcript', ''))
+            
+            # If no content in the list response, fetch the full transcript
+            if not content:
+                logger.info(f"Fetching full transcript for {transcript.get('id')}")
+                try:
+                    # Use the get_transcript_details_firestore function
+                    full_transcript = await get_transcript_details_firestore(
+                        user_id=current_user_id,
+                        transcript_id=transcript.get('id'),
+                        current_user_id=current_user_id
+                    )
+                    if full_transcript:
+                        content = (full_transcript.get('polishedTranscript') or 
+                                 full_transcript.get('polished_transcript') or
+                                 full_transcript.get('originalTranscript') or
+                                 full_transcript.get('original_transcript') or
+                                 full_transcript.get('transcript', ''))
+                except Exception as e:
+                    logger.error(f"Error fetching full transcript: {str(e)}")
+            
+            if content:
+                combined_transcript += f"\n\n--- Transcript from {transcript.get('created_at', transcript.get('date', 'Unknown date'))} ---\n"
+                combined_transcript += content
+                logger.info(f"Found content of length: {len(content)}")
+            else:
+                logger.warning(f"No content found in transcript {transcript.get('id', 'unknown')}")
+            
+            # Collect service dates
+            if transcript.get('created_at') or transcript.get('date'):
+                service_dates.append(transcript.get('created_at') or transcript.get('date'))
+            
+            # Collect encounter types
+            encounter_type = transcript.get('encounterType') or transcript.get('encounter_type')
+            if encounter_type:
+                encounter_types.add(encounter_type)
+        
+        if not combined_transcript.strip():
+            logger.error(f"No transcript content found in {len(all_transcripts)} transcripts")
+            raise HTTPException(status_code=400, detail="No transcript content found")
+        
+        # Prepare patient info for billing
+        patient_info = {
+            'first_name': patient.get('first_name', ''),
+            'last_name': patient.get('last_name', ''),
+            'date_of_birth': patient.get('date_of_birth', ''),
+            'insurance_info': patient.get('insurance_info', '')
+        }
+        
+        # Get base billing rules
+        base_rules = get_base_billing_rules()
+        
+        # Get user's custom billing rules
+        try:
+            user_settings = await get_user_settings_firestore(current_user_id)
+            custom_rules = user_settings.get('customBillingRules', '') or user_settings.get('custom_billing_rules', '')
+        except Exception as e:
+            logger.warning(f"Failed to fetch user settings for billing: {str(e)}")
+            custom_rules = ""
+        
+        # Combine rules: base + custom + any additional instructions from request
+        combined_billing_instructions = base_rules
+        if custom_rules and custom_rules.strip():
+            combined_billing_instructions += f"\n\n## CUSTOM CLINIC RULES\n\n{custom_rules}"
+        
+        # Optionally append any additional instructions from the request
+        if request.billing_instructions and request.billing_instructions.strip():
+            combined_billing_instructions += f"\n\n## ADDITIONAL INSTRUCTIONS FOR THIS REQUEST\n\n{request.billing_instructions}"
+        
+        # Generate billing using Gemini 2.5 Pro
+        result = generate_billing_with_gemini(
+            transcript=combined_transcript,
+            patient_info=patient_info,
+            billing_instructions=combined_billing_instructions,
+            encounter_type=', '.join(encounter_types) if encounter_types else 'Medical Encounter',
+            service_date=service_dates[0] if service_dates else None,
+            model_name="gemini-2.5-pro"
+        )
+        
+        if not result['success']:
+            logger.error(f"Billing generation failed: {result.get('error')}")
+            raise HTTPException(status_code=500, detail=f"Failed to generate billing: {result.get('error')}")
+        
+        # Log PHI access for HIPAA compliance
+        AuditLogger.log_data_access(
+            user_id=current_user_id,
+            operation="GENERATE_BILLING",
+            data_type="patient_billing",
+            resource_id=patient_id,
+            request=req,
+            success=True
+        )
+        
+        # Return the billing data
+        return {
+            'billing_data': result['billing_data'],
+            'patient_id': patient_id,
+            'transcript_count': len(all_transcripts),
+            'service_dates': service_dates,
+            'encounter_types': list(encounter_types),
+            'generated_at': result['timestamp'],
+            'model_used': result['model_used']
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        logger.error(f"Error generating billing for patient {patient_id}: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate billing: {str(e)}")
 
 # --- End Patient Management --- #
         

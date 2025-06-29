@@ -17,6 +17,7 @@ export const UserSettingsProvider = ({ children }) => {
     clinicLogo: null,
     includeLogoOnPdf: false,
     medicalSpecialty: '',
+    customBillingRules: '',
   });
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [settingsError, setSettingsError] = useState(null);
@@ -62,6 +63,7 @@ export const UserSettingsProvider = ({ children }) => {
           clinicLogo: data.clinicLogo || null,
           includeLogoOnPdf: data.includeLogoOnPdf || false,
           medicalSpecialty: data.medicalSpecialty || '',
+          customBillingRules: data.customBillingRules || '',
         });
       }
     } catch (error) {
@@ -174,6 +176,11 @@ export const UserSettingsProvider = ({ children }) => {
         const updatedSettings = { ...userSettings, medicalSpecialty };
         console.log('Updated settings to save:', updatedSettings);
         return saveUserSettings(updatedSettings, true); // Skip loading state to prevent UI refresh
+    },
+    updateCustomBillingRules: (customBillingRules) => {
+        console.log('updateCustomBillingRules called with:', customBillingRules?.substring(0, 100) + '...');
+        const updatedSettings = { ...userSettings, customBillingRules };
+        return saveUserSettings(updatedSettings);
     },
   };
 
