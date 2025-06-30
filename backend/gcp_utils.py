@@ -202,8 +202,12 @@ def generate_billing_with_gemini(
         prompt_parts.append("\n\nMedical Transcript:")
         prompt_parts.append(transcript)
         
-        # Add output format request
-        prompt_parts.append("\n\nGenerate a detailed billing summary including CPT codes, ICD-10 codes, and any necessary modifiers.")
+        # Add output format request - be specific to control output size
+        prompt_parts.append("\n\nIMPORTANT: Keep your response concise and focused.")
+        prompt_parts.append("Generate the billing output in exactly this format:")
+        prompt_parts.append("1. First, the Compliance & Recommendations Report (keep it under 2000 words)")
+        prompt_parts.append("2. Then, the billing JSON in a ```json code block")
+        prompt_parts.append("Do not include lengthy explanations or examples. Focus on the actual billing data for this specific case.")
         
         # Combine all parts
         full_prompt = "\n".join(prompt_parts)
@@ -234,11 +238,12 @@ def generate_billing_with_gemini(
             raise Exception("No compatible Gemini model found for billing")
         
         # Configure generation parameters for accuracy
+        # Increase max tokens to handle comprehensive billing output
         generation_config = GenerationConfig(
             temperature=0.1,  # Very low for billing accuracy
             top_p=0.95,
             top_k=40,
-            max_output_tokens=8192,
+            max_output_tokens=37768,  # Increased by 5000 for billing reports
         )
         
         # Generate response
@@ -255,7 +260,25 @@ def generate_billing_with_gemini(
         )
         
         # Extract the billing text
-        billing_text = response.text
+        # Check if response was cut off due to token limit
+        if hasattr(response, 'candidates') and response.candidates:
+            candidate = response.candidates[0]
+            if hasattr(candidate, 'finish_reason') and candidate.finish_reason == 'MAX_TOKENS':
+                logger.warning("Response hit token limit - output may be truncated")
+                # Try to extract partial content if available
+                if hasattr(response, 'text'):
+                    billing_text = response.text
+                else:
+                    # If no text available, return error
+                    return {
+                        'success': False,
+                        'error': 'Response exceeded token limit and was truncated. Please try with fewer transcripts.',
+                        'billing_data': None
+                    }
+            else:
+                billing_text = response.text
+        else:
+            billing_text = response.text
         
         # Log success
         logger.info(f"Successfully generated billing information")
@@ -270,12 +293,22 @@ def generate_billing_with_gemini(
         }
         
     except Exception as e:
-        logger.error(f"Error generating billing with Gemini: {str(e)}")
-        return {
-            'success': False,
-            'error': str(e),
-            'billing_data': None
-        }
+        error_msg = str(e)
+        # Check for specific error patterns
+        if "MAX_TOKENS" in error_msg or "Cannot get the response text" in error_msg:
+            logger.error(f"Token limit exceeded in billing generation: {error_msg}")
+            return {
+                'success': False,
+                'error': 'The billing report is too large. Please select fewer transcripts or contact support.',
+                'billing_data': None
+            }
+        else:
+            logger.error(f"Error generating billing with Gemini: {error_msg}")
+            return {
+                'success': False,
+                'error': error_msg,
+                'billing_data': None
+            }
 
 def test_gemini_connection():
     """Test the Gemini API connection with a simple request."""

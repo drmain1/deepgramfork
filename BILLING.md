@@ -339,3 +339,68 @@ get_transcript() returns raw Firestore fields
 
 *Last Updated: June 2025*
 *Version: 1.0*
+
+
+fee schedule 
+Update(my-vite-react-app/src/components/BillingStatement.jsx)
+  ⎿  Updated my-vite-react-app/src/components/BillingStatement.jsx with 6  
+     additions and 40 removals
+       29    } from '@mui/icons-material';
+       30    import { format } from 'date-fns';
+       31    import { generatePdfFromText } from './pdfUtils';
+       32 +  import { 
+       33 +    CPT_DESCRIPTIONS, 
+       34 +    CPT_FEES, 
+       35 +    formatBillingDataAsText,
+       36 +    formatBillingDataAsHtml 
+       37 +  } from '../utils/billingFormatter';
+       38    
+       39 -  // CPT Code descriptions and standard fees (you can customize 
+     t
+          - hese)
+       40 -  const CPT_DESCRIPTIONS = {
+       41 -    '98940': 'Chiropractic Manipulative Treatment (1-2 
+     regions)',
+       42 -    '98941': 'Chiropractic Manipulative Treatment (3-4 
+     regions)',
+       43 -    '98942': 'Chiropractic Manipulative Treatment (5 regions)',
+       44 -    '97140': 'Manual Therapy Techniques',
+       45 -    '97110': 'Therapeutic Exercise',
+       46 -    '97124': 'Massage Therapy',
+       47 -    '97035': 'Ultrasound Therapy',
+       48 -    '97032': 'Electrical Stimulation (Attended)',
+       49 -    '97010': 'Hot/Cold Pack Application',
+       50 -    '97012': 'Mechanical Traction',
+       51 -    '99202': 'New Patient Office Visit (15-29 min)',
+       52 -    '99203': 'New Patient Office Visit (30-44 min)',
+       53 -    '99204': 'New Patient Office Visit (45-59 min)',
+       54 -    '99212': 'Established Patient Office Visit (10-19 min)',
+       55 -    '99213': 'Established Patient Office Visit (20-29 min)',
+       56 -    '99214': 'Established Patient Office Visit (30-39 min)'
+       57 -  };
+       58 -  
+       59 -  // Standard fees (customize based on your practice)
+       60 -  const CPT_FEES = {
+       61 -    '98940': 45.00,
+       62 -    '98941': 65.00,
+       63 -    '98942': 85.00,
+       64 -    '97140': 55.00,
+       65 -    '97110': 45.00,
+       66 -    '97124': 50.00,
+       67 -    '97035': 35.00,
+       68 -    '97032': 40.00,
+       69 -    '97010': 25.00,
+       70 -    '97012': 45.00,
+       71 -    '99202': 125.00,
+       72 -    '99203': 175.00,
+       73 -    '99204': 225.00,
+       74 -    '99212': 75.00,
+       75 -    '99213': 100.00,
+       76 -    '99214': 150.00
+       77 -  };
+       78 -  
+       39    function BillingStatement({ billingData, patientInfo, 
+     doctorInf
+            o, onClose }) {
+       40      const [activeTab, setActiveTab] = useState(0);
+       41      

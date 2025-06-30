@@ -5,6 +5,7 @@ import { auth } from '../firebaseConfig';
 import { generatePdfFromText } from '../components/pdfUtils';
 import { useUserSettings } from '../contexts/UserSettingsContext';
 import { shouldShowClinicHeader } from '../utils/encounterTypeUtils';
+import BillingStatement from '../components/BillingStatement';
 import {
   Box,
   Typography,
@@ -751,7 +752,7 @@ function PatientTranscriptList() {
       <Dialog
         open={showBillingDialog}
         onClose={() => setShowBillingDialog(false)}
-        maxWidth="md"
+        maxWidth="lg"
         fullWidth
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -760,55 +761,14 @@ function PatientTranscriptList() {
         </DialogTitle>
         <DialogContent dividers>
           {billingData && (
-            <Box>
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="body2" color="text.secondary">
-                  Generated: {new Date(billingData.generated_at).toLocaleString()}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Transcripts included: {billingData.transcript_count}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Model: {billingData.model_used}
-                </Typography>
-              </Box>
-              <Divider sx={{ my: 2 }} />
-              <Box sx={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.9rem' }}>
-                {billingData.billing_data}
-              </Box>
-            </Box>
+            <BillingStatement 
+              billingData={billingData.billing_data}
+              patientInfo={patient}
+              doctorInfo={userSettings}
+            />
           )}
         </DialogContent>
         <DialogActions>
-          <Button
-            onClick={() => {
-              // Copy billing data to clipboard
-              if (billingData?.billing_data) {
-                navigator.clipboard.writeText(billingData.billing_data);
-                alert('Billing data copied to clipboard!');
-              }
-            }}
-            startIcon={<DownloadIcon />}
-          >
-            Copy to Clipboard
-          </Button>
-          <Button
-            onClick={() => {
-              // Download as text file
-              if (billingData?.billing_data) {
-                const blob = new Blob([billingData.billing_data], { type: 'text/plain' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `billing_${patient?.last_name}_${patient?.first_name}_${new Date().toISOString().split('T')[0]}.txt`;
-                a.click();
-                URL.revokeObjectURL(url);
-              }
-            }}
-            startIcon={<DownloadIcon />}
-          >
-            Download
-          </Button>
           <Button onClick={() => setShowBillingDialog(false)}>
             Close
           </Button>
