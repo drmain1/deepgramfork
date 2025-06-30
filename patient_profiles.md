@@ -228,3 +228,9 @@
    - Implement patient merge functionality
    - Add patient export/import features
    - Enhanced search with fuzzy matching
+
+
+
+### Recent Bug Fixes (June 2025)
+1. **Edit Note Persistence**: Fixed field name mismatch in `update_transcript` endpoint where edits were saved to `polishedTranscript` instead of `transcript_polished`
+2. **Patient Profile PDFs**: Fixed `get_patient_transcripts` mapping from non-existent fields, causing "No transcript content available" in multi-transcript PDFs

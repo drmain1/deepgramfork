@@ -190,3 +190,47 @@ All high-priority security tasks for pre-launch have been completed:
 - ✅ Comprehensive audit logging for all PHI access
 - ✅ Rate limiting protection
 - ✅ All HIPAA compliance requirements met
+
+
+as of 6/30/2025
+## HIPAA Compliance Checklist
+
+### Data Security
+- [x] All data encrypted at rest (Google Cloud CMEK)
+- [x] All data encrypted in transit (HTTPS/WSS)
+- [x] User data isolation (row-level security)
+- [x] No PHI in localStorage/sessionStorage
+- [x] No PHI in application logs
+
+### Access Control
+- [x] Firebase Authentication required
+- [x] Session timeout (25 minutes)
+- [x] Audit logging for all data access
+- [ ] Multi-factor authentication (planned)
+- [ ] Role-based access control (planned)
+
+### Data Management
+- [x] Soft delete for patient records
+- [x] Data backup and recovery
+- [ ] Automated data retention policies (planned)
+- [ ] Data export for patients (planned)
+
+### Infrastructure
+- [x] HIPAA-compliant cloud provider (GCP)
+- [x] Security headers middleware
+- [x] Regular security updates
+- [x] Incident response plan
+
+
+
+as of 6/30/25
+
+## Tech Debt & TODOs
+
+See `HIPAA_COMPLIANCE_TECH_DEBT.md` for compliance-related items:
+- Comprehensive audit logging (partial)
+- Role-Based Access Control (RBAC)
+- Automated data retention policies
+- MFA enforcement
+- Timestamp display issues (see `TIMESTAMP_TECH_DEBT.md`)
+- Complex state synchronization between local and backend
