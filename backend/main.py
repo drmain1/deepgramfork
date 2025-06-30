@@ -626,6 +626,9 @@ class SaveSessionRequest(BaseModel):
     llm_template_id: Optional[str] = None
     location: Optional[str] = None  # Add location field too
     date_of_service: Optional[str] = None  # Add date of service for dictation mode
+    evaluation_type: Optional[str] = None  # For tracking evaluation types
+    initial_evaluation_id: Optional[str] = None  # Link to initial evaluation for re-evaluations
+    previous_findings: Optional[Dict[str, Any]] = None  # Previous findings for context
 
 @app.post("/api/v1/save_session_data") 
 async def save_session_data_endpoint(
@@ -1229,6 +1232,195 @@ async def generate_patient_billing(
         logger.error(f"Error generating billing for patient {patient_id}: {str(e)}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to generate billing: {str(e)}")
+
+@app.get("/api/v1/patients/{patient_id}/initial-evaluation")
+async def get_patient_initial_evaluation(
+    patient_id: str = Path(..., description="Patient ID"),
+    current_user_id: str = Depends(get_user_id),
+    request: Request = None
+):
+    """Get the most recent initial evaluation for a patient"""
+    try:
+        from firestore_client import firestore_client
+        from firestore_models import EvaluationType
+        
+        # Verify the patient belongs to this user
+        patient = await firestore_client.get_patient(patient_id, current_user_id)
+        if not patient:
+            raise HTTPException(status_code=404, detail="Patient not found")
+        
+        # Get all transcripts for this patient
+        transcripts = await firestore_client.get_patient_transcripts(patient_id, current_user_id)
+        
+        # Filter for initial evaluations
+        initial_evaluations = [
+            t for t in transcripts 
+            if (t.get('evaluation_type') == EvaluationType.INITIAL or 
+                (t.get('encounter_type') and 'initial' in t.get('encounter_type', '').lower()))
+        ]
+        
+        if not initial_evaluations:
+            raise HTTPException(status_code=404, detail="No initial evaluation found for this patient")
+        
+        # Sort by date and get the most recent
+        initial_evaluations.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+        most_recent = initial_evaluations[0]
+        
+        # Log PHI access for HIPAA compliance
+        AuditLogger.log_data_access(
+            user_id=current_user_id,
+            operation="READ",
+            data_type="initial_evaluation",
+            resource_id=most_recent.get('id'),
+            request=request,
+            success=True
+        )
+        
+        return most_recent
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting initial evaluation for patient {patient_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get initial evaluation")
+
+@app.get("/api/v1/patients/{patient_id}/evaluations")
+async def get_patient_evaluations(
+    patient_id: str = Path(..., description="Patient ID"),
+    evaluation_type: Optional[str] = Query(None, description="Filter by evaluation type"),
+    current_user_id: str = Depends(get_user_id),
+    request: Request = None
+):
+    """Get all evaluations for a patient, optionally filtered by type"""
+    try:
+        from firestore_client import firestore_client
+        from firestore_models import EvaluationType
+        
+        # Verify the patient belongs to this user
+        patient = await firestore_client.get_patient(patient_id, current_user_id)
+        if not patient:
+            raise HTTPException(status_code=404, detail="Patient not found")
+        
+        # Get all transcripts for this patient
+        transcripts = await firestore_client.get_patient_transcripts(patient_id, current_user_id)
+        
+        # Filter by evaluation type if specified
+        if evaluation_type:
+            transcripts = [
+                t for t in transcripts 
+                if t.get('evaluation_type') == evaluation_type
+            ]
+        
+        # Sort by date
+        transcripts.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+        
+        # Log PHI access for HIPAA compliance
+        AuditLogger.log_data_access(
+            user_id=current_user_id,
+            operation="LIST",
+            data_type="patient_evaluations",
+            resource_id=patient_id,
+            request=request,
+            success=True
+        )
+        
+        return transcripts
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting evaluations for patient {patient_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get patient evaluations")
+
+@app.post("/api/v1/transcripts/{transcript_id}/extract-findings")
+async def extract_transcript_findings(
+    transcript_id: str = Path(..., description="Transcript ID"),
+    current_user_id: str = Depends(get_user_id),
+    request: Request = None
+):
+    """Extract positive findings from a transcript using AI"""
+    try:
+        from firestore_client import firestore_client
+        
+        # Get the transcript
+        transcript_data = await firestore_client.get_transcript(transcript_id)
+        if not transcript_data:
+            raise HTTPException(status_code=404, detail="Transcript not found")
+        
+        # Verify ownership
+        transcript_user_id = transcript_data.get('user_id') or transcript_data.get('userId')
+        if transcript_user_id != current_user_id:
+            raise HTTPException(status_code=403, detail="Unauthorized access to transcript")
+        
+        # Get the transcript content
+        content = (transcript_data.get('transcript_polished') or 
+                  transcript_data.get('transcript_original', ''))
+        
+        if not content:
+            raise HTTPException(status_code=400, detail="No transcript content available")
+        
+        # Get extraction prompt based on user's specialty
+        from extraction_prompts import get_extraction_prompt
+        
+        # Try to get user's specialty from settings
+        from firestore_client import firestore_client
+        user_settings = await firestore_client.get_user_settings(current_user_id)
+        specialty = user_settings.get('medicalSpecialty', 'general') if user_settings else 'general'
+        
+        # Get the appropriate extraction prompt
+        extraction_prompt = get_extraction_prompt(specialty=specialty, evaluation_type='initial')
+        
+        # Run the synchronous function in an executor
+        result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            polish_transcript_with_gemini,
+            content,  # transcript
+            "",  # patient_name
+            "",  # patient_context
+            "findings_extraction",  # encounter_type
+            extraction_prompt,  # llm_instructions
+            None,  # location (optional)
+            "publishers/google/models/gemini-2.5-flash"  # model_name
+        )
+        
+        if result['success']:
+            # Parse the extracted findings
+            try:
+                import json
+                findings = json.loads(result['polished_transcript'])
+            except:
+                # If not valid JSON, wrap in a structure
+                findings = {"raw_findings": result['polished_transcript']}
+            
+            # Update the transcript with extracted findings
+            await firestore_client.update_transcript(
+                transcript_id, 
+                {'positive_findings': findings}
+            )
+            
+            # Log PHI access
+            AuditLogger.log_data_access(
+                user_id=current_user_id,
+                operation="EXTRACT_FINDINGS",
+                data_type="transcript_findings",
+                resource_id=transcript_id,
+                request=request,
+                success=True
+            )
+            
+            return {
+                'success': True,
+                'findings': findings,
+                'transcript_id': transcript_id
+            }
+        else:
+            raise HTTPException(status_code=500, detail=f"Failed to extract findings: {result.get('error')}")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error extracting findings from transcript {transcript_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to extract findings")
 
 # --- End Patient Management --- #
         

@@ -492,6 +492,8 @@ class FirestoreClient:
                     'gcsPathMetadata': transcript_data.get('gcs_path_metadata'),
                     'patientContext': transcript_data.get('patient_context'),
                     'encounterType': transcript_data.get('encounter_type'),
+                    'evaluation_type': transcript_data.get('evaluation_type'),
+                    'positive_findings': transcript_data.get('positive_findings'),
                     'llmTemplateName': transcript_data.get('llm_template_name'),
                     'location': transcript_data.get('location'),
                     'durationSeconds': transcript_data.get('duration_seconds'),

@@ -88,7 +88,7 @@ def polish_transcript_with_gemini(
         model_used = model_name
         
         # Try requested model first, then fallback to available models
-        model_options = [model_name, "gemini-1.5-pro-002", "gemini-2.0-flash-exp"]
+        model_options = [model_name, "publishers/google/models/gemini-2.5-flash", "gemini-2.0-flash-exp"]
         
         for try_model in model_options:
             try:

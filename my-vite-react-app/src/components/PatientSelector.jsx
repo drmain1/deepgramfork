@@ -35,9 +35,8 @@ import usePatientsStore from '../stores/patientsStore';
 
 const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDialogImmediately = false }) => {
   const { getToken } = useAuth();
-  const { patients, fetchPatients, addPatient, updatePatient, removePatient } = usePatientsStore();
+  const { patients, fetchPatients, addPatient, updatePatient, removePatient, isLoading } = usePatientsStore();
   const [searchTerm, setSearchTerm] = useState('');
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showAddDialog, setShowAddDialog] = useState(openAddDialogImmediately || !!selectedPatient);
   const [editingPatient, setEditingPatient] = useState(selectedPatient);
@@ -50,18 +49,17 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
     notes_ai_context: ''
   });
 
-  // Fetch patients on component mount if not already loaded
+  // Fetch patients on component mount
   useEffect(() => {
     const init = async () => {
-      setLoading(true);
       await sessionManager.ensureSession(getToken);
       await fetchPatients();
-      setLoading(false);
     };
-    if (patients.length === 0 && !openAddDialogImmediately && !selectedPatient) {
+    // Always fetch on mount to check for updates (the store will handle caching)
+    if (!openAddDialogImmediately && !selectedPatient) {
       init();
     }
-  }, [fetchPatients, getToken, patients.length, openAddDialogImmediately, selectedPatient]);
+  }, [fetchPatients, getToken, openAddDialogImmediately, selectedPatient]);
 
   // If we have a selectedPatient (editing mode), populate the form
   useEffect(() => {
@@ -227,18 +225,10 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
     );
   });
 
-  if (loading) {
-    return (
-      <Box display="flex" justifyContent="center" p={3}>
-        <CircularProgress />
-      </Box>
-    );
-  }
-
   // If we're opening directly to add/edit, skip the patient list
   if ((openAddDialogImmediately || selectedPatient) && !showAddDialog) {
     // Skip loading state and show add/edit dialog directly
-    if (loading) {
+    if (isLoading) {
       return null;
     }
   }
@@ -288,7 +278,14 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
           </Box>
 
           <Paper variant="outlined" sx={{ maxHeight: 400, overflow: 'auto' }}>
-        {filteredPatients.length === 0 ? (
+        {isLoading ? (
+          <Box p={3} textAlign="center">
+            <CircularProgress size={40} />
+            <Typography color="text.secondary" mt={2}>
+              Loading patients...
+            </Typography>
+          </Box>
+        ) : filteredPatients.length === 0 ? (
           <Box p={3} textAlign="center">
             <Typography color="text.secondary">
               {searchTerm ? 'No patients found' : 'No patients yet. Click "Add" to create one.'}

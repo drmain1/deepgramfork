@@ -15,6 +15,12 @@ class TranscriptStatus(str, Enum):
     ERROR = "error"
     DRAFT = "draft"
 
+class EvaluationType(str, Enum):
+    """Type of medical evaluation"""
+    INITIAL = "initial"
+    FOLLOW_UP = "follow_up"
+    RE_EVALUATION = "re_evaluation"
+
 class UserDocument(BaseModel):
     """
     Firestore document model for users collection.
@@ -96,6 +102,15 @@ class TranscriptDocument(BaseModel):
     llm_template: Optional[str] = None
     llm_template_id: Optional[str] = None
     language: str = "en"
+    
+    # Evaluation tracking
+    evaluation_type: Optional[EvaluationType] = None
+    initial_evaluation_id: Optional[str] = None  # Link to initial evaluation for re-evaluations
+    positive_findings: Optional[Dict[str, Any]] = None  # Extracted findings for display
+    
+    # Dictation mode fields (existing)
+    is_dictation: Optional[bool] = None
+    date_of_service: Optional[str] = None
     
     # Transcript content stored directly in Firestore
     transcript_original: Optional[str] = None

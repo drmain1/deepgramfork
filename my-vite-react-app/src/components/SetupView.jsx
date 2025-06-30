@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import PatientSelector from './PatientSelector';
+import PreviousFindings from './PreviousFindings';
 import { useAuth } from '../contexts/FirebaseAuthContext';
 
 function SetupView({
@@ -24,7 +25,13 @@ function SetupView({
   isDictationMode,
   setIsDictationMode,
   dateOfService,
-  setDateOfService
+  setDateOfService,
+  evaluationType,
+  setEvaluationType,
+  initialEvaluationId,
+  setInitialEvaluationId,
+  previousFindings,
+  setPreviousFindings
 }) {
   // Debug logging
   // TEMPORARILY DISABLED FOR DEBUGGING
@@ -487,6 +494,124 @@ function SetupView({
                       </select>
                     </div>
                   </div>
+
+                  {/* Evaluation Type Selector - Only show when patient is selected */}
+                  {selectedPatient && (
+                    <div className="mt-10 p-8 bg-indigo-50 rounded-lg border border-indigo-200">
+                      <div className="form-group">
+                        <label className="form-label text-xl" htmlFor="evaluation-type">
+                          Evaluation Type
+                        </label>
+                        <select
+                          className="input-field text-xl py-5"
+                          id="evaluation-type"
+                          name="evaluation-type"
+                          value={evaluationType}
+                          onChange={(e) => {
+                            setEvaluationType(e.target.value);
+                            // Clear previous findings if not re-evaluation
+                            if (e.target.value !== 're_evaluation') {
+                              setInitialEvaluationId(null);
+                              setPreviousFindings(null);
+                            }
+                          }}
+                        >
+                          <option value="">Select evaluation type...</option>
+                          <option value="initial">Initial Evaluation</option>
+                          <option value="follow_up">Follow-up Visit</option>
+                          <option value="re_evaluation">Re-evaluation</option>
+                        </select>
+                        <p className="text-lg text-gray-600 mt-3">
+                          {evaluationType === 'initial' && "This is the patient's first evaluation"}
+                          {evaluationType === 'follow_up' && "Routine follow-up visit"}
+                          {evaluationType === 're_evaluation' && "Comprehensive re-evaluation to assess progress since initial evaluation"}
+                        </p>
+                      </div>
+
+                      {/* Show previous findings loading when re-evaluation is selected */}
+                      {evaluationType === 're_evaluation' && (
+                        <div className="mt-6 p-6 bg-white rounded-lg border border-indigo-200">
+                          <h4 className="text-lg font-medium text-indigo-800 mb-4">
+                            Previous Initial Evaluation
+                          </h4>
+                          {!previousFindings ? (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const token = await getToken();
+                                  const response = await fetch(`/api/v1/patients/${selectedPatient.id}/initial-evaluation`, {
+                                    headers: {
+                                      'Authorization': `Bearer ${token}`
+                                    }
+                                  });
+                                  
+                                  if (response.ok) {
+                                    const evaluation = await response.json();
+                                    setInitialEvaluationId(evaluation.id);
+                                    
+                                    // Extract findings if not already done
+                                    if (evaluation.positive_findings) {
+                                      setPreviousFindings({
+                                        ...evaluation.positive_findings,
+                                        date: evaluation.date || evaluation.created_at
+                                      });
+                                    } else {
+                                      // Trigger extraction of findings
+                                      const extractResponse = await fetch(`/api/v1/transcripts/${evaluation.id}/extract-findings`, {
+                                        method: 'POST',
+                                        headers: {
+                                          'Authorization': `Bearer ${token}`
+                                        }
+                                      });
+                                      
+                                      if (extractResponse.ok) {
+                                        const extractResult = await extractResponse.json();
+                                        console.log('Extract findings response:', extractResult);
+                                        console.log('Findings data:', extractResult.findings);
+                                        
+                                        if (extractResult.success && extractResult.findings) {
+                                          setPreviousFindings({
+                                            ...extractResult.findings,
+                                            date: evaluation.date || evaluation.created_at
+                                          });
+                                          console.log('Previous findings set to:', {
+                                            ...extractResult.findings,
+                                            date: evaluation.date || evaluation.created_at
+                                          });
+                                        } else {
+                                          console.error('Extract findings failed or no findings returned');
+                                          alert('Failed to extract findings from the previous evaluation');
+                                        }
+                                      } else {
+                                        console.error('Extract findings API call failed:', extractResponse.status);
+                                        alert('Failed to extract findings from the previous evaluation');
+                                      }
+                                    }
+                                  } else if (response.status === 404) {
+                                    alert('No initial evaluation found for this patient');
+                                  }
+                                } catch (error) {
+                                  console.error('Error fetching initial evaluation:', error);
+                                  alert('Failed to load previous findings');
+                                }
+                              }}
+                              className="bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 transition-colors text-lg"
+                            >
+                              Load Previous Findings
+                            </button>
+                          ) : (
+                            <div className="max-h-96 overflow-y-auto">
+                              <PreviousFindings 
+                                findings={previousFindings} 
+                                evaluationDate={previousFindings.date}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div className="mt-10 p-8 bg-gray-50 rounded-lg">
                     <label className="flex items-center cursor-pointer">

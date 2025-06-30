@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/FirebaseAuthContext';
 import { useRecordings } from '../contexts/RecordingsContext';
+import PreviousFindings from './PreviousFindings';
 import {
   Box,
   Button,
@@ -16,8 +17,12 @@ import {
   DialogActions,
   DialogContent,
   DialogContentText,
-  DialogTitle
+  DialogTitle,
+  Drawer,
+  IconButton
 } from '@mui/material';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 
 
 function RecordingView({
@@ -31,6 +36,9 @@ function RecordingView({
   selectedPatient,
   isDictationMode,
   dateOfService,
+  evaluationType,
+  initialEvaluationId,
+  previousFindings,
   onClose,
   resumeData
 }) {
@@ -48,6 +56,7 @@ function RecordingView({
   const [saveStatusMessage, setSaveStatusMessage] = useState('');
   const [currentProfileId, setCurrentProfileId] = useState(resumeData?.profileId || selectedProfileId);
   const [showCloseConfirmation, setShowCloseConfirmation] = useState(false);
+  const [showPreviousFindings, setShowPreviousFindings] = useState(evaluationType === 're_evaluation' && !!previousFindings);
 
   const mediaRecorderRef = useRef(null);
   const webSocketRef = useRef(null);
@@ -455,7 +464,10 @@ function RecordingView({
         llm_template_id: llmTemplateId,
         location: selectedLocation === '__LEAVE_OUT__' ? '' : selectedLocation,
         user_id: user.uid || user.sub,
-        date_of_service: (isDictationMode && dateOfService && dateOfService.trim()) ? dateOfService : null
+        date_of_service: (isDictationMode && dateOfService && dateOfService.trim()) ? dateOfService : null,
+        evaluation_type: evaluationType || null,
+        initial_evaluation_id: initialEvaluationId || null,
+        previous_findings: previousFindings || null
       };
       
       console.log('=== ACTUAL REQUEST BODY ===');
@@ -644,13 +656,24 @@ function RecordingView({
               </p>
             )}
           </div>
-          <Button
-            variant="outlined"
-            onClick={handleCloseSession}
-            sx={{ minWidth: '120px' }}
-          >
-            Close Session
-          </Button>
+          <Box display="flex" gap={2}>
+            {evaluationType === 're_evaluation' && previousFindings && (
+              <Button
+                variant="outlined"
+                onClick={() => setShowPreviousFindings(!showPreviousFindings)}
+                startIcon={showPreviousFindings ? <ChevronRightIcon /> : <ChevronLeftIcon />}
+              >
+                {showPreviousFindings ? 'Hide' : 'Show'} Previous Findings
+              </Button>
+            )}
+            <Button
+              variant="outlined"
+              onClick={handleCloseSession}
+              sx={{ minWidth: '120px' }}
+            >
+              Close Session
+            </Button>
+          </Box>
         </div>
       </div>
 
@@ -797,6 +820,41 @@ function RecordingView({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Previous Findings Drawer */}
+      {evaluationType === 're_evaluation' && previousFindings && (
+        <Drawer
+          anchor="right"
+          open={showPreviousFindings}
+          onClose={() => setShowPreviousFindings(false)}
+          variant="persistent"
+          sx={{
+            width: 400,
+            flexShrink: 0,
+            '& .MuiDrawer-paper': {
+              width: 400,
+              boxSizing: 'border-box',
+              top: '64px',
+              height: 'calc(100% - 64px)'
+            }
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', p: 1, borderBottom: 1, borderColor: 'divider' }}>
+            <IconButton onClick={() => setShowPreviousFindings(false)}>
+              <ChevronRightIcon />
+            </IconButton>
+            <Typography variant="h6" sx={{ ml: 1 }}>
+              Previous Findings
+            </Typography>
+          </Box>
+          <Box sx={{ height: '100%', overflow: 'auto' }}>
+            <PreviousFindings 
+              findings={previousFindings} 
+              evaluationDate={previousFindings.date}
+            />
+          </Box>
+        </Drawer>
+      )}
     </main>
   );
 }

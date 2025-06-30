@@ -334,6 +334,21 @@ async def save_session_data_firestore(
         patient_id = request_data.get('patient_id')
         logger.info(f"Saving session with patient_id: {patient_id}, patient_name: {request_data.get('patient_name')}")
         
+        # Handle evaluation type
+        evaluation_type = request_data.get('evaluation_type')
+        initial_evaluation_id = request_data.get('initial_evaluation_id')
+        previous_findings = request_data.get('previous_findings')
+        
+        # Auto-detect evaluation type if not provided
+        if not evaluation_type and request_data.get('encounter_type'):
+            encounter_type_lower = request_data.get('encounter_type', '').lower()
+            if 'initial' in encounter_type_lower or 'new patient' in encounter_type_lower:
+                evaluation_type = 'initial'
+            elif 'follow' in encounter_type_lower:
+                evaluation_type = 'follow_up'
+            elif 're-eval' in encounter_type_lower or 'reeval' in encounter_type_lower:
+                evaluation_type = 're_evaluation'
+        
         transcript_data = {
             'user_id': user_id,
             'session_id': session_id,
@@ -350,7 +365,10 @@ async def save_session_data_firestore(
             'created_at': created_at.isoformat(),
             'updated_at': datetime.now(timezone.utc).isoformat(),
             'date_of_service': date_of_service,  # Store the original service date if provided
-            'is_dictation': bool(date_of_service)  # Flag to identify dictation mode transcripts
+            'is_dictation': bool(date_of_service),  # Flag to identify dictation mode transcripts
+            'evaluation_type': evaluation_type,
+            'initial_evaluation_id': initial_evaluation_id,
+            'positive_findings': previous_findings
         }
         
         # Check if transcript already exists
@@ -379,7 +397,10 @@ async def save_session_data_firestore(
                 'llm_template': transcript_data.get('llm_template'),
                 'llm_template_id': transcript_data.get('llm_template_id'),
                 'duration_seconds': transcript_data.get('duration_seconds'),
-                'status': transcript_data['status']
+                'status': transcript_data['status'],
+                'evaluation_type': transcript_data.get('evaluation_type'),
+                'initial_evaluation_id': transcript_data.get('initial_evaluation_id'),
+                'positive_findings': transcript_data.get('positive_findings')
             })
         else:
             # Create new transcript
@@ -470,6 +491,11 @@ async def save_session_data_firestore(
                         logger.info(f"Added date of service to instructions: {original_date_of_service}")
                     else:
                         logger.info("No date of service to add to instructions")
+                    
+                    # Add previous findings context for re-evaluations
+                    if evaluation_type == 're_evaluation' and previous_findings:
+                        custom_instructions += f"\n\nPrevious Initial Evaluation Findings:\n{json.dumps(previous_findings, indent=2)}"
+                        logger.info("Added previous findings to LLM context for re-evaluation")
                 
                 logger.info(f"Custom instructions being sent to LLM: {custom_instructions[:200]}...")
                 

@@ -25,6 +25,9 @@ function TranscriptionPage() {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [isDictationMode, setIsDictationMode] = useState(false);
   const [dateOfService, setDateOfService] = useState('');
+  const [evaluationType, setEvaluationType] = useState('');
+  const [initialEvaluationId, setInitialEvaluationId] = useState(null);
+  const [previousFindings, setPreviousFindings] = useState(null);
 
   // Initialize component state
   useEffect(() => {
@@ -227,6 +230,12 @@ function TranscriptionPage() {
         setIsDictationMode={setIsDictationMode}
         dateOfService={dateOfService}
         setDateOfService={setDateOfService}
+        evaluationType={evaluationType}
+        setEvaluationType={setEvaluationType}
+        initialEvaluationId={initialEvaluationId}
+        setInitialEvaluationId={setInitialEvaluationId}
+        previousFindings={previousFindings}
+        setPreviousFindings={setPreviousFindings}
       />
     );
   } else if (currentView === 'recording') {
@@ -242,6 +251,9 @@ function TranscriptionPage() {
         selectedPatient={selectedPatient}
         isDictationMode={isDictationMode}
         dateOfService={dateOfService}
+        evaluationType={evaluationType}
+        initialEvaluationId={initialEvaluationId}
+        previousFindings={previousFindings}
         onClose={handleCloseRecording}
       />
     );
