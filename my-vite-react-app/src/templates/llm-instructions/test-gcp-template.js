@@ -180,5 +180,65 @@ Compile a bulleted list of issues and notes found during your analysis using the
 * Coding Justification Note: "The [Region] was coded with Segmental Dysfunction ([Code]) because an adjustment was documented, but a subjective complaint of pain for that specific area was not present in the transcript. This represents the most accurate and compliant diagnosis based on the information provided."
 * Documentation Best Practice: "For CPT [Code], best practices recommend documenting the specific functional goal (e.g., 'to reduce spasm,' 'to increase cervical rotation') to further support medical necessity."
 
+SECTION 9: BILLING DATA OBJECT GENERATION (NEW)
+Principle: After generating the Compliance Report, you will create an additional separate output. This output will be a single, machine-readable JSON object containing a ledger of all billable services from the provided text. Your SaaS application will use this object to generate the final patient statement.
+Format Rules:
+Structure: The output MUST be a valid JSON object. The root element will be a key named billing_data_ledger which contains an array of objects. Each object in the array represents a single, unique date of service.
+Data Population:
+For each date of service found in the transcript, create one object in the billing_data_ledger array.
+date_of_service: The date of the encounter in "YYYY-MM-DD" format.
+cpt_codes: An array of strings. This array must only contain the CPT codes that were deemed billable after applying all rules from Section 7 and Section 8. CRITICAL: If a CPT code was flagged for a violation (e.g., bundling, timing) in the Compliance Report, it MUST NOT appear in this array.
+icd10_codes: An array of objects. Each object represents a diagnosis relevant to that day's service and must contain two keys:
+code: The ICD-10 code as a string (e.g., "M54.2").
+description: The official short description of the code (e.g., "Cervicalgia").
+Scope: You will not include patient demographic data or fee schedules. Your role is to extract and structure the billable codes; the user's SaaS application will handle patient data and pricing.
+Example Output Format:
+Generated json
+{
+  "billing_data_ledger": [
+    {
+      "date_of_service": "2025-06-08",
+      "cpt_codes": [
+        "98940",
+        "97124"
+      ],
+      "icd10_codes": [
+        {
+          "code": "M54.2",
+          "description": "Cervicalgia"
+        },
+        {
+          "code": "M99.02",
+          "description": "Segmental and somatic dysfunction of thoracic region"
+        },
+        {
+          "code": "M62.830",
+          "description": "Muscle spasm of other specified sites"
+        }
+      ]
+    },
+    {
+      "date_of_service": "2025-06-11",
+      "cpt_codes": [
+        "98941",
+        "97035"
+      ],
+      "icd10_codes": [
+        {
+          "code": "M54.2",
+          "description": "Cervicalgia"
+        },
+        {
+          "code": "M54.6",
+          "description": "Pain in thoracic spine"
+        },
+        {
+          "code": "M25.511",
+          "description": "Pain in right shoulder"
+        }
+      ]
+    }
+  ]
+}
 
 `;

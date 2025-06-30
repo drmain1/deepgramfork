@@ -166,6 +166,14 @@ function PatientTranscriptList() {
         t.polishedTranscript || t.transcript
       );
       
+      console.log('Selected transcripts:', selectedTranscriptObjects.map(t => ({
+        id: t.id,
+        hasPolished: !!t.polishedTranscript,
+        hasOriginal: !!t.transcript,
+        polishedLength: t.polishedTranscript?.length || 0,
+        originalLength: t.transcript?.length || 0
+      })));
+      
       if (!hasContent) {
         // If no content, we need to fetch individual transcripts
         console.log('No transcript content in list, fetching individual transcripts...');
@@ -180,9 +188,18 @@ function PatientTranscriptList() {
             
             if (response.ok) {
               const detailedTranscript = await response.json();
+              console.log(`Fetched transcript ${transcript.id}:`, {
+                hasOriginalTranscript: !!detailedTranscript.originalTranscript,
+                hasTranscript: !!detailedTranscript.transcript,
+                hasPolishedTranscript: !!detailedTranscript.polishedTranscript,
+                hasPolishedSnakeCase: !!detailedTranscript.polished_transcript,
+                originalLength: (detailedTranscript.originalTranscript || detailedTranscript.transcript || '').length,
+                polishedLength: (detailedTranscript.polishedTranscript || detailedTranscript.polished_transcript || '').length
+              });
               // Update the transcript object with the fetched content
-              transcript.transcript = detailedTranscript.originalTranscript || detailedTranscript.transcript;
-              transcript.polishedTranscript = detailedTranscript.polishedTranscript;
+              // Handle both field naming conventions
+              transcript.transcript = detailedTranscript.originalTranscript || detailedTranscript.transcript || detailedTranscript.original_transcript;
+              transcript.polishedTranscript = detailedTranscript.polishedTranscript || detailedTranscript.polished_transcript || detailedTranscript.transcript_polished;
             }
           } catch (fetchError) {
             console.error(`Error fetching transcript ${transcript.id}:`, fetchError);
@@ -198,6 +215,13 @@ function PatientTranscriptList() {
         const transcript = selectedTranscriptObjects[i];
         // Get transcript content (prefer polished over original)
         let content = transcript.polishedTranscript || transcript.transcript || 'No transcript content available';
+        
+        console.log(`Processing transcript ${transcript.id} for PDF:`, {
+          hasPolished: !!transcript.polishedTranscript,
+          hasOriginal: !!transcript.transcript,
+          contentLength: content.length,
+          contentPreview: content.substring(0, 100)
+        });
         
         // Check if content already has a clinic location header
         const hasClinicLocationHeader = content.startsWith('CLINIC LOCATION:');

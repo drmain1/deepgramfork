@@ -338,6 +338,38 @@ See `HIPAA_COMPLIANCE_TECH_DEBT.md` for compliance-related items:
 - WebSocket connections require authentication token
 
 
-## pdf 
-pdfUtils.js
- generatePagedMedicalPdf for patients with profiles
+## PDF Generation
+- `pdfUtils.js` - PDF generation utilities
+- `generatePagedMedicalPdf` - Multi-transcript PDF for patient profiles
+- `generatePdfFromText` - Single transcript PDF generation
+
+## Field Name Mapping (CRITICAL)
+
+### Firestore Database Schema
+The Firestore database stores transcript content in these exact field names:
+- `transcript_original` - Raw transcript from speech-to-text
+- `transcript_polished` - AI-processed/formatted transcript
+
+### Frontend Expected Fields
+The frontend expects these field names:
+- `transcript` - Maps from `transcript_original`
+- `polishedTranscript` - Maps from `transcript_polished`
+
+### Common Field Mapping Issues
+This project has experienced multiple bugs due to inconsistent field name mapping between Firestore and the frontend. When working with transcript data:
+
+1. **Reading from Firestore**: Always map `transcript_original` → `transcript` and `transcript_polished` → `polishedTranscript`
+2. **Writing to Firestore**: Always save to `transcript_original` and `transcript_polished` (not `polishedTranscript` or other variations)
+3. **Critical Backend Functions**:
+   - `get_user_recordings_firestore()` - Correctly maps fields for recording lists
+   - `get_patient_transcripts()` - Must map fields for patient profile PDFs
+   - `update_transcript()` - Must save to correct Firestore field names
+
+### Recent Bug Fixes (June 2025)
+1. **Edit Note Persistence**: Fixed field name mismatch in `update_transcript` endpoint where edits were saved to `polishedTranscript` instead of `transcript_polished`
+2. **Patient Profile PDFs**: Fixed `get_patient_transcripts` mapping from non-existent fields, causing "No transcript content available" in multi-transcript PDFs
+
+**Prevention Tips**:
+- Always check the Firestore model definitions in `firestore_models.py`
+- When adding new endpoints, verify field mapping matches existing patterns
+- Test both save and load operations to ensure data persists correctly

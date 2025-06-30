@@ -495,8 +495,8 @@ class FirestoreClient:
                     'llmTemplateName': transcript_data.get('llm_template_name'),
                     'location': transcript_data.get('location'),
                     'durationSeconds': transcript_data.get('duration_seconds'),
-                    'transcript': transcript_data.get('transcript'),
-                    'polishedTranscript': transcript_data.get('polished_transcript'),
+                    'transcript': transcript_data.get('transcript_original', ''),
+                    'polishedTranscript': transcript_data.get('transcript_polished', ''),
                     'profileId': transcript_data.get('profile_id'),
                     'patient_id': patient_id
                 }
