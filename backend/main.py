@@ -1111,11 +1111,12 @@ async def generate_patient_billing(
         encounter_types = set()
         
         for transcript in all_transcripts:
-            # Get the content (prefer polished over original) - check both camelCase and snake_case
-            content = (transcript.get('polishedTranscript') or 
-                      transcript.get('polished_transcript') or 
-                      transcript.get('transcript') or 
-                      transcript.get('original_transcript', ''))
+            # Get the content (prefer polished over original)
+            # Handle both raw Firestore fields and mapped fields from get_patient_transcripts
+            content = (transcript.get('transcript_polished') or      # Raw Firestore field
+                      transcript.get('polishedTranscript') or        # Mapped field from get_patient_transcripts
+                      transcript.get('transcript_original') or       # Raw Firestore field
+                      transcript.get('transcript', ''))
             
             # If no content in the list response, fetch the full transcript
             if not content:
@@ -1128,20 +1129,18 @@ async def generate_patient_billing(
                         current_user_id=current_user_id
                     )
                     if full_transcript:
-                        content = (full_transcript.get('polishedTranscript') or 
-                                 full_transcript.get('polished_transcript') or
-                                 full_transcript.get('originalTranscript') or
-                                 full_transcript.get('original_transcript') or
-                                 full_transcript.get('transcript', ''))
+                        # get_transcript_details_firestore returns mapped fields
+                        content = (full_transcript.get('polishedTranscript') or
+                                 full_transcript.get('originalTranscript', ''))
                 except Exception as e:
                     logger.error(f"Error fetching full transcript: {str(e)}")
             
             if content:
                 combined_transcript += f"\n\n--- Transcript from {transcript.get('created_at', transcript.get('date', 'Unknown date'))} ---\n"
                 combined_transcript += content
-                logger.info(f"Found content of length: {len(content)}")
+                logger.info(f"Found content of length: {len(content)} for transcript {transcript.get('id')}")
             else:
-                logger.warning(f"No content found in transcript {transcript.get('id', 'unknown')}")
+                logger.warning(f"No content found in transcript {transcript.get('id', 'unknown')}. Available fields: {list(transcript.keys())}")
             
             # Collect service dates
             if transcript.get('created_at') or transcript.get('date'):
