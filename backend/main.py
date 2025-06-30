@@ -729,12 +729,10 @@ async def update_transcript(
         # Prepare updates
         updates = {}
         if update_request.polishedTranscript is not None:
-            updates['polishedTranscript'] = update_request.polishedTranscript
-            updates['polished_transcript'] = update_request.polishedTranscript  # For backwards compatibility
+            updates['transcript_polished'] = update_request.polishedTranscript  # Match Firestore model field name
         
         if update_request.originalTranscript is not None:
-            updates['originalTranscript'] = update_request.originalTranscript
-            updates['original_transcript'] = update_request.originalTranscript  # For backwards compatibility
+            updates['transcript_original'] = update_request.originalTranscript  # Match Firestore model field name
         
         if not updates:
             raise HTTPException(status_code=400, detail="No updates provided")

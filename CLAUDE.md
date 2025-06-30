@@ -282,6 +282,43 @@ Both frontend and backend require environment variables:
 2. Metadata includes timestamps, duration, patient info
 3. Both original and polished transcripts are preserved
 
+### Edit Note Functionality
+The edit note feature allows users to modify polished transcripts after AI processing.
+
+**Architecture**:
+1. **Frontend Components**:
+   - `TranscriptViewer.jsx` - Main container that handles save logic
+   - `EditableNote.jsx` - UI component with edit/save buttons and text field
+   - `useRecordings` hook - Provides `loadSelectedTranscript` function
+
+2. **Backend Endpoint**:
+   - `PUT /api/v1/transcript/{user_id}/{transcript_id}` in `main.py`
+   - Updates transcript in Firestore via `firestore_client.update_transcript()`
+   - Supports updating both `polishedTranscript` and `originalTranscript`
+
+3. **Data Flow**:
+   ```
+   User clicks Edit → Enter edit mode → Make changes → Click Save
+   ↓
+   handleSaveNote() called → Updates local state (instant feedback)
+   ↓
+   PUT request to backend → Updates Firestore
+   ↓
+   loadSelectedTranscript() → Reloads from backend → UI shows latest version
+   ```
+
+**Key Implementation Details**:
+- `handleSaveNote` in TranscriptViewer is async and handles the full save flow
+- Updates local state first for immediate UI feedback
+- Shows loading spinner and success/error notifications
+- Automatically reloads transcript after save to ensure consistency
+- Both camelCase and snake_case fields updated for backwards compatibility
+
+**Common Issues**:
+- If saves aren't persisting: Check that `loadSelectedTranscript` is exposed in `useRecordings` hook
+- If getting 403 errors: Verify user_id matches current_user_id in backend
+- If changes disappear on refresh: Ensure backend update is successful (check logs)
+
 ## Tech Debt & TODOs
 
 See `HIPAA_COMPLIANCE_TECH_DEBT.md` for compliance-related items:
