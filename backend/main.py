@@ -706,6 +706,68 @@ async def get_transcript_details(
     """Get transcript details including content from Firestore"""
     return await get_transcript_details_firestore(user_id, transcript_id, current_user_id, request)
 
+class UpdateTranscriptRequest(BaseModel):
+    polishedTranscript: Optional[str] = None
+    originalTranscript: Optional[str] = None
+
+@app.put("/api/v1/transcript/{user_id}/{transcript_id}")
+async def update_transcript(
+    user_id: str = Path(..., description="User's unique identifier"),
+    transcript_id: str = Path(..., description="Transcript/session ID"),
+    update_request: UpdateTranscriptRequest = ...,
+    current_user_id: str = Depends(get_user_id),
+    request: Request = None
+):
+    """Update transcript content (polished and/or original)"""
+    try:
+        # Verify authorization
+        if user_id != current_user_id:
+            raise HTTPException(status_code=403, detail="You can only update your own transcripts")
+        
+        from firestore_client import firestore_client
+        
+        # Prepare updates
+        updates = {}
+        if update_request.polishedTranscript is not None:
+            updates['polishedTranscript'] = update_request.polishedTranscript
+            updates['polished_transcript'] = update_request.polishedTranscript  # For backwards compatibility
+        
+        if update_request.originalTranscript is not None:
+            updates['originalTranscript'] = update_request.originalTranscript
+            updates['original_transcript'] = update_request.originalTranscript  # For backwards compatibility
+        
+        if not updates:
+            raise HTTPException(status_code=400, detail="No updates provided")
+        
+        # Add updated timestamp
+        updates['updated_at'] = datetime.now(timezone.utc).isoformat()
+        
+        # Update in Firestore
+        success = await firestore_client.update_transcript(transcript_id, updates)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Transcript not found")
+        
+        # Log PHI access for HIPAA compliance
+        AuditLogger.log_data_access(
+            user_id=current_user_id,
+            operation="UPDATE",
+            data_type="transcript",
+            resource_id=transcript_id,
+            request=request,
+            success=True
+        )
+        
+        logger.info(f"Updated transcript {transcript_id} for user {user_id}")
+        
+        return {"success": True, "message": "Transcript updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating transcript {transcript_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update transcript")
+
 @app.get("/api/v1/gcs_object_content", response_class=PlainTextResponse)
 async def get_gcs_object_content(
     gcs_key: str,
@@ -1109,7 +1171,11 @@ async def generate_patient_billing(
         
         # Get user's custom billing rules
         try:
-            user_settings = await get_user_settings_firestore(current_user_id)
+            user_settings = await get_user_settings_firestore(
+                user_id=current_user_id,
+                current_user_id=current_user_id,
+                request=req
+            )
             custom_rules = user_settings.get('customBillingRules', '') or user_settings.get('custom_billing_rules', '')
         except Exception as e:
             logger.warning(f"Failed to fetch user settings for billing: {str(e)}")

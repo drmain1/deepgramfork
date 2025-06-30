@@ -67,12 +67,19 @@ Recording timestamps were displaying incorrectly and updating to the current tim
    - Users always know what timezone the time is displayed in
 
 ### Components Updated
-- `Sidebar.jsx` - Time display with timezone
-- `PatientTranscriptList.jsx` - Transcript times with timezone
+- `Sidebar.jsx` - Time display with timezone using parseSessionIdTime
+- `PatientTranscriptList.jsx` - Transcript times with timezone using parseSessionIdTime (fixed June 2025)
 - `RecentRecordingItem.jsx` - Recording times with timezone
 - `HomePage.jsx` - Recent activity times with timezone
 - `TranscriptViewer.jsx` - Signature timestamps with timezone
 - `pdfUtils.js` - PDF signature timestamps with timezone
+
+### Implementation Details
+- All components that display recording timestamps now use the `parseSessionIdTime` function
+- This function extracts timestamps from session IDs (format: YYYYMMDDHHMMSSxxxxxx)
+- Handles backward compatibility with a cutoff date of June 26, 2025
+- Pre-cutoff session IDs are parsed as local time, post-cutoff as UTC
+- Ensures consistent timestamp display across all views
 
 ## Impact
 - **Multi-timezone Support**: Users in different timezones see correct local times

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { TextField, Button, Box, IconButton, Tooltip, Snackbar, Alert } from '@mui/material';
+import { TextField, Button, Box, IconButton, Tooltip, Snackbar, Alert, CircularProgress } from '@mui/material';
 import { ContentCopy, Check, Edit as EditIcon, Save as SaveIcon } from '@mui/icons-material';
 import { generatePdfFromText } from './pdfUtils';
 import FormattedMedicalText from './FormattedMedicalText';
@@ -55,12 +55,27 @@ function EditableNote({
     isInitialMount.current = false;
   }, [isEditing, onEditingChange]);
 
-  const handleSave = () => {
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  const handleSave = async () => {
     if (onSave) {
-      onSave(editableContent);
+      setIsSaving(true);
+      setSaveError('');
+      try {
+        await onSave(editableContent);
+        setLastSyncedContent(editableContent);
+        setIsEditing(false);
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+      } catch (error) {
+        setSaveError('Failed to save changes. Please try again.');
+        console.error('Save error:', error);
+      } finally {
+        setIsSaving(false);
+      }
     }
-    setLastSyncedContent(editableContent);
-    setIsEditing(false);
   };
 
   const handleEdit = () => {
@@ -298,9 +313,10 @@ function EditableNote({
                 variant="contained"
                 color="primary"
                 onClick={handleSave}
-                startIcon={<SaveIcon />}
+                disabled={isSaving}
+                startIcon={isSaving ? <CircularProgress size={20} /> : <SaveIcon />}
               >
-                Save Changes
+                {isSaving ? 'Saving...' : 'Save Changes'}
               </Button>
             </>
           ) : (
@@ -335,6 +351,28 @@ function EditableNote({
         message="Copied to clipboard!"
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       />
+      
+      <Snackbar
+        open={saveSuccess}
+        autoHideDuration={3000}
+        onClose={() => setSaveSuccess(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setSaveSuccess(false)} severity="success" sx={{ width: '100%' }}>
+          Changes saved successfully!
+        </Alert>
+      </Snackbar>
+      
+      <Snackbar
+        open={!!saveError}
+        autoHideDuration={5000}
+        onClose={() => setSaveError('')}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setSaveError('')} severity="error" sx={{ width: '100%' }}>
+          {saveError}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

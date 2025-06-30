@@ -106,6 +106,7 @@ export function useRecordings() {
     // Actions with bound parameters
     fetchUserRecordings: () => fetchUserRecordings(currentUser, getToken),
     deletePersistedRecording: (recordingId) => deletePersistedRecording(recordingId, currentUser, getToken),
+    loadSelectedTranscript: () => loadSelectedTranscript(currentUser, getToken),
     startPendingRecording,
     updateRecording,
     removeRecording,

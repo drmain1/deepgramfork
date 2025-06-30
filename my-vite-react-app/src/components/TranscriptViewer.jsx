@@ -3,6 +3,7 @@ import { Box, Typography, Button, Tabs, Tab, CircularProgress, Paper, Chip, Line
 import { CheckCircle, Edit } from '@mui/icons-material';
 import { useRecordings } from '../contexts/RecordingsContext';
 import { useUserSettings } from '../contexts/UserSettingsContext';
+import { useAuth } from '../contexts/FirebaseAuthContext';
 import EditableNote from './EditableNote';
 import FormattedMedicalText from './FormattedMedicalText';
 
@@ -39,10 +40,12 @@ function TranscriptViewer() {
     polishedTranscriptContent,
     isLoadingSelectedTranscript,
     selectedTranscriptError,
-    updateRecording
+    updateRecording,
+    loadSelectedTranscript
   } = useRecordings();
 
   const { userSettings } = useUserSettings();
+  const { currentUser, getToken } = useAuth();
   const [transcriptDisplayTab, setTranscriptDisplayTab] = useState(0);
 
   // Track signature state for the current recording
@@ -68,9 +71,68 @@ function TranscriptViewer() {
     setTranscriptDisplayTab(newValue);
   };
 
-  const handleSaveNote = (content) => {
-    if (selectedRecordingId && typeof updateRecording === 'function') {
-      updateRecording(selectedRecordingId, { polishedTranscript: content });
+  const handleSaveNote = async (content) => {
+    console.log('[handleSaveNote] Starting save...', {
+      selectedRecordingId,
+      userId: currentUser?.uid,
+      contentLength: content?.length
+    });
+    
+    if (!selectedRecordingId || !currentUser?.uid) {
+      console.error('[handleSaveNote] Missing required data:', {
+        selectedRecordingId,
+        userId: currentUser?.uid
+      });
+      return;
+    }
+    
+    try {
+      // First update local state for immediate feedback
+      if (typeof updateRecording === 'function') {
+        updateRecording(selectedRecordingId, { polishedTranscript: content });
+      }
+      
+      // Then persist to backend
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const accessToken = await getToken();
+      
+      console.log('[handleSaveNote] Making API request to:', `${API_BASE_URL}/api/v1/transcript/${currentUser.uid}/${selectedRecordingId}`);
+      
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/transcript/${currentUser.uid}/${selectedRecordingId}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            polishedTranscript: content
+          })
+        }
+      );
+      
+      console.log('[handleSaveNote] Response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[handleSaveNote] Error response:', errorText);
+        throw new Error(`Failed to save: ${response.status} - ${errorText}`);
+      }
+      
+      const result = await response.json();
+      console.log('[handleSaveNote] Save successful:', result);
+      
+      // Reload the transcript to ensure we have the latest version
+      if (typeof loadSelectedTranscript === 'function') {
+        console.log('[handleSaveNote] Reloading transcript...');
+        await loadSelectedTranscript();
+      }
+      
+    } catch (error) {
+      console.error('[handleSaveNote] Error saving transcript:', error);
+      // Re-throw to let EditableNote handle the error
+      throw error;
     }
   };
 
