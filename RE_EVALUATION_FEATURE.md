@@ -22,7 +22,8 @@ class TranscriptDocument(BaseModel):
     # Evaluation tracking fields
     evaluation_type: Optional[EvaluationType] = None
     initial_evaluation_id: Optional[str] = None  # Link to initial evaluation
-    positive_findings: Optional[Dict[str, Any]] = None  # Extracted findings for display
+    positive_findings: Optional[Dict[str, Any]] = None  # Extracted findings for display (JSON format)
+    positive_findings_markdown: Optional[str] = None  # Markdown formatted findings for better UI display
 ```
 
 #### Frontend State
@@ -85,6 +86,7 @@ Response:
         "positive_tests": [ ... ],
         "diagnoses": [ ... ]
     },
+    "findings_markdown": "# Clinical Findings Summary\n\n## Chief Complaint\nLower back pain...",
     "transcript_id": "session_123"
 }
 ```
@@ -188,10 +190,12 @@ TranscriptionPage.jsx
     ├── Receives evaluation props
     ├── Shows/hides findings panel
     ├── Includes evaluation data in save request
-    └── PreviousFindings.jsx
-        ├── Displays structured findings
-        ├── Pain level visualizations
-        └── Collapsible sections
+    └── PreviousFindingsEnhanced.jsx  # Enhanced UI component
+        ├── Displays markdown-formatted findings
+        ├── Clinical summary bar
+        ├── Tabbed interface (Formatted/Comparison)
+        ├── Toggle between markdown and raw JSON
+        └── Copy functionality
 ```
 
 ### Backend Dependencies
@@ -200,6 +204,8 @@ TranscriptionPage.jsx
 main.py
 ├── API endpoint definitions
 ├── Authentication middleware
+├── Enhanced extract_findings endpoint
+│   └── Generates both JSON and markdown
 │
 ├── firestore_endpoints.py
 │   ├── save_session_data_firestore()
@@ -214,9 +220,17 @@ main.py
 │   ├── update_transcript()
 │   └── Direct Firestore operations
 │
-└── gcp_utils.py
-    └── generate_polish_transcript_with_gemini()
-        └── Includes previous findings in context
+├── gcp_utils.py
+│   └── generate_polish_transcript_with_gemini()
+│       └── Includes previous findings in context
+│
+├── extraction_prompts.py
+│   └── Basic extraction prompts (JSON only)
+│
+└── extraction_prompts_enhanced.py  # NEW
+    ├── Enhanced prompts for JSON + markdown
+    ├── Specialty-specific formatting
+    └── Comparison analysis prompts
 ```
 
 ## State Management
@@ -267,6 +281,7 @@ RecordingView (Sibling)
             "Lumbar radiculopathy"
         ]
     },
+    "positive_findings_markdown": "# Clinical Findings Summary\n\n## Chief Complaint\n...",
     "transcript_original": "...",
     "transcript_polished": "...",
     "created_at": "2024-06-30T14:30:22Z",
@@ -302,6 +317,54 @@ The re-evaluation template (`chiropractic-reevaluation.js`) provides structured 
 - Treatment response analysis
 - Updated assessment and plan
 
+## Enhanced UI Features
+
+### Data Storage Strategy
+The system uses a **hybrid approach** for optimal performance and user experience:
+
+1. **JSON Format** (stored in `positive_findings`):
+   - Structured data for queries and comparisons
+   - Enables programmatic analysis
+   - Maintains data integrity
+   - Used for backend processing
+
+2. **Markdown Format** (stored in `positive_findings_markdown`):
+   - Doctor-friendly readable format
+   - Clean visual hierarchy
+   - Tables for pain levels and ROM
+   - Proper medical terminology formatting
+
+### PreviousFindingsEnhanced Component
+
+The enhanced UI component provides:
+
+1. **Clinical Summary Bar**
+   - Quick overview of key findings
+   - One-line summary with chief complaint, highest pain, and diagnosis
+   - Copy button for easy documentation
+
+2. **Tabbed Interface**
+   - **Formatted View**: Markdown-rendered findings with proper medical formatting
+   - **Comparison Mode**: (Future) Side-by-side comparison of evaluations
+
+3. **Display Options**
+   - Toggle between formatted markdown and raw JSON
+   - Expandable sections for detailed viewing
+   - Copy functionality for entire findings or sections
+
+4. **Responsive Design**
+   - Fixed side panel (520px width)
+   - Smooth slide-in animation
+   - Mobile-responsive on smaller screens
+
+### Utilities
+
+#### findingsFormatter.js
+Provides conversion and formatting utilities:
+- `convertFindingsToMarkdown()`: Converts JSON findings to readable markdown
+- `createClinicalSummary()`: Generates one-line clinical summary
+- `generateFindingsComparison()`: Creates comparison tables between evaluations
+
 ## User Experience Flow
 
 ### 1. Patient Selection
@@ -313,12 +376,15 @@ The re-evaluation template (`chiropractic-reevaluation.js`) provides structured 
 - "Load Previous Findings" button appears
 - Click triggers API call to fetch initial evaluation
 - If no findings exist, extraction is triggered automatically
-- Findings displayed in preview area
+- Findings displayed in enhanced preview panel
 
 ### 3. Recording Session
 - User starts recording with findings loaded
 - Toggle button in header: "Show/Hide Previous Findings"
-- Side panel displays structured findings during recording
+- Enhanced side panel displays:
+  - Clinical summary at top
+  - Markdown-formatted findings
+  - Optional raw JSON view
 - Doctor can reference while examining patient
 
 ### 4. Save & Processing
@@ -360,13 +426,57 @@ The re-evaluation template (`chiropractic-reevaluation.js`) provides structured 
 - [ ] Create patient with initial evaluation
 - [ ] Verify evaluation type selector appears
 - [ ] Test loading previous findings
-- [ ] Verify findings extraction for old transcripts
+- [ ] Verify findings extraction generates both JSON and markdown
+- [ ] Test enhanced findings panel:
+  - [ ] Clinical summary displays correctly
+  - [ ] Markdown formatting renders properly
+  - [ ] Toggle between markdown/JSON works
+  - [ ] Copy functionality works for all sections
+  - [ ] Panel animation and responsiveness
 - [ ] Test findings panel toggle during recording
-- [ ] Verify evaluation metadata saves correctly
+- [ ] Verify evaluation metadata saves correctly with both formats
 - [ ] Check LLM output includes comparisons
-- [ ] Test error handling for missing evaluations
+- [ ] Test error handling:
+  - [ ] Missing evaluations
+  - [ ] Extraction failures
+  - [ ] Malformed JSON responses
 - [ ] Verify proper data isolation between users
 - [ ] Test with both Deepgram and Speechmatics
+- [ ] Test backward compatibility (old transcripts without markdown)
+
+## Enhanced Extraction System
+
+### Extraction Prompts
+The system now uses enhanced extraction prompts that generate both structured JSON and formatted markdown:
+
+1. **General Medical Prompt** (`ENHANCED_INITIAL_EVALUATION_PROMPT`):
+   - Comprehensive extraction for all medical specialties
+   - Organizes findings by body systems
+   - Includes pain assessment, ROM, tests, diagnoses
+
+2. **Chiropractic-Specific Prompt** (`ENHANCED_CHIROPRACTIC_PROMPT`):
+   - Focuses on subluxations and spinal assessment
+   - Includes postural analysis
+   - Detailed palpation findings
+
+3. **Output Format**:
+   ```
+   ```json
+   {structured_findings_object}
+   ```
+   
+   ```markdown
+   # Clinical Findings Summary
+   [Formatted medical report]
+   ```
+   ```
+
+### Extraction Process
+1. System detects user's medical specialty
+2. Selects appropriate enhanced extraction prompt
+3. Vertex AI (Gemini 2.5 Flash) processes transcript
+4. Response parsed to extract both JSON and markdown
+5. Both formats stored in Firestore for optimal use
 
 ## Configuration
 
@@ -377,3 +487,43 @@ No additional configuration required. The feature uses existing:
 - Existing transcription profiles
 
 The feature is automatically available when a patient is selected during setup.
+
+## Re-evaluation Reminder Integration
+
+### Overview
+The re-evaluation reminder system has been integrated into the main re-evaluation feature to provide practitioners with real-time feedback on when re-evaluations are due. This minimalist indicator helps ensure compliance with the 30-45 day and 12-session requirements.
+
+### UI Integration
+The reminder appears as a subtle button next to "View Last Visit" when a patient is selected:
+- **Location**: Inline with other patient actions in the selected patient info box
+- **Design**: Matches existing UI patterns (blue text, same hover effects)
+- **Visual Indicators**:
+  - Green check (✓) - Good standing (0-30 days, <10 sessions)
+  - Yellow clock (🕐) - Due soon (31-45 days or 10-11 sessions)
+  - Red warning (⚠️) - Overdue (46+ days or 12+ sessions)
+  - Pulsing dot for urgent states
+
+### Component: ReEvaluationIndicator.jsx
+A minimalist component that:
+1. Shows status icon with "Re-evaluation Status" text
+2. Clicks to expand detailed information panel
+3. Displays:
+   - Clear status message
+   - Progress bars for days and sessions
+   - Last evaluation date and type
+   - Total patient sessions
+4. Auto-fetches status when patient is selected
+5. Dismisses by clicking outside the panel
+
+### Data Flow with Re-evaluation Feature
+1. **Patient Selection** → Indicator fetches status from `/api/v1/patients/{id}/re-evaluation-status`
+2. **Status Calculation** → Backend counts sessions since last evaluation (initial OR re-evaluation)
+3. **Visual Feedback** → Color-coded icon shows urgency at a glance
+4. **User Action** → When overdue, prompts selection of "Re-evaluation" in evaluation type dropdown
+5. **Workflow Integration** → Re-evaluation type triggers loading of previous findings for comparison
+
+### Key Benefits
+- **Non-intrusive**: Takes minimal space, expands on demand
+- **Contextual**: Appears exactly where patient information is shown
+- **Action-oriented**: Clear visual cues guide practitioners to perform timely re-evaluations
+- **Compliance**: Helps maintain insurance requirements and best practices

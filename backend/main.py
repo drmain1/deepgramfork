@@ -1284,6 +1284,108 @@ async def get_patient_initial_evaluation(
         logger.error(f"Error getting initial evaluation for patient {patient_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get initial evaluation")
 
+@app.get("/api/v1/patients/{patient_id}/re-evaluation-status")
+async def get_re_evaluation_status(
+    patient_id: str = Path(..., description="Patient ID"),
+    current_user_id: str = Depends(get_user_id),
+    request: Request = None
+):
+    """Get the re-evaluation status for a patient"""
+    try:
+        from firestore_client import firestore_client
+        from firestore_models import EvaluationType
+        from datetime import datetime, timezone
+        
+        # Verify the patient belongs to this user
+        patient = await firestore_client.get_patient(patient_id, current_user_id)
+        if not patient:
+            raise HTTPException(status_code=404, detail="Patient not found")
+        
+        # Get all transcripts for this patient
+        transcripts = await firestore_client.get_patient_transcripts(patient_id, current_user_id)
+        
+        # Filter for evaluations only (initial and re-evaluations)
+        evaluations = [
+            t for t in transcripts 
+            if t.get('evaluation_type') in [EvaluationType.INITIAL, EvaluationType.RE_EVALUATION]
+        ]
+        
+        if not evaluations:
+            return {
+                "status": "no_evaluation",
+                "days_since_last": None,
+                "session_count": 0,
+                "sessions_since_evaluation": 0,
+                "last_evaluation_date": None,
+                "last_evaluation_type": None,
+                "color": "gray",
+                "message": "No evaluations found"
+            }
+        
+        # Sort evaluations by date (newest first)
+        evaluations.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+        last_evaluation = evaluations[0]
+        
+        # Calculate days since last evaluation
+        last_eval_date = datetime.fromisoformat(last_evaluation.get('created_at').replace('Z', '+00:00'))
+        days_since = (datetime.now(timezone.utc) - last_eval_date).days
+        
+        # Count sessions SINCE the last evaluation (initial or re-evaluation)
+        # Sort all transcripts by date
+        transcripts.sort(key=lambda x: x.get('created_at', ''), reverse=False)
+        
+        # Find sessions that occurred after the last evaluation
+        sessions_since_evaluation = 0
+        for transcript in transcripts:
+            transcript_date = datetime.fromisoformat(transcript.get('created_at').replace('Z', '+00:00'))
+            if transcript_date > last_eval_date:
+                sessions_since_evaluation += 1
+        
+        # Determine status color based on sessions since last evaluation
+        # Green: 0-30 days AND less than 12 sessions
+        # Yellow: 31-45 days OR 10-11 sessions
+        # Red: 46+ days OR 12+ sessions
+        if sessions_since_evaluation >= 12:
+            color = "red"
+            message = f"Re-evaluation needed: {sessions_since_evaluation} sessions since last evaluation"
+        elif days_since > 45:
+            color = "red"
+            message = f"Re-evaluation overdue: {days_since} days since last evaluation"
+        elif days_since > 30 or sessions_since_evaluation >= 10:
+            color = "yellow"
+            message = f"Re-evaluation due soon: {days_since} days, {sessions_since_evaluation} sessions"
+        else:
+            color = "green"
+            message = f"Last evaluation: {days_since} days ago ({sessions_since_evaluation} sessions)"
+        
+        # Log PHI access for HIPAA compliance
+        AuditLogger.log_data_access(
+            user_id=current_user_id,
+            operation="READ",
+            data_type="re_evaluation_status",
+            resource_id=patient_id,
+            request=request,
+            success=True
+        )
+        
+        return {
+            "status": "evaluated",
+            "days_since_last": days_since,
+            "session_count": len(transcripts),  # Total sessions for patient
+            "sessions_since_evaluation": sessions_since_evaluation,  # Sessions since last eval
+            "last_evaluation_date": last_evaluation.get('created_at'),
+            "last_evaluation_type": last_evaluation.get('evaluation_type'),
+            "color": color,
+            "message": message,
+            "patient_name": f"{patient['last_name']}, {patient['first_name']}"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching re-evaluation status: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get re-evaluation status")
+
 @app.get("/api/v1/patients/{patient_id}/evaluations")
 async def get_patient_evaluations(
     patient_id: str = Path(..., description="Patient ID"),
@@ -1361,14 +1463,15 @@ async def extract_transcript_findings(
         
         # Get extraction prompt based on user's specialty
         from extraction_prompts import get_extraction_prompt
+        from extraction_prompts_enhanced import get_enhanced_extraction_prompt
         
         # Try to get user's specialty from settings
         from firestore_client import firestore_client
         user_settings = await firestore_client.get_user_settings(current_user_id)
         specialty = user_settings.get('medicalSpecialty', 'general') if user_settings else 'general'
         
-        # Get the appropriate extraction prompt
-        extraction_prompt = get_extraction_prompt(specialty=specialty, evaluation_type='initial')
+        # Use enhanced extraction prompt that generates both JSON and markdown
+        extraction_prompt = get_enhanced_extraction_prompt(specialty=specialty)
         
         # Run the synchronous function in an executor
         result = await asyncio.get_event_loop().run_in_executor(
@@ -1384,18 +1487,53 @@ async def extract_transcript_findings(
         )
         
         if result['success']:
-            # Parse the extracted findings
+            # Parse the enhanced extraction output (contains both JSON and markdown)
             try:
                 import json
-                findings = json.loads(result['polished_transcript'])
-            except:
-                # If not valid JSON, wrap in a structure
-                findings = {"raw_findings": result['polished_transcript']}
+                import re
+                
+                output = result['polished_transcript']
+                
+                # Extract JSON section
+                json_match = re.search(r'```json\n(.*?)\n```', output, re.DOTALL)
+                findings = {}
+                if json_match:
+                    try:
+                        findings = json.loads(json_match.group(1))
+                    except:
+                        findings = {"raw_findings": json_match.group(1)}
+                
+                # Extract markdown section
+                markdown_match = re.search(r'```markdown\n(.*?)\n```', output, re.DOTALL)
+                findings_markdown = markdown_match.group(1) if markdown_match else None
+                
+                # If no markdown found, try to get any text after JSON
+                if not findings_markdown:
+                    # Look for markdown content after the JSON block
+                    parts = output.split('```')
+                    for i, part in enumerate(parts):
+                        if part.strip().startswith('markdown'):
+                            findings_markdown = parts[i+1] if i+1 < len(parts) else None
+                            break
+                
+            except Exception as e:
+                logger.warning(f"Failed to parse enhanced extraction output: {str(e)}")
+                # Fallback to simple JSON parsing
+                try:
+                    findings = json.loads(result['polished_transcript'])
+                    findings_markdown = None
+                except:
+                    findings = {"raw_findings": result['polished_transcript']}
+                    findings_markdown = None
             
-            # Update the transcript with extracted findings
+            # Update the transcript with both JSON findings and markdown
+            update_data = {'positive_findings': findings}
+            if findings_markdown:
+                update_data['positive_findings_markdown'] = findings_markdown
+            
             await firestore_client.update_transcript(
                 transcript_id, 
-                {'positive_findings': findings}
+                update_data
             )
             
             # Log PHI access
@@ -1411,6 +1549,7 @@ async def extract_transcript_findings(
             return {
                 'success': True,
                 'findings': findings,
+                'findings_markdown': findings_markdown,
                 'transcript_id': transcript_id
             }
         else:

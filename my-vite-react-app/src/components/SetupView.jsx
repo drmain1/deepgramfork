@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import PatientSelector from './PatientSelector';
 import PreviousFindings from './PreviousFindings';
+import ReEvaluationIndicator from './ReEvaluationIndicator';
 import { useAuth } from '../contexts/FirebaseAuthContext';
 
 function SetupView({
@@ -288,9 +289,10 @@ function SetupView({
                             <span className="material-icons">close</span>
                           </button>
                         </div>
-                        <button
-                          type="button"
-                          className="mt-2 flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 transition-colors"
+                        <div className="mt-2 flex items-center gap-4">
+                          <button
+                            type="button"
+                            className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 transition-colors"
                           onClick={async () => {
                             setLoadingTranscript(true);
                             setShowLastTranscript(true);
@@ -356,7 +358,9 @@ function SetupView({
                         >
                           <span className="material-icons text-sm">history</span>
                           View Last Visit
-                        </button>
+                          </button>
+                          <ReEvaluationIndicator patient={selectedPatient} />
+                        </div>
                       </div>
                     )}
                     {error && !patientDetails.trim() && (
@@ -554,7 +558,9 @@ function SetupView({
                                     if (evaluation.positive_findings) {
                                       setPreviousFindings({
                                         ...evaluation.positive_findings,
-                                        date: evaluation.date || evaluation.created_at
+                                        date: evaluation.date || evaluation.created_at,
+                                        // Include markdown version if available
+                                        _markdown: evaluation.positive_findings_markdown || null
                                       });
                                     } else {
                                       // Trigger extraction of findings
@@ -573,7 +579,9 @@ function SetupView({
                                         if (extractResult.success && extractResult.findings) {
                                           setPreviousFindings({
                                             ...extractResult.findings,
-                                            date: evaluation.date || evaluation.created_at
+                                            date: evaluation.date || evaluation.created_at,
+                                            // Include markdown version if available
+                                            _markdown: extractResult.findings_markdown || null
                                           });
                                           console.log('Previous findings set to:', {
                                             ...extractResult.findings,

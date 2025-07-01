@@ -107,6 +107,7 @@ class TranscriptDocument(BaseModel):
     evaluation_type: Optional[EvaluationType] = None
     initial_evaluation_id: Optional[str] = None  # Link to initial evaluation for re-evaluations
     positive_findings: Optional[Dict[str, Any]] = None  # Extracted findings for display
+    positive_findings_markdown: Optional[str] = None  # Markdown formatted findings for better UI display
     
     # Dictation mode fields (existing)
     is_dictation: Optional[bool] = None

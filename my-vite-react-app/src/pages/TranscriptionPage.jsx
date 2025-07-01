@@ -29,9 +29,26 @@ function TranscriptionPage() {
   const [initialEvaluationId, setInitialEvaluationId] = useState(null);
   const [previousFindings, setPreviousFindings] = useState(null);
 
-  // Initialize component state
+  // Clear patient selection and related state when component mounts
+  // This ensures a fresh start when navigating back to the transcription page
+  // and prevents patient context from persisting across navigation
   useEffect(() => {
-    // Check if we're coming from a specific view or should start fresh
+    // Clear all patient-related state on mount to avoid bugs
+    // where patient selection persists but clinical context is lost
+    setSelectedPatient(null);
+    setPatientDetails('');
+    setPatientContext('');
+    setIsDictationMode(false);
+    setDateOfService('');
+    setEvaluationType('');
+    setInitialEvaluationId(null);
+    setPreviousFindings(null);
+    setError(null);
+  }, []); // Empty dependency array means this runs only on mount
+
+  // Initialize component view state based on URL
+  useEffect(() => {
+    // Check if we're coming from a specific view
     const searchParams = new URLSearchParams(location.search);
     const viewParam = searchParams.get('view');
     
@@ -39,16 +56,6 @@ function TranscriptionPage() {
       setCurrentView('recording');
     } else {
       setCurrentView('setup');
-    }
-    
-    // Reset state when starting fresh
-    if (!viewParam) {
-      setPatientDetails('');
-      setPatientContext('');
-      // Don't reset selectedLocation and selectedProfileId - these should persist between sessions
-      // setSelectedLocation('');
-      // setSelectedProfileId('');
-      setError(null);
     }
   }, [location]);
 

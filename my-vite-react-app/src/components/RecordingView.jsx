@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/FirebaseAuthContext';
 import { useRecordings } from '../contexts/RecordingsContext';
-import PreviousFindings from './PreviousFindings';
+import PreviousFindingsEnhanced from './PreviousFindingsEnhanced';
 import {
   Box,
   Button,
@@ -821,39 +821,14 @@ function RecordingView({
         </DialogActions>
       </Dialog>
 
-      {/* Previous Findings Drawer */}
+      {/* Previous Findings Panel */}
       {evaluationType === 're_evaluation' && previousFindings && (
-        <Drawer
-          anchor="right"
-          open={showPreviousFindings}
+        <PreviousFindingsEnhanced 
+          findings={previousFindings} 
           onClose={() => setShowPreviousFindings(false)}
-          variant="persistent"
-          sx={{
-            width: 400,
-            flexShrink: 0,
-            '& .MuiDrawer-paper': {
-              width: 400,
-              boxSizing: 'border-box',
-              top: '64px',
-              height: 'calc(100% - 64px)'
-            }
-          }}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', p: 1, borderBottom: 1, borderColor: 'divider' }}>
-            <IconButton onClick={() => setShowPreviousFindings(false)}>
-              <ChevronRightIcon />
-            </IconButton>
-            <Typography variant="h6" sx={{ ml: 1 }}>
-              Previous Findings
-            </Typography>
-          </Box>
-          <Box sx={{ height: '100%', overflow: 'auto' }}>
-            <PreviousFindings 
-              findings={previousFindings} 
-              evaluationDate={previousFindings.date}
-            />
-          </Box>
-        </Drawer>
+          isOpen={showPreviousFindings}
+          patientName={patientDetails}
+        />
       )}
     </main>
   );
