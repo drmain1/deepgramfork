@@ -1000,3 +1000,114 @@ if (transcripts.length === 0) {
 2. **Smart Options**: Show only relevant options based on patient history
 3. **Simplified UX**: Remove follow-up option for new patients
 4. **Position Optimization**: Better integration with patient selection flow
+
+## Recent Updates (January 2025)
+
+### 1. Minimalist Visit Type Selection UI
+The evaluation type selector has been redesigned for a cleaner, more intuitive user experience:
+
+#### **Compact Button Design**
+- Moved from large card-based buttons to smaller, inline buttons
+- Positioned next to patient information for better workflow
+- Removed icons for cleaner appearance
+- Added "(Recommended)" text inline instead of separate badges
+
+#### **Smart Option Display**
+- **New Patients**: Only shows "Initial Evaluation" option
+- **Existing Patients on Follow-up**: Shows current state with option to "Switch to Re-evaluation"
+- **Re-evaluation Mode**: Shows locked re-evaluation state
+- Prevents confusion by hiding irrelevant options
+
+#### **Implementation Changes**
+```javascript
+// EvaluationTypeSelector.jsx updates
+- Added isNewPatient prop for conditional rendering
+- Simplified button styling with smaller padding (px-4 py-2)
+- Removed icon-heavy design for text-based clarity
+- Added amber color scheme for re-evaluation switch button
+```
+
+### 2. Previous Findings Sidebar Persistence
+The Previous Findings sidebar now persists across view transitions using Zustand state management:
+
+#### **State Management**
+```javascript
+// transcriptionSessionStore.js additions
+showPreviousFindingsSidebar: false,
+setShowPreviousFindingsSidebar: (show) => set({ showPreviousFindingsSidebar: show }),
+
+// Auto-show when findings are loaded
+setPreviousFindings: (findings) => set({ 
+  previousFindings: findings,
+  showPreviousFindingsSidebar: findings && get().evaluationType === 're_evaluation' 
+    ? true 
+    : get().showPreviousFindingsSidebar
+})
+```
+
+#### **Cross-Component Persistence**
+- Sidebar state maintained when transitioning from RecordingView to TranscriptViewer
+- Toggle button available in both views
+- Prevents auto-closing when navigating between views
+- Manual close action required by user
+
+#### **Implementation**
+1. **RecordingView.jsx**: Uses store state instead of local state
+2. **TranscriptViewer.jsx**: Added Previous Findings button and sidebar rendering
+3. **Store Integration**: Central state management for sidebar visibility
+
+### 3. LLM Prompt Enhancement for Re-evaluations
+
+#### **Automatic Previous Findings Injection**
+The system now automatically includes previous findings in the LLM prompt during re-evaluations:
+
+```python
+# firestore_endpoints.py - save_session_data_firestore()
+if evaluation_type == 're_evaluation' and previous_findings:
+    custom_instructions += f"\n\nPrevious Initial Evaluation Findings:\n{json.dumps(previous_findings, indent=2)}"
+    logger.info("Added previous findings to LLM context for re-evaluation")
+```
+
+#### **Data Flow**
+1. **Frontend sends**: evaluation_type, initial_evaluation_id, and previous_findings in request body
+2. **Backend processing**: 
+   - Extracts previous findings from request (line 344)
+   - Appends to LLM instructions if re-evaluation (lines 500-502)
+   - Includes in Gemini API call
+3. **LLM receives**: Full context with previous findings for comparative analysis
+
+#### **Benefits**
+- Automated comparison between initial and current findings
+- Consistent note structure for progress tracking
+- No manual copy-paste required by doctors
+- Contextual awareness for AI-generated notes
+
+### 4. Improved Patient Type Detection
+Enhanced logic for automatically detecting patient type:
+
+```javascript
+// SetupView.jsx
+// For manually entered patients
+onChange={(e) => {
+  setPatientDetails(e.target.value);
+  if (!selectedPatient && e.target.value.trim()) {
+    setEvaluationType('initial');
+    setIsNewPatient(true);
+  }
+}}
+
+// For selected patients - API call to check transcript history
+if (transcripts.length === 0) {
+  setIsNewPatient(true);
+  setEvaluationType('initial');
+} else {
+  setIsNewPatient(false);
+  // Check re-evaluation status...
+}
+```
+
+### 5. Bug Fixes and Improvements
+- Fixed unused imports and linting issues
+- Added proper API base URL handling for patient status checks
+- Improved error handling for re-evaluation status endpoint failures
+- Added fallback to follow-up when re-evaluation check fails

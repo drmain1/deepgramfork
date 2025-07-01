@@ -92,3 +92,17 @@ Recording timestamps were displaying incorrectly and updating to the current tim
 - Session IDs generated after June 26, 2025 are treated as UTC
 - All times display in the user's browser timezone with clear timezone indicators
 - No data migration required - the solution handles both old and new formats
+
+7/1/25 again same problem, easily fixed 
+
+Fixed! The issue was that new Date(formData.date_of_birth).toISOString() was
+  converting the date based on your local timezone, which could shift the date
+  backward.
+
+  The fix appends T00:00:00.000Z directly to the date string (YYYY-MM-DD
+  format), ensuring it's interpreted as midnight UTC without any timezone
+  conversion. This way, January 1st, 2025 will stay as January 1st, 2025
+  regardless of your timezone.
+
+  Try adding a new patient now - the date should display correctly as
+  01/01/2025.

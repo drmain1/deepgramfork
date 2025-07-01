@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { Box, Typography, Button, Tabs, Tab, CircularProgress, Paper, Chip, LinearProgress } from '@mui/material';
-import { CheckCircle, Edit } from '@mui/icons-material';
+import { CheckCircle, Edit, ChevronLeft, ChevronRight } from '@mui/icons-material';
 import { useRecordings } from '../contexts/RecordingsContext';
 import { useUserSettings } from '../contexts/UserSettingsContext';
 import { useAuth } from '../contexts/FirebaseAuthContext';
 import EditableNote from './EditableNote';
 import FormattedMedicalText from './FormattedMedicalText';
+import PreviousFindingsEnhanced from './PreviousFindingsEnhanced';
+import useTranscriptionSessionStore from '../stores/transcriptionSessionStore';
 
 const TabPanel = ({ children, value, index, ...other }) => {
   return (
@@ -47,6 +49,15 @@ function TranscriptViewer() {
   const { userSettings } = useUserSettings();
   const { currentUser, getToken } = useAuth();
   const [transcriptDisplayTab, setTranscriptDisplayTab] = useState(0);
+  
+  // Get evaluation type and previous findings from store
+  const {
+    evaluationType,
+    previousFindings,
+    showPreviousFindingsSidebar,
+    setShowPreviousFindingsSidebar,
+    patientDetails
+  } = useTranscriptionSessionStore();
 
   // Track signature state for the current recording
   const selectedRec = recordings.find(r => r.id === selectedRecordingId);
@@ -251,9 +262,21 @@ function TranscriptViewer() {
         <Typography variant="h5" gutterBottom sx={{mb:0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
           {title}
         </Typography>
-        <Button onClick={() => selectRecording(null)} variant="outlined" size="small">
-          Back to Recorder
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {evaluationType === 're_evaluation' && previousFindings && (
+            <Button
+              variant="outlined"
+              onClick={() => setShowPreviousFindingsSidebar(!showPreviousFindingsSidebar)}
+              startIcon={showPreviousFindingsSidebar ? <ChevronRight /> : <ChevronLeft />}
+              size="small"
+            >
+              {showPreviousFindingsSidebar ? 'Hide' : 'Show'} Previous Findings
+            </Button>
+          )}
+          <Button onClick={() => selectRecording(null)} variant="outlined" size="small">
+            Back to Recorder
+          </Button>
+        </Box>
       </Box>
 
       {/* Signature Status Section */}
@@ -363,6 +386,16 @@ function TranscriptViewer() {
           </Box>
         </TabPanel>
       </Box>
+      
+      {/* Previous Findings Panel */}
+      {evaluationType === 're_evaluation' && previousFindings && (
+        <PreviousFindingsEnhanced 
+          findings={previousFindings} 
+          onClose={() => setShowPreviousFindingsSidebar(false)}
+          isOpen={showPreviousFindingsSidebar}
+          patientName={patientDetails || selectedRec?.name || ''}
+        />
+      )}
     </Box>
   );
 }

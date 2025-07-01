@@ -6,6 +6,7 @@ import { chiropracticFollowupCodesInstructions } from './llm-instructions/chirop
 import { chiropracticMultipleVisitsInstructions } from './llm-instructions/chiropractic-multiple-visits.js';
 import { chiropracticSOAPImprovedInstructions } from './llm-instructions/chiropractic-soap-improved.js';
 import { chiropracticFollowupNarrativeInstructions } from './llm-instructions/chiropractic-followup-narrative.js';
+import { chiropracticReevaluationInstructions } from './llm-instructions/chiropractic-reevaluation.js';
 import { testGCPTemplateInstructions } from './llm-instructions/test-gcp-template.js';
 
 export const medicalSpecialties = [
@@ -238,6 +239,12 @@ CA License #A123456`
       name: 'Follow-up Narrative', 
       llmInstructions: chiropracticFollowupNarrativeInstructions, 
       sampleNarrative: 'Professional narrative-style documentation for chiropractic follow-up visits that flows naturally while capturing all clinical and billing requirements.' 
+    },
+    { 
+      id: 'chiro_reevaluation', 
+      name: 'Chiropractic Re-evaluation', 
+      llmInstructions: chiropracticReevaluationInstructions, 
+      sampleNarrative: 'Comprehensive re-evaluation comparing current findings to initial evaluation, with detailed progress assessment and treatment plan updates.' 
     },
     { 
       id: 'test_gcp_template', 

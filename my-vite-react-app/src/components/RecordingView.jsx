@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/FirebaseAuthContext';
 import { useRecordings } from '../contexts/RecordingsContext';
 import PreviousFindingsEnhanced from './PreviousFindingsEnhanced';
@@ -18,9 +18,7 @@ import {
   DialogActions,
   DialogContent,
   DialogContentText,
-  DialogTitle,
-  Drawer,
-  IconButton
+  DialogTitle
 } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
@@ -44,7 +42,9 @@ function RecordingView({
     dateOfService,
     evaluationType,
     initialEvaluationId,
-    previousFindings
+    previousFindings,
+    showPreviousFindingsSidebar,
+    setShowPreviousFindingsSidebar
   } = useTranscriptionSessionStore();
   const { user, getToken } = useAuth();
   const { startPendingRecording, updateRecording, removeRecording, fetchUserRecordings, selectRecording } = useRecordings();
@@ -60,7 +60,6 @@ function RecordingView({
   const [saveStatusMessage, setSaveStatusMessage] = useState('');
   const [currentProfileId, setCurrentProfileId] = useState(resumeData?.profileId || selectedProfileId);
   const [showCloseConfirmation, setShowCloseConfirmation] = useState(false);
-  const [showPreviousFindings, setShowPreviousFindings] = useState(evaluationType === 're_evaluation' && !!previousFindings);
 
   const mediaRecorderRef = useRef(null);
   const webSocketRef = useRef(null);
@@ -118,8 +117,6 @@ function RecordingView({
     }
 
     const activeProfile = userSettings.transcriptionProfiles?.find(p => p.id === currentProfileId);
-    const llmPrompt = activeProfile ? activeProfile.llmPrompt : 'Summarize the following clinical encounter:';
-    const profileName = activeProfile ? activeProfile.name : 'General Summary';
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -664,10 +661,10 @@ function RecordingView({
             {evaluationType === 're_evaluation' && previousFindings && (
               <Button
                 variant="outlined"
-                onClick={() => setShowPreviousFindings(!showPreviousFindings)}
-                startIcon={showPreviousFindings ? <ChevronRightIcon /> : <ChevronLeftIcon />}
+                onClick={() => setShowPreviousFindingsSidebar(!showPreviousFindingsSidebar)}
+                startIcon={showPreviousFindingsSidebar ? <ChevronRightIcon /> : <ChevronLeftIcon />}
               >
-                {showPreviousFindings ? 'Hide' : 'Show'} Previous Findings
+                {showPreviousFindingsSidebar ? 'Hide' : 'Show'} Previous Findings
               </Button>
             )}
             <Button
@@ -829,8 +826,8 @@ function RecordingView({
       {evaluationType === 're_evaluation' && previousFindings && (
         <PreviousFindingsEnhanced 
           findings={previousFindings} 
-          onClose={() => setShowPreviousFindings(false)}
-          isOpen={showPreviousFindings}
+          onClose={() => setShowPreviousFindingsSidebar(false)}
+          isOpen={showPreviousFindingsSidebar}
           patientName={patientDetails}
         />
       )}

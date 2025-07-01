@@ -38,8 +38,8 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
   const { patients, fetchPatients, addPatient, updatePatient, removePatient, isLoading } = usePatientsStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState(null);
-  const [showAddDialog, setShowAddDialog] = useState(openAddDialogImmediately || !!selectedPatient);
-  const [editingPatient, setEditingPatient] = useState(selectedPatient);
+  const [showAddDialog, setShowAddDialog] = useState(openAddDialogImmediately);
+  const [editingPatient, setEditingPatient] = useState(null);
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
@@ -85,12 +85,12 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
         return;
       }
       
-      // Convert date strings to ISO format
+      // Convert date strings to ISO format - use UTC to avoid timezone issues
       const requestData = {
         first_name: formData.first_name,
         last_name: formData.last_name,
-        date_of_birth: new Date(formData.date_of_birth).toISOString(),
-        date_of_accident: formData.date_of_accident ? new Date(formData.date_of_accident).toISOString() : null,
+        date_of_birth: formData.date_of_birth + 'T00:00:00.000Z',
+        date_of_accident: formData.date_of_accident ? formData.date_of_accident + 'T00:00:00.000Z' : null,
         notes_private: formData.notes_private || null,
         notes_ai_context: formData.notes_ai_context || null
       };
@@ -129,11 +129,11 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
 
   const handleUpdatePatient = async () => {
     try {
-      // Convert date strings to ISO format
+      // Convert date strings to ISO format - use UTC to avoid timezone issues
       const requestData = {
         ...formData,
-        date_of_birth: formData.date_of_birth ? new Date(formData.date_of_birth).toISOString() : null,
-        date_of_accident: formData.date_of_accident ? new Date(formData.date_of_accident).toISOString() : null,
+        date_of_birth: formData.date_of_birth ? formData.date_of_birth + 'T00:00:00.000Z' : null,
+        date_of_accident: formData.date_of_accident ? formData.date_of_accident + 'T00:00:00.000Z' : null,
         notes_private: formData.notes_private || null,
         notes_ai_context: formData.notes_ai_context || null
       };
@@ -225,13 +225,6 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
     );
   });
 
-  // If we're opening directly to add/edit, skip the patient list
-  if ((openAddDialogImmediately || selectedPatient) && !showAddDialog) {
-    // Skip loading state and show add/edit dialog directly
-    if (isLoading) {
-      return null;
-    }
-  }
 
   return (
     <Dialog open={true} onClose={onClose} maxWidth="md" fullWidth>

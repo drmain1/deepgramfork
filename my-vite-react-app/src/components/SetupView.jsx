@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import PatientSelector from './PatientSelector';
 import ReEvaluationIndicator from './ReEvaluationIndicator';
 import MicrophoneMonitor from './MicrophoneMonitor';
@@ -27,7 +27,6 @@ function SetupView({ onStartEncounter }) {
     targetLanguage,
     setTargetLanguage,
     error,
-    setError,
     selectedPatient,
     updatePatientFromSelector,
     clearPatientSelection,
@@ -51,11 +50,100 @@ function SetupView({ onStartEncounter }) {
   const [lastTranscript, setLastTranscript] = useState(null);
   const [loadingTranscript, setLoadingTranscript] = useState(false);
   const [recommendedEvalType, setRecommendedEvalType] = useState(null);
+  const [isNewPatient, setIsNewPatient] = useState(false);
+  const [loadingFindings, setLoadingFindings] = useState(false);
   const { getToken, user } = useAuth();
   
   // Use the microphone monitoring hook
   const { micLevel, micStatus, retryMicrophoneAccess } = useMicrophoneMonitor();
 
+
+  const handleLoadFindings = async () => {
+    if (!selectedPatient) return;
+    
+    setLoadingFindings(true);
+    try {
+      const token = await getToken();
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_BASE_URL}/api/v1/patients/${selectedPatient.id}/initial-evaluation`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const evaluation = await response.json();
+        setInitialEvaluationId(evaluation.id);
+        
+        // Extract findings if not already done
+        if (evaluation.positive_findings) {
+          // Check if we need to re-extract due to old format
+          const needsReExtraction = evaluation.positive_findings.raw_findings && 
+                                  !evaluation.positive_findings.pain_findings &&
+                                  !evaluation.positive_findings_markdown;
+          
+          if (needsReExtraction) {
+            // Trigger re-extraction for old format
+            const extractResponse = await fetch(`${API_BASE_URL}/api/v1/transcripts/${evaluation.id}/extract-findings`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            });
+            
+            if (extractResponse.ok) {
+              const extractResult = await extractResponse.json();
+              if (extractResult.success && extractResult.findings) {
+                setPreviousFindings({
+                  ...extractResult.findings,
+                  date: evaluation.date || evaluation.created_at,
+                  _markdown: extractResult.findings_markdown || null
+                });
+              }
+            }
+          } else {
+            setPreviousFindings({
+              ...evaluation.positive_findings,
+              date: evaluation.date || evaluation.created_at,
+              // Include markdown version if available
+              _markdown: evaluation.positive_findings_markdown || null
+            });
+          }
+        } else {
+          // Trigger extraction of findings
+          const extractResponse = await fetch(`${API_BASE_URL}/api/v1/transcripts/${evaluation.id}/extract-findings`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          
+          if (extractResponse.ok) {
+            const extractResult = await extractResponse.json();
+            
+            if (extractResult.success && extractResult.findings) {
+              setPreviousFindings({
+                ...extractResult.findings,
+                date: evaluation.date || evaluation.created_at,
+                // Include markdown version if available
+                _markdown: extractResult.findings_markdown || null
+              });
+            } else {
+              alert('Failed to extract findings from the previous evaluation');
+            }
+          } else {
+            alert('Failed to extract findings from the previous evaluation');
+          }
+        }
+      } else if (response.status === 404) {
+        alert('No initial evaluation found for this patient');
+      }
+    } catch (error) {
+      alert('Failed to load previous findings');
+    } finally {
+      setLoadingFindings(false);
+    }
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -111,6 +199,15 @@ function SetupView({ onStartEncounter }) {
                           if (selectedPatient) {
                             clearPatientSelection();
                             setRecommendedEvalType(null); // Clear recommendation
+                            setIsNewPatient(false); // Reset new patient status
+                          } else if (!selectedPatient && e.target.value.trim()) {
+                            // For manually entered patients, default to initial evaluation
+                            setEvaluationType('initial');
+                            setIsNewPatient(true);
+                          } else if (!e.target.value.trim()) {
+                            // Reset when field is cleared
+                            setEvaluationType('initial');
+                            setIsNewPatient(false);
                           }
                         }}
                         autoComplete="off"
@@ -142,6 +239,7 @@ function SetupView({ onStartEncounter }) {
                             onClick={() => {
                               clearPatientSelection();
                               setRecommendedEvalType(null); // Clear recommendation
+                              setIsNewPatient(false); // Reset new patient status
                             }}
                           >
                             <span className="material-icons">close</span>
@@ -218,8 +316,47 @@ function SetupView({ onStartEncounter }) {
                           </button>
                           <ReEvaluationIndicator patient={selectedPatient} />
                         </div>
+                        
+                        {/* Evaluation Type Selector - Moved here for better UX */}
+                        <EvaluationTypeSelector
+                          evaluationType={evaluationType}
+                          setEvaluationType={setEvaluationType}
+                          recommendedEvalType={recommendedEvalType}
+                          isNewPatient={isNewPatient}
+                          onTypeChange={(type) => {
+                            if (type === 'initial' || type === 'follow_up') {
+                              setInitialEvaluationId(null);
+                              setPreviousFindings(null);
+                            }
+                          }}
+                          loadingFindings={loadingFindings}
+                          previousFindings={previousFindings}
+                          onLoadFindings={handleLoadFindings}
+                        />
                       </div>
                     )}
+                    
+                    {/* Show evaluation type selector for manually entered patients too */}
+                    {!selectedPatient && patientDetails.trim() && (
+                      <div className="mt-3">
+                        <EvaluationTypeSelector
+                          evaluationType={evaluationType}
+                          setEvaluationType={setEvaluationType}
+                          recommendedEvalType={recommendedEvalType}
+                          isNewPatient={true} // Assume new patient when manually entered
+                          onTypeChange={(type) => {
+                            if (type === 'initial' || type === 'follow_up') {
+                              setInitialEvaluationId(null);
+                              setPreviousFindings(null);
+                            }
+                          }}
+                          loadingFindings={loadingFindings}
+                          previousFindings={previousFindings}
+                          onLoadFindings={handleLoadFindings}
+                        />
+                      </div>
+                    )}
+                    
                     {error && !patientDetails.trim() && (
                       <p className="text-red-500 text-lg mt-3 flex items-center gap-2">
                         <span className="material-icons text-xl">error</span>
@@ -356,29 +493,10 @@ function SetupView({ onStartEncounter }) {
                     </div>
                   </div>
 
-                  {/* Evaluation Type Selector - Only show when patient is selected */}
-                  {selectedPatient && (
-                    <EvaluationTypeSelector
-                      evaluationType={evaluationType}
-                      setEvaluationType={setEvaluationType}
-                      recommendedEvalType={recommendedEvalType}
-                      onTypeChange={(type) => {
-                        if (type === 'initial' || type === 'follow_up') {
-                          setInitialEvaluationId(null);
-                          setPreviousFindings(null);
-                        }
-                      }}
-                    />
-                  )}
-
                   {/* Re-evaluation Workflow - Show when re-evaluation is selected */}
                   {selectedPatient && evaluationType === 're_evaluation' && (
                     <ReEvaluationWorkflow
-                      selectedPatient={selectedPatient}
                       previousFindings={previousFindings}
-                      onFindingsLoaded={setPreviousFindings}
-                      initialEvaluationId={initialEvaluationId}
-                      onEvaluationIdSet={setInitialEvaluationId}
                     />
                   )}
 
@@ -482,59 +600,68 @@ function SetupView({ onStartEncounter }) {
           <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[80vh] overflow-auto">
             <PatientSelector
               selectedPatient={selectedPatient}
-              onSelectPatient={async (patient) => {
+              onSelectPatient={(patient) => {
                 updatePatientFromSelector(patient);
+                setShowPatientSelector(false); // Close dialog immediately
+                
                 if (patient) {
-                  // Patient details are now handled by updatePatientFromSelector
-                  
-                  // Auto-detect evaluation type based on visit history
-                  try {
-                    const token = await getToken();
-                    const response = await fetch(`/api/v1/patients/${patient.id}/transcripts`, {
-                      headers: {
-                        'Authorization': `Bearer ${token}`
-                      }
-                    });
-                    
-                    if (response.ok) {
-                      const transcripts = await response.json();
+                  // Auto-detect evaluation type in the background
+                  (async () => {
+                    try {
+                      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+                      const token = await getToken();
+                      const response = await fetch(`${API_BASE_URL}/api/v1/patients/${patient.id}/transcripts`, {
+                        headers: {
+                          'Authorization': `Bearer ${token}`
+                        }
+                      });
                       
-                      // If no previous transcripts, automatically set to initial evaluation
-                      if (transcripts.length === 0) {
-                        setEvaluationType('initial');
-                        setRecommendedEvalType('initial');
-                      } else {
-                        // Check if re-evaluation is needed
-                        const reEvalResponse = await fetch(`/api/v1/patients/${patient.id}/re-evaluation-status`, {
-                          headers: {
-                            'Authorization': `Bearer ${token}`
-                          }
-                        });
+                      if (response.ok) {
+                        const transcripts = await response.json();
                         
-                        if (reEvalResponse.ok) {
-                          const reEvalStatus = await reEvalResponse.json();
+                        // If no previous transcripts, automatically set to initial evaluation
+                        if (transcripts.length === 0) {
+                          setIsNewPatient(true);
+                          setEvaluationType('initial');
+                          setRecommendedEvalType('initial');
+                        } else {
+                          setIsNewPatient(false);
+                          // Check if re-evaluation is needed
+                          const reEvalResponse = await fetch(`${API_BASE_URL}/api/v1/patients/${patient.id}/re-evaluation-status`, {
+                            headers: {
+                              'Authorization': `Bearer ${token}`
+                            }
+                          });
                           
-                          // If re-evaluation is overdue (red status), suggest re-evaluation
-                          if (reEvalStatus.color === 'red') {
-                            setEvaluationType('re_evaluation');
-                            setRecommendedEvalType('re_evaluation');
-                          } else if (reEvalStatus.color === 'yellow') {
-                            // If due soon, still suggest re-evaluation
-                            setEvaluationType('re_evaluation');
-                            setRecommendedEvalType('re_evaluation');
+                          if (reEvalResponse.ok) {
+                            const reEvalStatus = await reEvalResponse.json();
+                            
+                            // If re-evaluation is overdue (red status), suggest re-evaluation
+                            if (reEvalStatus.color === 'red') {
+                              setEvaluationType('re_evaluation');
+                              setRecommendedEvalType('re_evaluation');
+                            } else if (reEvalStatus.color === 'yellow') {
+                              // If due soon, still suggest re-evaluation
+                              setEvaluationType('re_evaluation');
+                              setRecommendedEvalType('re_evaluation');
+                            } else {
+                              // Otherwise default to follow-up
+                              setEvaluationType('follow_up');
+                              setRecommendedEvalType('follow_up');
+                            }
                           } else {
-                            // Otherwise default to follow-up
+                            // If re-evaluation endpoint fails, default to follow-up
                             setEvaluationType('follow_up');
                             setRecommendedEvalType('follow_up');
                           }
                         }
                       }
+                    } catch (error) {
+                      // Don't set evaluation type on error, let user choose manually
+                      console.error('Error fetching patient status:', error);
                     }
-                  } catch (error) {
-                    // Don't set evaluation type on error, let user choose manually
-                  }
+                  })();
                 }
-                setShowPatientSelector(false);
               }}
               onClose={() => setShowPatientSelector(false)}
             />

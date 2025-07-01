@@ -28,6 +28,7 @@ const useTranscriptionSessionStore = create(
     // UI State
     currentView: 'setup',
     error: null,
+    showPreviousFindingsSidebar: false,
     
     // Actions - Patient Information
     setPatientDetails: (details) => set({ patientDetails: details }),
@@ -57,11 +58,16 @@ const useTranscriptionSessionStore = create(
     // Actions - Evaluation
     setEvaluationType: (type) => set({ evaluationType: type }),
     setInitialEvaluationId: (id) => set({ initialEvaluationId: id }),
-    setPreviousFindings: (findings) => set({ previousFindings: findings }),
+    setPreviousFindings: (findings) => set({ 
+      previousFindings: findings,
+      // Automatically show sidebar when findings are loaded for re-evaluation
+      showPreviousFindingsSidebar: findings && get().evaluationType === 're_evaluation' ? true : get().showPreviousFindingsSidebar
+    }),
     
     // Actions - UI State
     setCurrentView: (view) => set({ currentView: view }),
     setError: (error) => set({ error: error }),
+    setShowPreviousFindingsSidebar: (show) => set({ showPreviousFindingsSidebar: show }),
     
     // Complex Actions
     updatePatientFromSelector: (patient) => {
@@ -125,7 +131,8 @@ const useTranscriptionSessionStore = create(
       initialEvaluationId: null,
       previousFindings: null,
       currentView: 'setup',
-      error: null
+      error: null,
+      showPreviousFindingsSidebar: false
     }),
     
     // Initialize settings (called when user settings load)
