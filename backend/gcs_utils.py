@@ -43,15 +43,16 @@ class GCSClient:
             logger.error(f"Failed to initialize GCS client: {str(e)}")
             raise
 
-    def save_data_to_gcs(self, user_id: str, data_type: str, session_id: str, content: str) -> bool:
+    def save_data_to_gcs(self, user_id: str, data_type: str, session_id: str, content, content_type: str = None) -> bool:
         """
         Save data to GCS with HIPAA-compliant structure.
         
         Args:
             user_id: User identifier
-            data_type: Type of data (transcripts/original, transcripts/polished, metadata)
+            data_type: Type of data (transcripts/original, transcripts/polished, metadata, logos, settings)
             session_id: Session identifier
-            content: Content to save
+            content: Content to save (string or bytes)
+            content_type: MIME type for the content
         
         Returns:
             Success status
@@ -60,6 +61,9 @@ class GCSClient:
             # Construct the object path
             if data_type == "metadata":
                 object_name = f"{user_id}/metadata/{session_id}.txt"  # Changed from .json to .txt
+            elif data_type == "logos":
+                # For logos, session_id is the filename
+                object_name = f"{user_id}/logos/{session_id}"
             else:
                 object_name = f"{user_id}/{data_type}/{session_id}.txt"
             
@@ -76,11 +80,18 @@ class GCSClient:
                 'encryption': 'AES256'
             }
             
+            # Determine content type if not provided
+            if not content_type:
+                if data_type == "metadata" or data_type == "settings":
+                    content_type = 'application/json'
+                else:
+                    content_type = 'text/plain'
+            
             # Upload with encryption
-            blob.upload_from_string(
-                content,
-                content_type='application/json' if data_type == "metadata" else 'text/plain'
-            )
+            if isinstance(content, bytes):
+                blob.upload_from_string(content, content_type=content_type)
+            else:
+                blob.upload_from_string(content, content_type=content_type)
             
             logger.info(f"Successfully saved {data_type} for session {session_id}")
             return True

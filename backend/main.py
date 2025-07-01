@@ -16,7 +16,7 @@ import uvicorn
 import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Query, UploadFile, File, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import PlainTextResponse
 from contextlib import asynccontextmanager
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -27,13 +27,12 @@ from datetime import datetime
 import json
 import tempfile
 import time
-from typing import Callable
 
 # Set up logging
 logger = logging.getLogger(__name__)
 from pydantic import BaseModel, Field
 from fastapi import HTTPException
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, List, Dict, Any
 from fastapi import Path
 from datetime import datetime, timedelta, timezone
 
@@ -49,9 +48,7 @@ from speechmatics_utils import handle_speechmatics_websocket
 from gcp_utils import polish_transcript_with_gemini, generate_billing_with_gemini
 
 # Import authentication middleware
-# Use Firebase Admin SDK for production authentication
 from gcp_auth_middleware import get_current_user, get_user_id, session_manager
-print("Using Firebase Admin SDK authentication (production-ready)")
 
 # Import Firestore-based endpoints
 from firestore_endpoints import (
@@ -184,15 +181,13 @@ app.add_middleware(RateLimitMiddleware)
 logger.info("Rate limiting middleware enabled")
 
 # Import audit logger for HIPAA compliance
-from audit_logger import AuditLogger, audit_endpoint
+from audit_logger import AuditLogger
 
 config = DeepgramClientOptions(
     api_key=deepgram_api_key, 
     verbose=0, 
 )
 deepgram_client = AsyncLiveClient(config)
-
-import tempfile
 
 @app.websocket("/stream")
 async def websocket_stream_endpoint(websocket: WebSocket, token: str = Query(...)):
@@ -299,7 +294,7 @@ class UserSettingsData(BaseModel):
     officeInformation: List[str] = Field(default_factory=list) # Consider changing to List[Dict[str, Any]] based on UIsetup.md
     transcriptionProfiles: List[TranscriptionProfileItem] = Field(default_factory=list)
     doctorName: Optional[str] = Field(default="", description="Doctor's name for signatures")
-    doctorSignature: Optional[str] = Field(default=None, description="Base64 encoded doctor's signature image")
+    doctorSignature: Optional[str] = Field(default=None, description="Doctor's signature image (base64 data URL)")
     clinicLogo: Optional[str] = Field(default=None, description="URL to clinic logo in GCS")
     includeLogoOnPdf: bool = Field(default=False, description="Include clinic logo on PDF forms")
     medicalSpecialty: Optional[str] = Field(default="", description="Medical specialty of the doctor")
@@ -478,8 +473,7 @@ async def upload_logo(
     file: UploadFile = File(...),
     current_user_id: str = Depends(get_user_id)
 ):
-    """Upload a clinic logo - stores as base64 in user settings"""
-    import base64
+    """Upload a clinic logo - stores file in GCS and URL in settings"""
     
     if not gcs_client:
         raise HTTPException(status_code=503, detail="GCS client not initialized")
@@ -509,17 +503,34 @@ async def upload_logo(
             print(f"Invalid content type: {file.content_type}")
             raise HTTPException(status_code=400, detail=f"Invalid file type: {file.content_type}. Allowed types: {allowed_types}")
     
-    # Validate file size (1MB limit for base64 storage)
-    max_size = 1 * 1024 * 1024  # 1MB
+    # Validate file size (5MB limit for direct GCS storage)
+    max_size = 5 * 1024 * 1024  # 5MB
     contents = await file.read()
     if len(contents) > max_size:
-        raise HTTPException(status_code=400, detail="File size exceeds 1MB limit")
+        raise HTTPException(status_code=400, detail="File size exceeds 5MB limit")
     
     try:
-        # Convert to base64 data URL
-        base64_data = base64.b64encode(contents).decode('utf-8')
-        logo_data_url = f"data:{file.content_type};base64,{base64_data}"
-        print(f"Logo converted to base64, size: {len(logo_data_url)} characters")
+        # Generate unique filename
+        timestamp = int(time.time() * 1000)
+        file_ext = file.filename.lower().split('.')[-1] if '.' in file.filename else 'png'
+        logo_filename = f"logo_{timestamp}.{file_ext}"
+        logo_key = f"{current_user_id}/logos/{logo_filename}"
+        
+        # Upload file directly to GCS
+        success = gcs_client.save_data_to_gcs(
+            user_id=current_user_id,
+            data_type="logos",
+            session_id=logo_filename,
+            content=contents,
+            content_type=file.content_type
+        )
+        
+        if not success:
+            raise Exception("Failed to upload logo to GCS")
+        
+        # Generate public URL for the logo
+        logo_url = f"https://storage.googleapis.com/{gcs_client.bucket_name}/{logo_key}"
+        print(f"Logo uploaded to GCS: {logo_url}")
         
         # Get current settings from GCS
         settings_key = f"{current_user_id}/settings/user_settings.json"
@@ -530,8 +541,19 @@ async def upload_logo(
         else:
             current_settings = DEFAULT_USER_SETTINGS.copy()
         
-        # Update with base64 logo data
-        current_settings['clinicLogo'] = logo_data_url
+        # Check if there's an old logo to delete
+        old_logo_url = current_settings.get('clinicLogo')
+        if old_logo_url and old_logo_url.startswith('https://storage.googleapis.com/'):
+            # Extract the key from the URL and delete the old logo
+            try:
+                old_key = old_logo_url.replace(f"https://storage.googleapis.com/{gcs_client.bucket_name}/", "")
+                gcs_client.delete_gcs_object(old_key)
+                print(f"Deleted old logo: {old_key}")
+            except Exception as e:
+                print(f"Warning: Failed to delete old logo: {e}")
+        
+        # Update with new logo URL
+        current_settings['clinicLogo'] = logo_url
         
         # Save updated settings to GCS
         success = gcs_client.save_data_to_gcs(
@@ -544,7 +566,7 @@ async def upload_logo(
         if not success:
             raise Exception("Failed to save settings to GCS")
         
-        return {"logoUrl": logo_data_url, "message": "Logo uploaded successfully"}
+        return {"logoUrl": logo_url, "message": "Logo uploaded successfully"}
         
     except Exception as e:
         print(f"Error uploading logo for user {current_user_id}: {e}")
@@ -554,7 +576,7 @@ async def upload_logo(
 async def delete_logo(
     current_user_id: str = Depends(get_user_id)
 ):
-    """Delete clinic logo from user settings"""
+    """Delete clinic logo from GCS and user settings"""
     if not gcs_client:
         raise HTTPException(status_code=503, detail="GCS client not initialized")
     
@@ -567,6 +589,20 @@ async def delete_logo(
             current_settings = json.loads(settings_content)
         else:
             current_settings = DEFAULT_USER_SETTINGS.copy()
+        
+        # Delete the logo file from GCS if it exists
+        logo_url = current_settings.get('clinicLogo')
+        if logo_url and logo_url.startswith('https://storage.googleapis.com/'):
+            try:
+                # Extract the key from the URL
+                logo_key = logo_url.replace(f"https://storage.googleapis.com/{gcs_client.bucket_name}/", "")
+                deleted = gcs_client.delete_gcs_object(logo_key)
+                if deleted:
+                    print(f"Deleted logo file from GCS: {logo_key}")
+                else:
+                    print(f"Logo file not found in GCS: {logo_key}")
+            except Exception as e:
+                print(f"Warning: Failed to delete logo file from GCS: {e}")
         
         # Remove logo URL and reset flag
         current_settings['clinicLogo'] = None
@@ -617,6 +653,103 @@ async def debug_logo(
     except Exception as e:
         print(f"Error in debug_logo: {e}")
         raise HTTPException(status_code=500, detail=f"Error fetching logo info: {str(e)}")
+
+@app.post("/api/v1/migrate_logo")
+async def migrate_logo(
+    current_user_id: str = Depends(get_user_id)
+):
+    """Migrate base64 logo to GCS file storage"""
+    import base64
+    
+    if not gcs_client:
+        raise HTTPException(status_code=503, detail="GCS client not initialized")
+    
+    try:
+        # Get current settings
+        settings_key = f"{current_user_id}/settings/user_settings.json"
+        settings_content = gcs_client.get_gcs_object_content(settings_key)
+        
+        if not settings_content:
+            return {"message": "No settings found", "migrated": False}
+        
+        current_settings = json.loads(settings_content)
+        logo_data = current_settings.get('clinicLogo')
+        
+        # Check if logo exists and is base64
+        if not logo_data:
+            return {"message": "No logo found", "migrated": False}
+        
+        if logo_data.startswith('https://'):
+            return {"message": "Logo already migrated to GCS", "migrated": False}
+        
+        if not logo_data.startswith('data:'):
+            return {"message": "Invalid logo format", "migrated": False}
+        
+        # Parse base64 data URL
+        try:
+            # Format: data:image/png;base64,iVBORw0KGgo...
+            header, base64_data = logo_data.split(',', 1)
+            mime_type = header.split(':')[1].split(';')[0]
+            
+            # Decode base64
+            image_data = base64.b64decode(base64_data)
+            
+            # Determine file extension
+            ext_map = {
+                'image/jpeg': 'jpg',
+                'image/jpg': 'jpg',
+                'image/png': 'png',
+                'image/gif': 'gif',
+                'image/webp': 'webp'
+            }
+            file_ext = ext_map.get(mime_type, 'png')
+            
+            # Generate filename
+            timestamp = int(time.time() * 1000)
+            logo_filename = f"logo_migrated_{timestamp}.{file_ext}"
+            
+            # Upload to GCS
+            success = gcs_client.save_data_to_gcs(
+                user_id=current_user_id,
+                data_type="logos",
+                session_id=logo_filename,
+                content=image_data,
+                content_type=mime_type
+            )
+            
+            if not success:
+                raise Exception("Failed to upload migrated logo to GCS")
+            
+            # Generate public URL
+            logo_key = f"{current_user_id}/logos/{logo_filename}"
+            logo_url = f"https://storage.googleapis.com/{gcs_client.bucket_name}/{logo_key}"
+            
+            # Update settings with new URL
+            current_settings['clinicLogo'] = logo_url
+            
+            # Save updated settings
+            success = gcs_client.save_data_to_gcs(
+                user_id=current_user_id,
+                data_type="settings",
+                session_id="user_settings",
+                content=json.dumps(current_settings)
+            )
+            
+            if not success:
+                raise Exception("Failed to save updated settings")
+            
+            print(f"Successfully migrated logo for user {current_user_id} to {logo_url}")
+            return {"message": "Logo migrated successfully", "logoUrl": logo_url, "migrated": True}
+            
+        except Exception as e:
+            print(f"Error parsing base64 data: {e}")
+            raise HTTPException(status_code=400, detail=f"Failed to parse base64 data: {str(e)}")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error migrating logo for user {current_user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to migrate logo: {str(e)}")
 
 # --- End User Settings --- #
 
@@ -818,770 +951,117 @@ async def get_gcs_object_content(
     except Exception as e:
         print(f"Unexpected error fetching object {gcs_key}: {e}")
         raise HTTPException(status_code=500, detail=f"Unexpected error fetching object: {str(e)}")
-# --- Patient Management API Endpoints --- #
-
-class PatientCreateRequest(BaseModel):
-    first_name: str
-    last_name: str
-    date_of_birth: datetime
-    date_of_accident: Optional[datetime] = None
-
-class PatientUpdateRequest(BaseModel):
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    date_of_birth: Optional[datetime] = None
-    date_of_accident: Optional[datetime] = None
-
-class PatientResponse(BaseModel):
-    id: str
-    first_name: str
-    last_name: str
-    date_of_birth: datetime
-    date_of_accident: Optional[datetime] = None
-    created_at: datetime
-    updated_at: datetime
-    active: bool
-
-class BillingRequest(BaseModel):
-    transcript_ids: List[str]
-    billing_instructions: Optional[str] = ""
+# Import patient management endpoints and models
+from patient_endpoints import (
+    PatientCreateRequest,
+    PatientUpdateRequest,
+    PatientResponse,
+    BillingRequest,
+    create_patient,
+    list_patients,
+    get_patient,
+    update_patient,
+    delete_patient,
+    get_patient_transcripts,
+    generate_patient_billing,
+    get_patient_initial_evaluation,
+    get_re_evaluation_status,
+    get_patient_evaluations,
+    extract_transcript_findings
+)
 
 @app.post("/api/v1/patients", response_model=PatientResponse)
-async def create_patient(
+async def create_patient_endpoint(
     patient_data: PatientCreateRequest,
     current_user_id: str = Depends(get_user_id),
     request: Request = None
 ):
-    """Create a new patient profile for the authenticated user"""
-    try:
-        # Add user_id to patient data
-        patient_dict = patient_data.dict()
-        patient_dict['user_id'] = current_user_id
-        
-        # Create patient in Firestore
-        from firestore_client import firestore_client
-        patient_id = await firestore_client.create_patient(patient_dict)
-        
-        # Retrieve the created patient
-        patient = await firestore_client.get_patient(patient_id, current_user_id)
-        
-        # Log PHI access for HIPAA compliance
-        AuditLogger.log_data_access(
-            user_id=current_user_id,
-            operation="CREATE",
-            data_type="patient_profile",
-            resource_id=patient_id,
-            request=request,
-            success=True
-        )
-        
-        return PatientResponse(**patient)
-        
-    except Exception as e:
-        logger.error(f"Error creating patient for user {current_user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to create patient profile")
+    return await create_patient(patient_data, current_user_id, request)
 
 @app.get("/api/v1/patients", response_model=List[PatientResponse])
-async def list_patients(
+async def list_patients_endpoint(
     active_only: bool = True,
     search: Optional[str] = None,
     current_user_id: str = Depends(get_user_id),
     request: Request = None
 ):
-    """List all patients for the authenticated user"""
-    try:
-        from firestore_client import firestore_client
-        
-        if search:
-            # Search patients by name
-            patients = await firestore_client.search_patients(current_user_id, search, active_only)
-        else:
-            # List all patients
-            patients = await firestore_client.list_user_patients(current_user_id, active_only)
-        
-        # Log PHI access for HIPAA compliance
-        AuditLogger.log_data_access(
-            user_id=current_user_id,
-            operation="LIST",
-            data_type="patient_profiles",
-            resource_id=f"count:{len(patients)}",
-            request=request,
-            success=True
-        )
-        
-        return [PatientResponse(**patient) for patient in patients]
-        
-    except Exception as e:
-        logger.error(f"Error listing patients for user {current_user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to list patients")
+    return await list_patients(active_only, search, current_user_id, request)
 
 @app.get("/api/v1/patients/{patient_id}", response_model=PatientResponse)
-async def get_patient(
+async def get_patient_endpoint(
     patient_id: str = Path(..., description="Patient ID"),
     current_user_id: str = Depends(get_user_id),
     request: Request = None
 ):
-    """Get a specific patient profile"""
-    try:
-        from firestore_client import firestore_client
-        
-        patient = await firestore_client.get_patient(patient_id, current_user_id)
-        
-        if not patient:
-            raise HTTPException(status_code=404, detail="Patient not found")
-        
-        # Log PHI access for HIPAA compliance
-        AuditLogger.log_data_access(
-            user_id=current_user_id,
-            operation="READ",
-            data_type="patient_profile",
-            resource_id=patient_id,
-            request=request,
-            success=True
-        )
-        
-        return PatientResponse(**patient)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting patient {patient_id} for user {current_user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to get patient")
+    return await get_patient(patient_id, current_user_id, request)
 
 @app.put("/api/v1/patients/{patient_id}", response_model=PatientResponse)
-async def update_patient(
+async def update_patient_endpoint(
     patient_id: str = Path(..., description="Patient ID"),
     patient_updates: PatientUpdateRequest = ...,
     current_user_id: str = Depends(get_user_id),
     request: Request = None
 ):
-    """Update a patient profile"""
-    try:
-        from firestore_client import firestore_client
-        
-        # Only include non-None fields in updates
-        updates = {k: v for k, v in patient_updates.dict().items() if v is not None}
-        
-        if not updates:
-            raise HTTPException(status_code=400, detail="No updates provided")
-        
-        # Update patient
-        success = await firestore_client.update_patient(patient_id, current_user_id, updates)
-        
-        if not success:
-            raise HTTPException(status_code=404, detail="Patient not found or unauthorized")
-        
-        # Get updated patient
-        patient = await firestore_client.get_patient(patient_id, current_user_id)
-        
-        # Log PHI access for HIPAA compliance
-        AuditLogger.log_data_access(
-            user_id=current_user_id,
-            operation="UPDATE",
-            data_type="patient_profile",
-            resource_id=patient_id,
-            request=request,
-            success=True
-        )
-        
-        return PatientResponse(**patient)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error updating patient {patient_id} for user {current_user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to update patient")
+    return await update_patient(patient_id, patient_updates, current_user_id, request)
 
 @app.delete("/api/v1/patients/{patient_id}")
-async def delete_patient(
+async def delete_patient_endpoint(
     patient_id: str = Path(..., description="Patient ID"),
     current_user_id: str = Depends(get_user_id),
     request: Request = None
 ):
-    """Soft delete a patient profile (sets active=False)"""
-    try:
-        from firestore_client import firestore_client
-        
-        success = await firestore_client.soft_delete_patient(patient_id, current_user_id)
-        
-        if not success:
-            raise HTTPException(status_code=404, detail="Patient not found or unauthorized")
-        
-        # Log PHI access for HIPAA compliance
-        AuditLogger.log_data_access(
-            user_id=current_user_id,
-            operation="DELETE",
-            data_type="patient_profile",
-            resource_id=patient_id,
-            request=request,
-            success=True
-        )
-        
-        return {"message": "Patient deleted successfully"}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error deleting patient {patient_id} for user {current_user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to delete patient")
+    return await delete_patient(patient_id, current_user_id, request)
 
 @app.get("/api/v1/patients/{patient_id}/transcripts", response_model=List[RecordingInfo])
-async def get_patient_transcripts(
+async def get_patient_transcripts_endpoint(
     patient_id: str = Path(..., description="Patient ID"),
     current_user_id: str = Depends(get_user_id),
     request: Request = None
 ):
-    """Get all transcripts for a specific patient"""
-    try:
-        from firestore_client import firestore_client
-        
-        # First verify the patient belongs to this user
-        patient = await firestore_client.get_patient(patient_id, current_user_id)
-        if not patient:
-            raise HTTPException(status_code=404, detail="Patient not found")
-        
-        # Get all transcripts for this patient
-        transcripts = await firestore_client.get_patient_transcripts(patient_id, current_user_id)
-        
-        # Log PHI access for HIPAA compliance
-        AuditLogger.log_data_access(
-            user_id=current_user_id,
-            operation="READ",
-            data_type="patient_transcripts",
-            resource_id=patient_id,
-            request=request,
-            success=True
-        )
-        
-        return transcripts
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting transcripts for patient {patient_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to get patient transcripts")
+    return await get_patient_transcripts(patient_id, current_user_id, request)
 
 @app.post("/api/v1/patients/{patient_id}/generate-billing")
-async def generate_patient_billing(
+async def generate_patient_billing_endpoint(
     patient_id: str = Path(..., description="Patient ID"),
     request: BillingRequest = None,
     current_user_id: str = Depends(get_user_id),
     req: Request = None
 ):
-    """Generate billing information for patient transcripts using Gemini 2.5 Pro"""
-    try:
-        from firestore_client import firestore_client
-        from base_billing_rules import get_base_billing_rules
-        
-        # Verify the patient belongs to this user
-        patient = await firestore_client.get_patient(patient_id, current_user_id)
-        if not patient:
-            raise HTTPException(status_code=404, detail="Patient not found")
-        
-        # Validate request
-        if not request.transcript_ids or len(request.transcript_ids) == 0:
-            raise HTTPException(status_code=400, detail="At least one transcript ID is required")
-        
-        logger.info(f"Billing generation requested for transcripts: {request.transcript_ids}")
-        
-        # If no specific transcript IDs provided, get all patient transcripts
-        if not request.transcript_ids:
-            logger.info(f"No specific transcripts requested, fetching all for patient {patient_id}")
-            all_transcripts = await firestore_client.get_patient_transcripts(patient_id, current_user_id)
-        else:
-            # Fetch the specific transcripts
-            all_transcripts = []
-            for transcript_id in request.transcript_ids:
-                transcript_data = await firestore_client.get_transcript(transcript_id)
-                if transcript_data:
-                    # Check user ownership and patient linkage
-                    transcript_user_id = transcript_data.get('user_id') or transcript_data.get('userId')
-                    transcript_patient_id = transcript_data.get('patient_id') or transcript_data.get('patientId')
-                    
-                    logger.info(f"Transcript {transcript_id}: user={transcript_user_id}, patient={transcript_patient_id}")
-                    
-                    if transcript_user_id == current_user_id:
-                        # Verify it belongs to the requested patient
-                        if transcript_patient_id == patient_id:
-                            all_transcripts.append(transcript_data)
-                        else:
-                            logger.warning(f"Transcript {transcript_id} belongs to different patient")
-                    else:
-                        logger.warning(f"Transcript {transcript_id} does not belong to current user")
-                else:
-                    logger.warning(f"Transcript {transcript_id} not found")
-        
-        if not all_transcripts:
-            raise HTTPException(status_code=404, detail="No transcripts found for this patient")
-        
-        # Combine transcript content
-        combined_transcript = ""
-        service_dates = []
-        encounter_types = set()
-        
-        for transcript in all_transcripts:
-            # Get the content (prefer polished over original)
-            # Handle both raw Firestore fields and mapped fields from get_patient_transcripts
-            content = (transcript.get('transcript_polished') or      # Raw Firestore field
-                      transcript.get('polishedTranscript') or        # Mapped field from get_patient_transcripts
-                      transcript.get('transcript_original') or       # Raw Firestore field
-                      transcript.get('transcript', ''))
-            
-            # If no content in the list response, fetch the full transcript
-            if not content:
-                logger.info(f"Fetching full transcript for {transcript.get('id')}")
-                try:
-                    # Use the get_transcript_details_firestore function
-                    full_transcript = await get_transcript_details_firestore(
-                        user_id=current_user_id,
-                        transcript_id=transcript.get('id'),
-                        current_user_id=current_user_id
-                    )
-                    if full_transcript:
-                        # get_transcript_details_firestore returns mapped fields
-                        content = (full_transcript.get('polishedTranscript') or
-                                 full_transcript.get('originalTranscript', ''))
-                except Exception as e:
-                    logger.error(f"Error fetching full transcript: {str(e)}")
-            
-            if content:
-                combined_transcript += f"\n\n--- Transcript from {transcript.get('created_at', transcript.get('date', 'Unknown date'))} ---\n"
-                combined_transcript += content
-                logger.info(f"Found content of length: {len(content)} for transcript {transcript.get('id')}")
-            else:
-                logger.warning(f"No content found in transcript {transcript.get('id', 'unknown')}. Available fields: {list(transcript.keys())}")
-            
-            # Collect service dates
-            if transcript.get('created_at') or transcript.get('date'):
-                service_dates.append(transcript.get('created_at') or transcript.get('date'))
-            
-            # Collect encounter types
-            encounter_type = transcript.get('encounterType') or transcript.get('encounter_type')
-            if encounter_type:
-                encounter_types.add(encounter_type)
-        
-        if not combined_transcript.strip():
-            logger.error(f"No transcript content found in {len(all_transcripts)} transcripts")
-            raise HTTPException(status_code=400, detail="No transcript content found")
-        
-        # Prepare patient info for billing
-        patient_info = {
-            'first_name': patient.get('first_name', ''),
-            'last_name': patient.get('last_name', ''),
-            'date_of_birth': patient.get('date_of_birth', ''),
-            'insurance_info': patient.get('insurance_info', '')
-        }
-        
-        # Get base billing rules
-        base_rules = get_base_billing_rules()
-        
-        # Get user's custom billing rules and CPT fees
-        try:
-            user_settings = await get_user_settings_firestore(
-                user_id=current_user_id,
-                current_user_id=current_user_id,
-                request=req
-            )
-            custom_rules = user_settings.get('customBillingRules', '') or user_settings.get('custom_billing_rules', '')
-            custom_cpt_fees = user_settings.get('cptFees', {})
-        except Exception as e:
-            logger.warning(f"Failed to fetch user settings for billing: {str(e)}")
-            custom_rules = ""
-            custom_cpt_fees = {}
-        
-        # Combine rules: base + custom + any additional instructions from request
-        combined_billing_instructions = base_rules
-        if custom_rules and custom_rules.strip():
-            combined_billing_instructions += f"\n\n## CUSTOM CLINIC RULES\n\n{custom_rules}"
-        
-        # Optionally append any additional instructions from the request
-        if request.billing_instructions and request.billing_instructions.strip():
-            combined_billing_instructions += f"\n\n## ADDITIONAL INSTRUCTIONS FOR THIS REQUEST\n\n{request.billing_instructions}"
-        
-        # Generate billing using Gemini 2.5 Pro
-        result = generate_billing_with_gemini(
-            transcript=combined_transcript,
-            patient_info=patient_info,
-            billing_instructions=combined_billing_instructions,
-            encounter_type=', '.join(encounter_types) if encounter_types else 'Medical Encounter',
-            service_date=service_dates[0] if service_dates else None,
-            custom_cpt_fees=custom_cpt_fees,
-            model_name="gemini-2.5-pro"
-        )
-        
-        if not result['success']:
-            logger.error(f"Billing generation failed: {result.get('error')}")
-            raise HTTPException(status_code=500, detail=f"Failed to generate billing: {result.get('error')}")
-        
-        # Log PHI access for HIPAA compliance
-        AuditLogger.log_data_access(
-            user_id=current_user_id,
-            operation="GENERATE_BILLING",
-            data_type="patient_billing",
-            resource_id=patient_id,
-            request=req,
-            success=True
-        )
-        
-        # Return the billing data
-        return {
-            'billing_data': result['billing_data'],
-            'patient_id': patient_id,
-            'transcript_count': len(all_transcripts),
-            'service_dates': service_dates,
-            'encounter_types': list(encounter_types),
-            'generated_at': result['timestamp'],
-            'model_used': result['model_used']
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        import traceback
-        logger.error(f"Error generating billing for patient {patient_id}: {str(e)}")
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"Failed to generate billing: {str(e)}")
+    return await generate_patient_billing(patient_id, request, current_user_id, req)
 
 @app.get("/api/v1/patients/{patient_id}/initial-evaluation")
-async def get_patient_initial_evaluation(
+async def get_patient_initial_evaluation_endpoint(
     patient_id: str = Path(..., description="Patient ID"),
     current_user_id: str = Depends(get_user_id),
     request: Request = None
 ):
-    """Get the most recent initial evaluation for a patient"""
-    try:
-        from firestore_client import firestore_client
-        from firestore_models import EvaluationType
-        
-        # Verify the patient belongs to this user
-        patient = await firestore_client.get_patient(patient_id, current_user_id)
-        if not patient:
-            raise HTTPException(status_code=404, detail="Patient not found")
-        
-        # Get all transcripts for this patient
-        transcripts = await firestore_client.get_patient_transcripts(patient_id, current_user_id)
-        
-        # Filter for initial evaluations
-        initial_evaluations = [
-            t for t in transcripts 
-            if (t.get('evaluation_type') == EvaluationType.INITIAL or 
-                (t.get('encounter_type') and 'initial' in t.get('encounter_type', '').lower()))
-        ]
-        
-        if not initial_evaluations:
-            raise HTTPException(status_code=404, detail="No initial evaluation found for this patient")
-        
-        # Sort by date and get the most recent
-        initial_evaluations.sort(key=lambda x: x.get('created_at', ''), reverse=True)
-        most_recent = initial_evaluations[0]
-        
-        # Log PHI access for HIPAA compliance
-        AuditLogger.log_data_access(
-            user_id=current_user_id,
-            operation="READ",
-            data_type="initial_evaluation",
-            resource_id=most_recent.get('id'),
-            request=request,
-            success=True
-        )
-        
-        return most_recent
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting initial evaluation for patient {patient_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to get initial evaluation")
+    return await get_patient_initial_evaluation(patient_id, current_user_id, request)
 
 @app.get("/api/v1/patients/{patient_id}/re-evaluation-status")
-async def get_re_evaluation_status(
+async def get_re_evaluation_status_endpoint(
     patient_id: str = Path(..., description="Patient ID"),
     current_user_id: str = Depends(get_user_id),
     request: Request = None
 ):
-    """Get the re-evaluation status for a patient"""
-    try:
-        from firestore_client import firestore_client
-        from firestore_models import EvaluationType
-        from datetime import datetime, timezone
-        
-        # Verify the patient belongs to this user
-        patient = await firestore_client.get_patient(patient_id, current_user_id)
-        if not patient:
-            raise HTTPException(status_code=404, detail="Patient not found")
-        
-        # Get all transcripts for this patient
-        transcripts = await firestore_client.get_patient_transcripts(patient_id, current_user_id)
-        
-        # Filter for evaluations only (initial and re-evaluations)
-        evaluations = [
-            t for t in transcripts 
-            if t.get('evaluation_type') in [EvaluationType.INITIAL, EvaluationType.RE_EVALUATION]
-        ]
-        
-        if not evaluations:
-            return {
-                "status": "no_evaluation",
-                "days_since_last": None,
-                "session_count": 0,
-                "sessions_since_evaluation": 0,
-                "last_evaluation_date": None,
-                "last_evaluation_type": None,
-                "color": "gray",
-                "message": "No evaluations found"
-            }
-        
-        # Sort evaluations by date (newest first)
-        evaluations.sort(key=lambda x: x.get('created_at', ''), reverse=True)
-        last_evaluation = evaluations[0]
-        
-        # Calculate days since last evaluation
-        last_eval_date = datetime.fromisoformat(last_evaluation.get('created_at').replace('Z', '+00:00'))
-        days_since = (datetime.now(timezone.utc) - last_eval_date).days
-        
-        # Count sessions SINCE the last evaluation (initial or re-evaluation)
-        # Sort all transcripts by date
-        transcripts.sort(key=lambda x: x.get('created_at', ''), reverse=False)
-        
-        # Find sessions that occurred after the last evaluation
-        sessions_since_evaluation = 0
-        for transcript in transcripts:
-            transcript_date = datetime.fromisoformat(transcript.get('created_at').replace('Z', '+00:00'))
-            if transcript_date > last_eval_date:
-                sessions_since_evaluation += 1
-        
-        # Determine status color based on sessions since last evaluation
-        # Green: 0-30 days AND less than 12 sessions
-        # Yellow: 31-45 days OR 10-11 sessions
-        # Red: 46+ days OR 12+ sessions
-        if sessions_since_evaluation >= 12:
-            color = "red"
-            message = f"Re-evaluation needed: {sessions_since_evaluation} sessions since last evaluation"
-        elif days_since > 45:
-            color = "red"
-            message = f"Re-evaluation overdue: {days_since} days since last evaluation"
-        elif days_since > 30 or sessions_since_evaluation >= 10:
-            color = "yellow"
-            message = f"Re-evaluation due soon: {days_since} days, {sessions_since_evaluation} sessions"
-        else:
-            color = "green"
-            message = f"Last evaluation: {days_since} days ago ({sessions_since_evaluation} sessions)"
-        
-        # Log PHI access for HIPAA compliance
-        AuditLogger.log_data_access(
-            user_id=current_user_id,
-            operation="READ",
-            data_type="re_evaluation_status",
-            resource_id=patient_id,
-            request=request,
-            success=True
-        )
-        
-        return {
-            "status": "evaluated",
-            "days_since_last": days_since,
-            "session_count": len(transcripts),  # Total sessions for patient
-            "sessions_since_evaluation": sessions_since_evaluation,  # Sessions since last eval
-            "last_evaluation_date": last_evaluation.get('created_at'),
-            "last_evaluation_type": last_evaluation.get('evaluation_type'),
-            "color": color,
-            "message": message,
-            "patient_name": f"{patient['last_name']}, {patient['first_name']}"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error fetching re-evaluation status: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to get re-evaluation status")
+    return await get_re_evaluation_status(patient_id, current_user_id, request)
 
 @app.get("/api/v1/patients/{patient_id}/evaluations")
-async def get_patient_evaluations(
+async def get_patient_evaluations_endpoint(
     patient_id: str = Path(..., description="Patient ID"),
     evaluation_type: Optional[str] = Query(None, description="Filter by evaluation type"),
     current_user_id: str = Depends(get_user_id),
     request: Request = None
 ):
-    """Get all evaluations for a patient, optionally filtered by type"""
-    try:
-        from firestore_client import firestore_client
-        from firestore_models import EvaluationType
-        
-        # Verify the patient belongs to this user
-        patient = await firestore_client.get_patient(patient_id, current_user_id)
-        if not patient:
-            raise HTTPException(status_code=404, detail="Patient not found")
-        
-        # Get all transcripts for this patient
-        transcripts = await firestore_client.get_patient_transcripts(patient_id, current_user_id)
-        
-        # Filter by evaluation type if specified
-        if evaluation_type:
-            transcripts = [
-                t for t in transcripts 
-                if t.get('evaluation_type') == evaluation_type
-            ]
-        
-        # Sort by date
-        transcripts.sort(key=lambda x: x.get('created_at', ''), reverse=True)
-        
-        # Log PHI access for HIPAA compliance
-        AuditLogger.log_data_access(
-            user_id=current_user_id,
-            operation="LIST",
-            data_type="patient_evaluations",
-            resource_id=patient_id,
-            request=request,
-            success=True
-        )
-        
-        return transcripts
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting evaluations for patient {patient_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to get patient evaluations")
+    return await get_patient_evaluations(patient_id, evaluation_type, current_user_id, request)
 
 @app.post("/api/v1/transcripts/{transcript_id}/extract-findings")
-async def extract_transcript_findings(
+async def extract_transcript_findings_endpoint(
     transcript_id: str = Path(..., description="Transcript ID"),
     current_user_id: str = Depends(get_user_id),
     request: Request = None
 ):
-    """Extract positive findings from a transcript using AI"""
-    try:
-        from firestore_client import firestore_client
-        
-        # Get the transcript
-        transcript_data = await firestore_client.get_transcript(transcript_id)
-        if not transcript_data:
-            raise HTTPException(status_code=404, detail="Transcript not found")
-        
-        # Verify ownership
-        transcript_user_id = transcript_data.get('user_id') or transcript_data.get('userId')
-        if transcript_user_id != current_user_id:
-            raise HTTPException(status_code=403, detail="Unauthorized access to transcript")
-        
-        # Get the transcript content
-        content = (transcript_data.get('transcript_polished') or 
-                  transcript_data.get('transcript_original', ''))
-        
-        if not content:
-            raise HTTPException(status_code=400, detail="No transcript content available")
-        
-        # Get extraction prompt based on user's specialty
-        from extraction_prompts import get_extraction_prompt
-        from extraction_prompts_enhanced import get_enhanced_extraction_prompt
-        
-        # Try to get user's specialty from settings
-        from firestore_client import firestore_client
-        user_settings = await firestore_client.get_user_settings(current_user_id)
-        specialty = user_settings.get('medicalSpecialty', 'general') if user_settings else 'general'
-        
-        # Use enhanced extraction prompt that generates both JSON and markdown
-        extraction_prompt = get_enhanced_extraction_prompt(specialty=specialty)
-        
-        # Run the synchronous function in an executor
-        result = await asyncio.get_event_loop().run_in_executor(
-            None,
-            polish_transcript_with_gemini,
-            content,  # transcript
-            "",  # patient_name
-            "",  # patient_context
-            "findings_extraction",  # encounter_type
-            extraction_prompt,  # llm_instructions
-            None,  # location (optional)
-            "publishers/google/models/gemini-2.5-flash"  # model_name
-        )
-        
-        if result['success']:
-            # Parse the enhanced extraction output (contains both JSON and markdown)
-            try:
-                import json
-                import re
-                
-                output = result['polished_transcript']
-                
-                # Extract JSON section
-                json_match = re.search(r'```json\n(.*?)\n```', output, re.DOTALL)
-                findings = {}
-                if json_match:
-                    try:
-                        findings = json.loads(json_match.group(1))
-                    except:
-                        findings = {"raw_findings": json_match.group(1)}
-                
-                # Extract markdown section
-                markdown_match = re.search(r'```markdown\n(.*?)\n```', output, re.DOTALL)
-                findings_markdown = markdown_match.group(1) if markdown_match else None
-                logger.info(f"Extracted markdown length: {len(findings_markdown) if findings_markdown else 0}")
-                
-                # If no markdown found, try to get any text after JSON
-                if not findings_markdown:
-                    # Look for markdown content after the JSON block
-                    parts = output.split('```')
-                    for i, part in enumerate(parts):
-                        if part.strip().startswith('markdown'):
-                            findings_markdown = parts[i+1] if i+1 < len(parts) else None
-                            break
-                
-                # Debug logging
-                logger.info(f"Raw LLM output length: {len(output)}")
-                logger.info(f"Found JSON section: {bool(json_match)}")
-                logger.info(f"Found markdown section: {bool(markdown_match)}")
-                if not findings_markdown:
-                    logger.warning("No markdown found in LLM output. First 500 chars of output:")
-                    logger.warning(output[:500])
-                
-            except Exception as e:
-                logger.warning(f"Failed to parse enhanced extraction output: {str(e)}")
-                # Fallback to simple JSON parsing
-                try:
-                    findings = json.loads(result['polished_transcript'])
-                    findings_markdown = None
-                except:
-                    findings = {"raw_findings": result['polished_transcript']}
-                    findings_markdown = None
-            
-            # Update the transcript with both JSON findings and markdown
-            update_data = {'positive_findings': findings}
-            if findings_markdown:
-                update_data['positive_findings_markdown'] = findings_markdown
-            
-            await firestore_client.update_transcript(
-                transcript_id, 
-                update_data
-            )
-            
-            # Log PHI access
-            AuditLogger.log_data_access(
-                user_id=current_user_id,
-                operation="EXTRACT_FINDINGS",
-                data_type="transcript_findings",
-                resource_id=transcript_id,
-                request=request,
-                success=True
-            )
-            
-            response_data = {
-                'success': True,
-                'findings': findings,
-                'findings_markdown': findings_markdown,
-                'transcript_id': transcript_id
-            }
-            logger.info(f"Returning extraction response with markdown: {bool(findings_markdown)}")
-            return response_data
-        else:
-            raise HTTPException(status_code=500, detail=f"Failed to extract findings: {result.get('error')}")
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error extracting findings from transcript {transcript_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to extract findings")
+    return await extract_transcript_findings(transcript_id, current_user_id, request)
 
-# --- End Patient Management --- #
         
 if __name__ == "__main__":
     if not deepgram_api_key:

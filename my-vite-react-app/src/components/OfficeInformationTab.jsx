@@ -36,6 +36,12 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
         console.log('Setting medical specialty from userSettings:', userSettings.medicalSpecialty);
         setMedicalSpecialty(userSettings.medicalSpecialty);
       }
+      
+      // Auto-migrate base64 logos to GCS
+      if (userSettings.clinicLogo && userSettings.clinicLogo.startsWith('data:')) {
+        console.log('Detected base64 logo, initiating auto-migration...');
+        migrateBase64Logo();
+      }
     }
   }, [userSettings.doctorName, userSettings.clinicLogo, userSettings.includeLogoOnPdf, userSettings.medicalSpecialty]);
 
@@ -135,8 +141,8 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
   const handleLogoUpload = (event) => {
     const file = event.target.files[0];
     if (file) {
-      if (file.size > 1 * 1024 * 1024) { // 1MB limit for base64 storage
-        alert('Logo file size must be less than 1MB');
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit for GCS storage
+        alert('Logo file size must be less than 5MB');
         return;
       }
       
@@ -182,7 +188,7 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
       
       const { logoUrl } = await uploadResponse.json();
       
-      // The logoUrl is now a base64 data URL
+      // The logoUrl is now a GCS URL
       // Update user settings
       await updateDoctorInformation(
         userSettings.doctorName, 
@@ -264,6 +270,30 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
       } finally {
         setIsSaving(false);
       }
+    }
+  };
+
+  const migrateBase64Logo = async () => {
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      const accessToken = await getToken();
+      
+      const response = await fetch(`${API_BASE_URL}/api/v1/migrate_logo`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        }
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.migrated) {
+          console.log('Logo migrated successfully to:', result.logoUrl);
+          // The settings will be updated automatically through the context
+        }
+      }
+    } catch (error) {
+      console.error('Error migrating base64 logo:', error);
     }
   };
 
