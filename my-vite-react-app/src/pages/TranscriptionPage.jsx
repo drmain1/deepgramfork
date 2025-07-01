@@ -98,7 +98,6 @@ function TranscriptionPage() {
         setSelectedLocation(userSettings.officeInformation[0]);
       }
     } else if (!settingsLoading && (!userSettings.officeInformation || userSettings.officeInformation.length === 0)){
-      console.log("TranscriptionPage - No office information found, clearing selectedLocation");
       setSelectedLocation('');
     }
   }, [userSettings, settingsLoading]);
@@ -114,10 +113,8 @@ function TranscriptionPage() {
     setCurrentView('setup');
     // Navigate back to clean transcription URL
     navigate('/transcription', { replace: true });
-    setError(null);
-    // Clear dictation mode when closing recording
-    setIsDictationMode(false);
-    setDateOfService('');
+    // Reset session will clear all patient data but keep settings
+    resetSession();
     // Clear selected recording if it was a draft
     if (selectedRecordingId) {
       const recording = recordings.find(r => r.id === selectedRecordingId);
@@ -161,14 +158,7 @@ function TranscriptionPage() {
       
       return (
         <RecordingView
-          patientDetails={draftData.patientDetails}
-          patientContext={patientContext}
-          selectedLocation={selectedLocation}
-          selectedProfileId={draftData.profileId}
-          isMultilingual={isMultilingual}
-          targetLanguage={targetLanguage}
           userSettings={userSettings}
-          selectedPatient={selectedPatient}
           onClose={() => {
             selectRecording(null); // Clear selection when closing
             handleCloseRecording();

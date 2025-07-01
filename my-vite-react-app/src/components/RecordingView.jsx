@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/FirebaseAuthContext';
 import { useRecordings } from '../contexts/RecordingsContext';
 import PreviousFindingsEnhanced from './PreviousFindingsEnhanced';
+import useTranscriptionSessionStore from '../stores/transcriptionSessionStore';
 import {
   Box,
   Button,
@@ -26,22 +27,25 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 
 
 function RecordingView({
-  patientDetails,
-  patientContext,
-  selectedLocation,
-  selectedProfileId,
-  isMultilingual,
-  targetLanguage,
   userSettings,
-  selectedPatient,
-  isDictationMode,
-  dateOfService,
-  evaluationType,
-  initialEvaluationId,
-  previousFindings,
   onClose,
   resumeData
 }) {
+  // Get all state from Zustand store
+  const {
+    patientDetails,
+    patientContext,
+    selectedLocation,
+    selectedProfileId,
+    isMultilingual,
+    targetLanguage,
+    selectedPatient,
+    isDictationMode,
+    dateOfService,
+    evaluationType,
+    initialEvaluationId,
+    previousFindings
+  } = useTranscriptionSessionStore();
   const { user, getToken } = useAuth();
   const { startPendingRecording, updateRecording, removeRecording, fetchUserRecordings, selectRecording } = useRecordings();
 
