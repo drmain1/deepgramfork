@@ -10,6 +10,18 @@ const FormattedMedicalText = ({ content, sx = {}, ...props }) => {
     );
   }
 
+  // Ensure content is a string
+  let textContent = content;
+  if (typeof content !== 'string') {
+    console.warn('FormattedMedicalText received non-string content:', content);
+    // Try to convert to string
+    if (typeof content === 'object') {
+      textContent = JSON.stringify(content, null, 2);
+    } else {
+      textContent = String(content);
+    }
+  }
+
   const formatMedicalText = (text) => {
     // Split text into lines
     const lines = text.split('\n');
@@ -376,7 +388,7 @@ const FormattedMedicalText = ({ content, sx = {}, ...props }) => {
       }}
       {...props}
     >
-      {formatMedicalText(content)}
+      {formatMedicalText(textContent)}
     </Box>
   );
 };

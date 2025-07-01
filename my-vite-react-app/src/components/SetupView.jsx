@@ -51,6 +51,7 @@ function SetupView({
   const [showLastTranscript, setShowLastTranscript] = useState(false);
   const [lastTranscript, setLastTranscript] = useState(null);
   const [loadingTranscript, setLoadingTranscript] = useState(false);
+  const [loadingFindings, setLoadingFindings] = useState(false);
   const { getToken, user } = useAuth();
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
@@ -263,8 +264,8 @@ function SetupView({
                         className="px-6 py-5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium text-xl transition-colors flex items-center gap-2"
                         onClick={() => setShowPatientSelector(true)}
                       >
-                        <span className="material-icons">person_search</span>
-                        Select Patient
+                        <span className="material-icons">{selectedPatient ? 'edit' : 'person_search'}</span>
+                        {selectedPatient ? 'Edit Patient' : 'Select Patient'}
                       </button>
                     </div>
                     {selectedPatient && (
@@ -541,7 +542,9 @@ function SetupView({
                           {!previousFindings ? (
                             <button
                               type="button"
+                              disabled={loadingFindings}
                               onClick={async () => {
+                                setLoadingFindings(true);
                                 try {
                                   const token = await getToken();
                                   const response = await fetch(`/api/v1/patients/${selectedPatient.id}/initial-evaluation`, {
@@ -556,12 +559,42 @@ function SetupView({
                                     
                                     // Extract findings if not already done
                                     if (evaluation.positive_findings) {
-                                      setPreviousFindings({
-                                        ...evaluation.positive_findings,
-                                        date: evaluation.date || evaluation.created_at,
-                                        // Include markdown version if available
-                                        _markdown: evaluation.positive_findings_markdown || null
-                                      });
+                                      console.log('Found existing positive_findings:', evaluation.positive_findings);
+                                      console.log('Found existing positive_findings_markdown:', evaluation.positive_findings_markdown);
+                                      
+                                      // Check if we need to re-extract due to old format
+                                      const needsReExtraction = evaluation.positive_findings.raw_findings && 
+                                                              !evaluation.positive_findings.pain_findings &&
+                                                              !evaluation.positive_findings_markdown;
+                                      
+                                      if (needsReExtraction) {
+                                        console.log('Old format detected, triggering re-extraction');
+                                        // Trigger re-extraction for old format
+                                        const extractResponse = await fetch(`/api/v1/transcripts/${evaluation.id}/extract-findings`, {
+                                          method: 'POST',
+                                          headers: {
+                                            'Authorization': `Bearer ${token}`
+                                          }
+                                        });
+                                        
+                                        if (extractResponse.ok) {
+                                          const extractResult = await extractResponse.json();
+                                          if (extractResult.success && extractResult.findings) {
+                                            setPreviousFindings({
+                                              ...extractResult.findings,
+                                              date: evaluation.date || evaluation.created_at,
+                                              _markdown: extractResult.findings_markdown || null
+                                            });
+                                          }
+                                        }
+                                      } else {
+                                        setPreviousFindings({
+                                          ...evaluation.positive_findings,
+                                          date: evaluation.date || evaluation.created_at,
+                                          // Include markdown version if available
+                                          _markdown: evaluation.positive_findings_markdown || null
+                                        });
+                                      }
                                     } else {
                                       // Trigger extraction of findings
                                       const extractResponse = await fetch(`/api/v1/transcripts/${evaluation.id}/extract-findings`, {
@@ -577,6 +610,8 @@ function SetupView({
                                         console.log('Findings data:', extractResult.findings);
                                         
                                         if (extractResult.success && extractResult.findings) {
+                                          console.log('Extract API response:', extractResult);
+                                          console.log('Markdown content:', extractResult.findings_markdown);
                                           setPreviousFindings({
                                             ...extractResult.findings,
                                             date: evaluation.date || evaluation.created_at,
@@ -585,7 +620,8 @@ function SetupView({
                                           });
                                           console.log('Previous findings set to:', {
                                             ...extractResult.findings,
-                                            date: evaluation.date || evaluation.created_at
+                                            date: evaluation.date || evaluation.created_at,
+                                            _markdown: extractResult.findings_markdown || null
                                           });
                                         } else {
                                           console.error('Extract findings failed or no findings returned');
@@ -602,11 +638,41 @@ function SetupView({
                                 } catch (error) {
                                   console.error('Error fetching initial evaluation:', error);
                                   alert('Failed to load previous findings');
+                                } finally {
+                                  setLoadingFindings(false);
                                 }
                               }}
-                              className="bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 transition-colors text-lg"
+                              className={`bg-indigo-600 text-white px-6 py-3 rounded-lg transition-all text-lg flex items-center justify-center ${
+                                loadingFindings ? 'opacity-75 cursor-not-allowed' : 'hover:bg-indigo-700'
+                              }`}
                             >
-                              Load Previous Findings
+                              {loadingFindings ? (
+                                <>
+                                  <svg 
+                                    className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" 
+                                    xmlns="http://www.w3.org/2000/svg" 
+                                    fill="none" 
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <circle 
+                                      className="opacity-25" 
+                                      cx="12" 
+                                      cy="12" 
+                                      r="10" 
+                                      stroke="currentColor" 
+                                      strokeWidth="4"
+                                    />
+                                    <path 
+                                      className="opacity-75" 
+                                      fill="currentColor" 
+                                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                    />
+                                  </svg>
+                                  Loading Previous Findings...
+                                </>
+                              ) : (
+                                'Load Previous Findings'
+                              )}
                             </button>
                           ) : (
                             <div className="max-h-96 overflow-y-auto">

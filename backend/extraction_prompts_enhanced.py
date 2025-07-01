@@ -5,183 +5,100 @@ This provides structured data for system use AND readable format for UI display.
 
 # Enhanced initial evaluation findings extraction
 ENHANCED_INITIAL_EVALUATION_PROMPT = """
-Extract all positive clinical findings from this medical evaluation.
-Generate TWO outputs: structured JSON data AND formatted markdown text.
+Extract ALL positive clinical findings from this initial evaluation for baseline documentation.
 
-PART 1 - JSON OUTPUT (for data storage and queries):
-Extract and organize findings by body region/system as JSON:
-{
-    "chief_complaint": "specific complaint and duration",
-    "pain_levels": {
-        "region_name": pain_score,
-        "neck": 7,
-        "lower_back": 8
-    },
-    "range_of_motion": {
-        "body_part": "limitation description with degrees",
-        "cervical_flexion": "Limited to 30 degrees (normal 60)",
-        "lumbar_flexion": "Limited to 45 degrees with pain"
-    },
-    "positive_tests": [
-        "Test name: result/finding",
-        "Straight leg raise: positive at 30 degrees right"
-    ],
-    "neurological_findings": {
-        "reflexes": {...},
-        "sensation": {...},
-        "strength": {...}
-    },
-    "palpation_findings": {
-        "region": "specific findings",
-        "lumbar_paraspinals": "bilateral muscle tension L3-L5"
-    },
-    "functional_limitations": [
-        "Unable to sit longer than 20 minutes",
-        "Difficulty with prolonged standing"
-    ],
-    "diagnoses": [
-        "condition name (ICD-10 if available)"
-    ],
-    "imaging_findings": "summary if mentioned",
-    "patient_goals": ["specific goals mentioned"],
-    "other_findings": {...}
-}
+IMPORTANT: Generate TWO outputs in the exact format specified below.
 
-PART 2 - MARKDOWN OUTPUT (for doctor-friendly display):
-Create a well-formatted clinical summary with proper headers and emphasis:
+Part 1: Markdown Summary
+Create a well-formatted clinical summary using proper markdown formatting.
+- Use ### for main title
+- Use #### for category headers
+- Use - for bullet points
+- Focus on clarity and readability
 
-# Clinical Findings Summary
+Part 2: JSON Data
+Create a structured JSON object with categorized findings.
+Each finding should be a verbatim quote from the transcript.
 
-## Chief Complaint
-[Primary concern with onset and duration]
-
-## Pain Assessment
-### Current Pain Levels
-| Body Region | Severity | Quality | Notes |
-|-------------|----------|---------|-------|
-| [Region] | [X/10] | [sharp/dull/aching] | [radiation, timing] |
-
-### Pain Patterns
-- **Aggravating factors:** [list factors]
-- **Relieving factors:** [list factors]
-
-## Objective Findings
-
-### Range of Motion
-**Cervical Spine:**
-- Flexion: [degrees] (normal: 60°)
-- Extension: [degrees] (normal: 70°)
-- [Continue for all tested movements]
-
-### Positive Clinical Tests
-1. **[Test Name]:** [Result and significance]
-2. **[Test Name]:** [Result and significance]
-
-### Neurological Assessment
-**Motor Function:**
-- [Muscle group]: [Grade 0-5]
-
-**Sensory:**
-- [Dermatome]: [intact/diminished/absent]
-
-**Reflexes:**
-- [Reflex]: [Grade 0-4+]
-
-### Palpation Findings
-- **[Region]:** [Specific findings - tenderness, muscle tension, etc.]
-
-## Functional Impact
-- [List specific functional limitations]
-- [Include impact on ADLs]
-
-## Clinical Impressions
-1. [Primary diagnosis with ICD-10 if available]
-2. [Secondary diagnoses]
-
-## Patient Goals
-- [Specific goals as stated by patient]
-
-## Notes for Re-evaluation
-Key findings to track in future visits:
-- Pain levels in [specific regions]
-- ROM measurements for [specific movements]
-- Functional abilities: [specific tasks]
-- Special test results
-
----
-*Initial evaluation performed on [Date]*
-
-FORMAT YOUR RESPONSE AS:
-```json
-{json_output_here}
-```
-
+FORMAT YOUR RESPONSE EXACTLY AS:
 ```markdown
-[markdown_output_here]
+### Clinical Baseline Summary
+
+#### Pain Findings
+- [List each pain finding]
+
+#### Range of Motion Findings
+- [List each ROM limitation]
+
+#### Neurological Findings
+- [List each neurological finding]
+
+#### Palpation Findings
+- [List each palpation finding]
+
+#### Orthopedic Test Findings
+- [List each positive test]
+
+#### Functional Limitations
+- [List each functional limitation]
+
+#### Posture and Gait Findings
+- [List each postural/gait abnormality]
+
+#### Outcome Assessment Tools
+- [List each assessment tool with score]
+
+*Initial evaluation performed on [Date if available]*
 ```
+
+```json
+{
+  "outcome_assessment_tools": [
+    {
+      "tool_name": "[Name of the tool]",
+      "score": "[The score]",
+      "interpretation": "[The interpretation if mentioned]"
+    }
+  ],
+  "pain_findings": [
+    "[Direct quote of pain description]"
+  ],
+  "range_of_motion_findings": [
+    "[Direct quote of ROM limitation]"
+  ],
+  "orthopedic_test_findings": [
+    "[Direct quote of positive test]"
+  ],
+  "neurological_findings": [
+    "[Direct quote of neuro deficit]"
+  ],
+  "palpation_findings": [
+    "[Direct quote of palpation finding]"
+  ],
+  "functional_limitations": [
+    "[Direct quote of functional problem]"
+  ],
+  "posture_and_gait_findings": [
+    "[Direct quote of postural or gait abnormality]"
+  ]
+}
+```
+
+EXTRACTION RULES:
+1. Only include POSITIVE/ABNORMAL findings
+2. Use exact quotes from the transcript
+3. If a category has no findings, use empty array []
+4. Include all relevant clinical details
+5. Maintain professional medical terminology
 """
 
 # Enhanced chiropractic-specific prompt
 ENHANCED_CHIROPRACTIC_PROMPT = """
 Extract findings from this chiropractic evaluation and format for both data storage and clinical use.
 
-GENERATE TWO OUTPUTS:
+GENERATE TWO OUTPUTS IN THIS EXACT FORMAT:
 
-1. JSON FORMAT (for system use):
-{
-    "chief_complaint": {
-        "description": "...",
-        "onset": "acute/chronic/gradual",
-        "mechanism": "if applicable",
-        "duration": "time period"
-    },
-    "pain_assessment": {
-        "locations": {
-            "primary": {"region": "...", "severity": X, "quality": "..."},
-            "secondary": {"region": "...", "severity": X, "quality": "..."}
-        },
-        "radiation_pattern": "...",
-        "frequency": "constant/intermittent"
-    },
-    "postural_analysis": {
-        "head_position": "forward/neutral/tilted",
-        "shoulder_height": "level/elevated right/elevated left",
-        "pelvic_tilt": "anterior/posterior/lateral",
-        "spinal_curves": {...}
-    },
-    "subluxations": [
-        {"level": "C5", "listing": "posterior right", "fixation": true},
-        {"level": "L4", "listing": "left lateral", "muscle_spasm": true}
-    ],
-    "range_of_motion": {
-        "cervical": {
-            "flexion": {"degrees": X, "pain": true/false, "restriction": "mild/moderate/severe"},
-            "extension": {...},
-            "rotation_right": {...},
-            "rotation_left": {...}
-        },
-        "thoracic": {...},
-        "lumbar": {...}
-    },
-    "orthopedic_tests": {
-        "test_name": {"result": "positive/negative", "details": "..."}
-    },
-    "neurological": {
-        "motor": {"muscle": "grade"},
-        "sensory": {"dermatome": "finding"},
-        "reflexes": {"reflex": "grade"}
-    },
-    "palpation": {
-        "static": {"segment": "findings"},
-        "motion": {"segment": "findings"},
-        "muscle_tone": {"region": "findings"}
-    },
-    "functional_assessment": [...],
-    "treatment_response": "if applicable"
-}
-
-2. MARKDOWN FORMAT (for clinical display):
-
+```markdown
 # Chiropractic Evaluation Findings
 
 ## Patient Presentation
@@ -200,17 +117,20 @@ GENERATE TWO OUTPUTS:
 ### Subluxation Listings
 | Level | Listing | Fixation | Associated Findings |
 |-------|---------|----------|-------------------|
-| C5 | PR | Yes | Muscle spasm, tender |
-| L4 | LL | Yes | Restricted motion |
+| [Level] | [Listing] | [Yes/No] | [Findings] |
 
 ### Range of Motion Testing
 #### Cervical Spine
-- **Flexion:** [degrees] ⚠️ [if restricted]
-- **Extension:** [degrees] ✓ [if normal]
+- **Flexion:** [degrees] [if restricted: ⚠️]
+- **Extension:** [degrees] [if normal: ✓]
 - **Right Rotation:** [degrees]
 - **Left Rotation:** [degrees]
 
-[Continue for Thoracic and Lumbar]
+#### Thoracic Spine
+[Similar format]
+
+#### Lumbar Spine
+[Similar format]
 
 ## Orthopedic & Neurological Testing
 
@@ -253,14 +173,60 @@ GENERATE TWO OUTPUTS:
 ---
 *Examination Date: [Date]*
 *Next Re-evaluation Recommended: [Timeframe]*
-
-RETURN AS:
-```json
-{json_here}
 ```
 
-```markdown
-[markdown_here]
+```json
+{
+    "chief_complaint": {
+        "description": "...",
+        "onset": "acute/chronic/gradual",
+        "mechanism": "if applicable",
+        "duration": "time period"
+    },
+    "pain_assessment": {
+        "locations": {
+            "primary": {"region": "...", "severity": X, "quality": "..."},
+            "secondary": {"region": "...", "severity": X, "quality": "..."}
+        },
+        "radiation_pattern": "...",
+        "frequency": "constant/intermittent"
+    },
+    "postural_analysis": {
+        "head_position": "forward/neutral/tilted",
+        "shoulder_height": "level/elevated right/elevated left",
+        "pelvic_tilt": "anterior/posterior/lateral",
+        "spinal_curves": {}
+    },
+    "subluxations": [
+        {"level": "C5", "listing": "posterior right", "fixation": true},
+        {"level": "L4", "listing": "left lateral", "muscle_spasm": true}
+    ],
+    "range_of_motion": {
+        "cervical": {
+            "flexion": {"degrees": X, "pain": true, "restriction": "mild/moderate/severe"},
+            "extension": {},
+            "rotation_right": {},
+            "rotation_left": {}
+        },
+        "thoracic": {},
+        "lumbar": {}
+    },
+    "orthopedic_tests": {
+        "test_name": {"result": "positive/negative", "details": "..."}
+    },
+    "neurological": {
+        "motor": {"muscle": "grade"},
+        "sensory": {"dermatome": "finding"},
+        "reflexes": {"reflex": "grade"}
+    },
+    "palpation": {
+        "static": {"segment": "findings"},
+        "motion": {"segment": "findings"},
+        "muscle_tone": {"region": "findings"}
+    },
+    "functional_assessment": [],
+    "treatment_response": "if applicable"
+}
 ```
 """
 

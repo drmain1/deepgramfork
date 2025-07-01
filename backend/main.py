@@ -1506,6 +1506,7 @@ async def extract_transcript_findings(
                 # Extract markdown section
                 markdown_match = re.search(r'```markdown\n(.*?)\n```', output, re.DOTALL)
                 findings_markdown = markdown_match.group(1) if markdown_match else None
+                logger.info(f"Extracted markdown length: {len(findings_markdown) if findings_markdown else 0}")
                 
                 # If no markdown found, try to get any text after JSON
                 if not findings_markdown:
@@ -1515,6 +1516,14 @@ async def extract_transcript_findings(
                         if part.strip().startswith('markdown'):
                             findings_markdown = parts[i+1] if i+1 < len(parts) else None
                             break
+                
+                # Debug logging
+                logger.info(f"Raw LLM output length: {len(output)}")
+                logger.info(f"Found JSON section: {bool(json_match)}")
+                logger.info(f"Found markdown section: {bool(markdown_match)}")
+                if not findings_markdown:
+                    logger.warning("No markdown found in LLM output. First 500 chars of output:")
+                    logger.warning(output[:500])
                 
             except Exception as e:
                 logger.warning(f"Failed to parse enhanced extraction output: {str(e)}")
@@ -1546,12 +1555,14 @@ async def extract_transcript_findings(
                 success=True
             )
             
-            return {
+            response_data = {
                 'success': True,
                 'findings': findings,
                 'findings_markdown': findings_markdown,
                 'transcript_id': transcript_id
             }
+            logger.info(f"Returning extraction response with markdown: {bool(findings_markdown)}")
+            return response_data
         else:
             raise HTTPException(status_code=500, detail=f"Failed to extract findings: {result.get('error')}")
         

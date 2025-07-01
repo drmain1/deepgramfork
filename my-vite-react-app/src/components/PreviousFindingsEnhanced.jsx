@@ -40,8 +40,59 @@ const PreviousFindingsEnhanced = ({ findings, onClose, isOpen, patientName }) =>
     setTimeout(() => setCopiedSection(null), 2000);
   };
 
-  // Use pre-generated markdown if available, otherwise convert from JSON
-  const markdownContent = findings._markdown || convertFindingsToMarkdown(findings);
+  // Process findings to get markdown content
+  console.log('PreviousFindingsEnhanced - findings object:', findings);
+  console.log('PreviousFindingsEnhanced - findings._markdown:', findings._markdown);
+  console.log('PreviousFindingsEnhanced - typeof findings._markdown:', typeof findings._markdown);
+  
+  let markdownContent = '';
+  
+  // First, check if we have valid markdown in the _markdown field
+  if (findings._markdown) {
+    const trimmedContent = findings._markdown.trim();
+    
+    // Check if it's actual markdown (contains markdown indicators)
+    if (typeof findings._markdown === 'string' && 
+        (trimmedContent.includes('#') || trimmedContent.includes('*') || trimmedContent.includes('-')) &&
+        !trimmedContent.startsWith('{') && !trimmedContent.startsWith('[')) {
+      // This looks like valid markdown, use it
+      console.log('Using pre-generated markdown from _markdown field');
+      markdownContent = findings._markdown;
+    } else if (typeof findings._markdown === 'string' && 
+               (trimmedContent.startsWith('{') || trimmedContent.startsWith('['))) {
+      // The markdown field contains JSON data
+      console.log('_markdown field contains JSON, will convert to markdown');
+      try {
+        const parsedData = JSON.parse(findings._markdown);
+        markdownContent = convertFindingsToMarkdown(parsedData);
+      } catch (e) {
+        console.error('Failed to parse JSON from _markdown field:', e);
+        // Fall back to converting the findings object
+        markdownContent = convertFindingsToMarkdown(findings);
+      }
+    } else if (typeof findings._markdown === 'object') {
+      // The markdown field is an object, convert it
+      console.log('_markdown field is an object, converting to markdown');
+      markdownContent = convertFindingsToMarkdown(findings._markdown);
+    } else {
+      // Unknown format in _markdown, convert from findings object
+      console.log('_markdown field has unexpected format, converting from findings object');
+      markdownContent = convertFindingsToMarkdown(findings);
+    }
+  } else {
+    // No _markdown field, convert from findings object
+    console.log('No _markdown field found, converting from findings object');
+    markdownContent = convertFindingsToMarkdown(findings);
+  }
+  
+  // Final validation - ensure we have markdown content
+  if (!markdownContent || typeof markdownContent !== 'string' || markdownContent.trim().length === 0) {
+    console.warn('No valid markdown content generated, using fallback');
+    markdownContent = '### Previous Evaluation Findings\n\nNo findings data could be formatted. Please check the raw data view.';
+  }
+  
+  console.log('PreviousFindingsEnhanced - final markdownContent type:', typeof markdownContent);
+  console.log('PreviousFindingsEnhanced - final markdownContent preview:', markdownContent.substring(0, 200) + '...');
   const clinicalSummary = createClinicalSummary(findings);
 
   return (
@@ -172,7 +223,7 @@ const PreviousFindingsEnhanced = ({ findings, onClose, isOpen, patientName }) =>
                 borderColor: 'grey.300',
               }}
             >
-              <FormattedMedicalText text={markdownContent} />
+              <FormattedMedicalText content={markdownContent} />
             </Paper>
 
             {/* Raw JSON View */}

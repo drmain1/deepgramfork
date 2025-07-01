@@ -32,6 +32,9 @@ class TranscriptDocument(BaseModel):
 const [evaluationType, setEvaluationType] = useState('');
 const [initialEvaluationId, setInitialEvaluationId] = useState(null);
 const [previousFindings, setPreviousFindings] = useState(null);
+
+// SetupView.jsx - Added loading state
+const [loadingFindings, setLoadingFindings] = useState(false);
 ```
 
 ### API Endpoints
@@ -48,6 +51,7 @@ Response:
     "created_at": "2024-01-15T10:00:00Z",
     "evaluation_type": "initial",
     "positive_findings": { ... },
+    "positive_findings_markdown": "# Clinical Findings Summary...",
     "transcript": "...",
     "polishedTranscript": "..."
 }
@@ -77,19 +81,385 @@ Response:
 {
     "success": true,
     "findings": {
-        "chief_complaint": "Lower back pain",
-        "pain_levels": {
-            "lower_back": 7,
-            "neck": 3
-        },
-        "range_of_motion": { ... },
-        "positive_tests": [ ... ],
-        "diagnoses": [ ... ]
+        "pain_findings": ["Severe neck pain radiating down arm", ...],
+        "range_of_motion_findings": ["restriction in right rotation", ...],
+        "neurological_findings": ["Biceps strength 4+/5 on the left", ...],
+        "palpation_findings": ["Tenderness on the bilateral AC joints", ...],
+        "orthopedic_test_findings": ["Positive Straight Leg Raise", ...],
+        "functional_limitations": ["insomnia", "pain while driving", ...],
+        "posture_and_gait_findings": ["Observed anterior head carriage", ...],
+        "outcome_assessment_tools": [
+            {
+                "tool_name": "Oswestry Disability Index",
+                "score": "45%",
+                "interpretation": "Severe Disability"
+            }
+        ]
     },
-    "findings_markdown": "# Clinical Findings Summary\n\n## Chief Complaint\nLower back pain...",
+    "findings_markdown": "### Clinical Baseline Summary\n\n#### Pain Findings\n- Severe neck pain...",
     "transcript_id": "session_123"
 }
 ```
+
+## Implementation Details
+
+### Backend Implementation
+
+#### 1. Extraction Endpoint (main.py)
+```python
+@app.post("/api/v1/transcripts/{transcript_id}/extract-findings")
+async def extract_findings(
+    transcript_id: str,
+    current_user_id: str = Depends(get_user_id),
+    request: Request = None
+):
+    """Extract positive findings from a transcript using AI"""
+    try:
+        # ... authentication and validation ...
+        
+        # Use enhanced extraction prompt that generates both JSON and markdown
+        extraction_prompt = get_enhanced_extraction_prompt(specialty=specialty)
+        
+        # Run extraction with Gemini
+        result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            polish_transcript_with_gemini,
+            content,
+            "",
+            "",
+            "findings_extraction",
+            extraction_prompt,
+            None,
+            "publishers/google/models/gemini-2.5-flash"
+        )
+        
+        if result['success']:
+            # Parse the enhanced extraction output (contains both JSON and markdown)
+            output = result['polished_transcript']
+            
+            # Extract JSON section
+            json_match = re.search(r'```json\n(.*?)\n```', output, re.DOTALL)
+            findings = {}
+            if json_match:
+                try:
+                    findings = json.loads(json_match.group(1))
+                except:
+                    findings = {"raw_findings": json_match.group(1)}
+            
+            # Extract markdown section
+            markdown_match = re.search(r'```markdown\n(.*?)\n```', output, re.DOTALL)
+            findings_markdown = markdown_match.group(1) if markdown_match else None
+            
+            # Debug logging
+            logger.info(f"Raw LLM output length: {len(output)}")
+            logger.info(f"Found JSON section: {bool(json_match)}")
+            logger.info(f"Found markdown section: {bool(markdown_match)}")
+            
+            # Update the transcript with both JSON findings and markdown
+            update_data = {'positive_findings': findings}
+            if findings_markdown:
+                update_data['positive_findings_markdown'] = findings_markdown
+            
+            await firestore_client.update_transcript(transcript_id, update_data)
+            
+            return {
+                'success': True,
+                'findings': findings,
+                'findings_markdown': findings_markdown,
+                'transcript_id': transcript_id
+            }
+```
+
+#### 2. Enhanced Extraction Prompts (extraction_prompts_enhanced.py)
+```python
+# Enhanced initial evaluation findings extraction
+ENHANCED_INITIAL_EVALUATION_PROMPT = """
+Extract ALL positive clinical findings from this initial evaluation for baseline documentation.
+
+IMPORTANT: Generate TWO outputs in the exact format specified below.
+
+Part 1: Markdown Summary
+Create a well-formatted clinical summary using proper markdown formatting.
+- Use ### for main title
+- Use #### for category headers
+- Use - for bullet points
+- Focus on clarity and readability
+
+Part 2: JSON Data
+Create a structured JSON object with categorized findings.
+Each finding should be a verbatim quote from the transcript.
+
+FORMAT YOUR RESPONSE EXACTLY AS:
+```markdown
+### Clinical Baseline Summary
+
+#### Pain Findings
+- [List each pain finding]
+
+#### Range of Motion Findings
+- [List each ROM limitation]
+
+[... other categories ...]
+```
+
+```json
+{
+  "pain_findings": ["Direct quote of pain description"],
+  "range_of_motion_findings": ["Direct quote of ROM limitation"],
+  [... other categories ...]
+}
+```
+
+EXTRACTION RULES:
+1. Only include POSITIVE/ABNORMAL findings
+2. Use exact quotes from the transcript
+3. If a category has no findings, use empty array []
+4. Include all relevant clinical details
+5. Maintain professional medical terminology
+"""
+```
+
+### Frontend Implementation
+
+#### 1. SetupView.jsx - Loading Previous Findings
+```javascript
+// Added loading state for findings
+const [loadingFindings, setLoadingFindings] = useState(false);
+
+// Enhanced button with loading animation
+{!previousFindings ? (
+  <button
+    type="button"
+    disabled={loadingFindings}
+    onClick={async () => {
+      setLoadingFindings(true);
+      try {
+        const token = await getToken();
+        const response = await fetch(`/api/v1/patients/${selectedPatient.id}/initial-evaluation`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (response.ok) {
+          const evaluation = await response.json();
+          setInitialEvaluationId(evaluation.id);
+          
+          // Check if we need to re-extract due to old format
+          const needsReExtraction = evaluation.positive_findings?.raw_findings && 
+                                  !evaluation.positive_findings?.pain_findings &&
+                                  !evaluation.positive_findings_markdown;
+          
+          if (needsReExtraction) {
+            console.log('Old format detected, triggering re-extraction');
+            // Trigger re-extraction for old format
+            const extractResponse = await fetch(`/api/v1/transcripts/${evaluation.id}/extract-findings`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            });
+            
+            if (extractResponse.ok) {
+              const extractResult = await extractResponse.json();
+              if (extractResult.success && extractResult.findings) {
+                setPreviousFindings({
+                  ...extractResult.findings,
+                  date: evaluation.date || evaluation.created_at,
+                  _markdown: extractResult.findings_markdown || null
+                });
+              }
+            }
+          } else {
+            setPreviousFindings({
+              ...evaluation.positive_findings,
+              date: evaluation.date || evaluation.created_at,
+              _markdown: evaluation.positive_findings_markdown || null
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching initial evaluation:', error);
+        alert('Failed to load previous findings');
+      } finally {
+        setLoadingFindings(false);
+      }
+    }}
+    className={`bg-indigo-600 text-white px-6 py-3 rounded-lg transition-all text-lg flex items-center justify-center ${
+      loadingFindings ? 'opacity-75 cursor-not-allowed' : 'hover:bg-indigo-700'
+    }`}
+  >
+    {loadingFindings ? (
+      <>
+        <svg 
+          className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" 
+          xmlns="http://www.w3.org/2000/svg" 
+          fill="none" 
+          viewBox="0 0 24 24"
+        >
+          <circle 
+            className="opacity-25" 
+            cx="12" 
+            cy="12" 
+            r="10" 
+            stroke="currentColor" 
+            strokeWidth="4"
+          />
+          <path 
+            className="opacity-75" 
+            fill="currentColor" 
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          />
+        </svg>
+        Loading Previous Findings...
+      </>
+    ) : (
+      'Load Previous Findings'
+    )}
+  </button>
+) : (
+  <div className="max-h-96 overflow-y-auto">
+    <PreviousFindings 
+      findings={previousFindings} 
+      evaluationDate={previousFindings.date}
+    />
+  </div>
+)}
+```
+
+#### 2. PreviousFindingsEnhanced.jsx - Enhanced Display Component
+```javascript
+const PreviousFindingsEnhanced = ({ findings, onClose, isOpen, patientName }) => {
+  const [activeTab, setActiveTab] = useState(0);
+  const [showRawJson, setShowRawJson] = useState(false);
+  const [copiedSection, setCopiedSection] = useState(null);
+
+  if (!isOpen || !findings) return null;
+
+  // Use pre-generated markdown if available, otherwise convert from JSON
+  let markdownContent = findings._markdown;
+  
+  // If no markdown or if it looks like JSON, convert from findings
+  if (!markdownContent || markdownContent.trim().startsWith('{')) {
+    console.log('No valid markdown found, converting from JSON findings');
+    markdownContent = convertFindingsToMarkdown(findings);
+  }
+  
+  const clinicalSummary = createClinicalSummary(findings);
+
+  return (
+    <Box sx={{
+      position: 'fixed',
+      right: 0,
+      top: 64,
+      height: 'calc(100vh - 64px)',
+      width: { xs: '100%', sm: 480, md: 520 },
+      bgcolor: 'background.paper',
+      boxShadow: 3,
+      zIndex: 1200,
+      display: 'flex',
+      flexDirection: 'column',
+      transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
+      transition: 'transform 0.3s ease-in-out',
+    }}>
+      {/* Component content with formatted markdown display */}
+      <FormattedMedicalText content={markdownContent} />
+    </Box>
+  );
+};
+```
+
+#### 3. findingsFormatter.js - Enhanced Conversion Utilities
+```javascript
+export const convertFindingsToMarkdown = (findings) => {
+  console.log('convertFindingsToMarkdown called with:', findings);
+  if (!findings || typeof findings !== 'object') {
+    return '### No Previous Findings Available\n\nThe transcript may need to be processed for findings extraction.';
+  }
+
+  // Check if findings contains raw_findings field with JSON string
+  if (findings.raw_findings && typeof findings.raw_findings === 'string') {
+    console.log('Found raw_findings field, attempting to parse JSON');
+    try {
+      // Extract JSON from markdown code blocks if present
+      let jsonStr = findings.raw_findings;
+      const jsonMatch = jsonStr.match(/```json\n([\s\S]*?)\n```/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[1];
+      }
+      
+      // Parse the JSON
+      const parsedFindings = JSON.parse(jsonStr);
+      console.log('Successfully parsed findings from raw_findings:', parsedFindings);
+      
+      // Now convert the parsed findings to markdown
+      return convertFindingsToMarkdown(parsedFindings);
+    } catch (e) {
+      console.error('Failed to parse raw_findings JSON:', e);
+    }
+  }
+
+  // Check if this is the enhanced format with arrays of findings
+  if (findings.pain_findings || findings.range_of_motion_findings || findings.neurological_findings || 
+      findings.orthopedic_test_findings || findings.palpation_findings || findings.functional_limitations ||
+      findings.posture_and_gait_findings || findings.outcome_assessment_tools) {
+    console.log('Detected enhanced format, using convertSimpleFormatToMarkdown');
+    return convertSimpleFormatToMarkdown(findings);
+  }
+
+  // ... existing conversion logic ...
+};
+
+function convertSimpleFormatToMarkdown(findings) {
+  let markdown = '### Clinical Baseline Summary\n\n';
+
+  // Pain Findings
+  if (findings.pain_findings && findings.pain_findings.length > 0) {
+    markdown += '#### Pain Findings\n';
+    findings.pain_findings.forEach(finding => {
+      markdown += `- ${finding}\n`;
+    });
+    markdown += '\n';
+  }
+
+  // Range of Motion Findings
+  if (findings.range_of_motion_findings && findings.range_of_motion_findings.length > 0) {
+    markdown += '#### Range of Motion Findings\n';
+    findings.range_of_motion_findings.forEach(finding => {
+      markdown += `- ${finding}\n`;
+    });
+    markdown += '\n';
+  }
+
+  // ... other categories ...
+
+  return markdown || '### No findings data available';
+}
+```
+
+### Debug Logging Added
+
+Throughout the implementation, extensive debug logging was added to help troubleshoot issues:
+
+1. **Backend (main.py)**:
+   - LLM output length
+   - JSON/markdown section detection
+   - First 500 chars of output if markdown not found
+
+2. **Frontend (SetupView.jsx)**:
+   - Extract API response
+   - Markdown content received
+   - Old format detection
+
+3. **Frontend (PreviousFindingsEnhanced.jsx)**:
+   - Findings object structure
+   - Markdown field content
+   - Conversion process
+
+4. **Frontend (findingsFormatter.js)**:
+   - Input findings structure
+   - Conversion path taken
+   - Parsing attempts for raw_findings
 
 ## Data Flow
 
@@ -103,7 +473,7 @@ Select Patient ───────────────> SetupView
                                │
 Select "Re-evaluation" ────────> Update State
                                │
-Click "Load Previous ─────────> Fetch Initial Evaluation ──────> GET /patients/{id}/initial-evaluation
+Click "Load Previous ─────────> Show Loading Animation ─────────> GET /patients/{id}/initial-evaluation
 Findings"                      │                                 │
                                │                                 ├─> Query Firestore for initial eval
                                │                                 │
@@ -111,7 +481,9 @@ Findings"                      │                                 │
                                │                                 │
                                │                                 └─> Return evaluation data
                                │
-                               ├─> If no findings exist ────────> POST /transcripts/{id}/extract-findings
+                               ├─> Check if old format ─────────> If raw_findings only
+                               │                                 │
+                               ├─> Trigger re-extraction ───────> POST /transcripts/{id}/extract-findings
                                │                                 │
                                │                                 ├─> Use Vertex AI to extract
                                │                                 │
@@ -182,16 +554,18 @@ TranscriptionPage.jsx
 │
 ├── SetupView.jsx
 │   ├── Evaluation type selector
-│   ├── Load previous findings button
+│   ├── Load previous findings button (with loading animation)
 │   ├── Fetches initial evaluation via API
-│   └── Triggers findings extraction if needed
+│   ├── Detects old format and triggers re-extraction
+│   └── Handles loading states
 │
 └── RecordingView.jsx
     ├── Receives evaluation props
     ├── Shows/hides findings panel
     ├── Includes evaluation data in save request
-    └── PreviousFindingsEnhanced.jsx  # Enhanced UI component
+    └── PreviousFindingsEnhanced.jsx
         ├── Displays markdown-formatted findings
+        ├── Handles JSON to markdown conversion
         ├── Clinical summary bar
         ├── Tabbed interface (Formatted/Comparison)
         ├── Toggle between markdown and raw JSON
@@ -205,7 +579,9 @@ main.py
 ├── API endpoint definitions
 ├── Authentication middleware
 ├── Enhanced extract_findings endpoint
-│   └── Generates both JSON and markdown
+│   ├── Generates both JSON and markdown
+│   ├── Handles parsing failures
+│   └── Extensive debug logging
 │
 ├── firestore_endpoints.py
 │   ├── save_session_data_firestore()
@@ -225,9 +601,9 @@ main.py
 │       └── Includes previous findings in context
 │
 ├── extraction_prompts.py
-│   └── Basic extraction prompts (JSON only)
+│   └── Basic extraction prompts (JSON only) - NOT USED
 │
-└── extraction_prompts_enhanced.py  # NEW
+└── extraction_prompts_enhanced.py
     ├── Enhanced prompts for JSON + markdown
     ├── Specialty-specific formatting
     └── Comparison analysis prompts
@@ -246,6 +622,7 @@ SetupView (Child)
     - Manages evaluation type selection
     - Fetches initial evaluation
     - Updates parent state
+    - loadingFindings state (local)
     ↓
 RecordingView (Sibling)
     - Receives evaluation data as props
@@ -263,25 +640,32 @@ RecordingView (Sibling)
     "evaluation_type": "re_evaluation",
     "initial_evaluation_id": "20240115_100000_xyz789",
     "positive_findings": {
-        "chief_complaint": "Lower back pain",
-        "pain_levels": {
-            "lower_back": 7,
-            "neck": 3
-        },
-        "range_of_motion": {
-            "lumbar_flexion": "Limited to 45 degrees",
-            "lumbar_extension": "Limited to 15 degrees"
-        },
-        "positive_tests": [
-            "Straight leg raise positive at 30 degrees",
-            "Slump test positive"
+        // Enhanced format (arrays of strings)
+        "pain_findings": [
+            "Severe neck pain radiating down arm",
+            "Thoracic pain, severe",
+            "Right shoulder pain"
         ],
-        "diagnoses": [
-            "L4-L5 disc herniation",
-            "Lumbar radiculopathy"
-        ]
+        "range_of_motion_findings": [
+            "restriction in right rotation and extension, both eliciting pain"
+        ],
+        "neurological_findings": [
+            "Biceps strength 4+/5 on the left",
+            "Iliopsoas strength 4+/5 on the right"
+        ],
+        "palpation_findings": [
+            "Tenderness on the bilateral AC joints",
+            "Bilateral cervical and trapezius muscle spasm"
+        ],
+        "orthopedic_test_findings": [],
+        "functional_limitations": [
+            "insomnia",
+            "pain while performing duties as a truck driver"
+        ],
+        "posture_and_gait_findings": [],
+        "outcome_assessment_tools": []
     },
-    "positive_findings_markdown": "# Clinical Findings Summary\n\n## Chief Complaint\n...",
+    "positive_findings_markdown": "### Clinical Findings Summary\n\n#### Pain Findings\n- Severe neck pain...",
     "transcript_original": "...",
     "transcript_polished": "...",
     "created_at": "2024-06-30T14:30:22Z",
@@ -364,6 +748,8 @@ Provides conversion and formatting utilities:
 - `convertFindingsToMarkdown()`: Converts JSON findings to readable markdown
 - `createClinicalSummary()`: Generates one-line clinical summary
 - `generateFindingsComparison()`: Creates comparison tables between evaluations
+- `isLikelyMarkdown()`: Helper to detect markdown vs JSON content
+- `convertSimpleFormatToMarkdown()`: Handles enhanced format conversion
 
 ## User Experience Flow
 
@@ -374,8 +760,9 @@ Provides conversion and formatting utilities:
 
 ### 2. Loading Previous Findings
 - "Load Previous Findings" button appears
-- Click triggers API call to fetch initial evaluation
-- If no findings exist, extraction is triggered automatically
+- Click shows loading animation with spinner
+- API call fetches initial evaluation
+- System detects format and re-extracts if needed
 - Findings displayed in enhanced preview panel
 
 ### 3. Recording Session
@@ -402,8 +789,14 @@ Provides conversion and formatting utilities:
 
 ### Frontend Validation
 - Evaluation type required when patient selected
+- Loading button disabled during operation
 - Date picker prevents future dates (dictation mode)
 - Save button disabled without required fields
+
+### Format Migration
+- System automatically detects old format (raw_findings only)
+- Triggers re-extraction to get proper JSON + markdown
+- Handles parsing failures gracefully
 
 ## Security Considerations
 
@@ -411,6 +804,40 @@ Provides conversion and formatting utilities:
 2. **Authorization**: Users can only access their own patient data
 3. **Audit Logging**: All PHI access logged via AuditLogger
 4. **Data Isolation**: User ID verification at every step
+
+## Extraneous Code and Debug Elements
+
+### Debug Logging (Should be removed for production)
+1. **Backend main.py**:
+   - `logger.info(f"Raw LLM output length: {len(output)}")`
+   - `logger.info(f"Found JSON section: {bool(json_match)}")`
+   - `logger.info(f"Found markdown section: {bool(markdown_match)}")`
+   - `logger.warning("No markdown found in LLM output. First 500 chars of output:")`
+
+2. **Frontend SetupView.jsx**:
+   - `console.log('Found existing positive_findings:', evaluation.positive_findings)`
+   - `console.log('Found existing positive_findings_markdown:', evaluation.positive_findings_markdown)`
+   - `console.log('Old format detected, triggering re-extraction')`
+   - `console.log('Extract API response:', extractResult)`
+   - `console.log('Markdown content:', extractResult.findings_markdown)`
+
+3. **Frontend PreviousFindingsEnhanced.jsx**:
+   - `console.log('PreviousFindingsEnhanced - findings object:', findings)`
+   - `console.log('PreviousFindingsEnhanced - findings._markdown:', findings._markdown)`
+   - `console.log('No valid markdown found, converting from JSON findings')`
+   - `console.log('PreviousFindingsEnhanced - final markdownContent:', markdownContent)`
+
+4. **Frontend findingsFormatter.js**:
+   - `console.log('convertFindingsToMarkdown called with:', findings)`
+   - `console.log('Found raw_findings field, attempting to parse JSON')`
+   - `console.log('Successfully parsed findings from raw_findings:', parsedFindings)`
+   - `console.error('Failed to parse raw_findings JSON:', e)`
+   - `console.log('Detected enhanced format, using convertSimpleFormatToMarkdown')`
+   - `console.log('Findings object keys:', Object.keys(findings))`
+
+### Temporary Code Elements
+1. **Old Format Support**: The code to handle `raw_findings` format should eventually be removed once all transcripts are migrated
+2. **Multiple Extraction Prompt Files**: `extraction_prompts.py` is imported but not used (only `extraction_prompts_enhanced.py` is active)
 
 ## Future Enhancements
 
@@ -420,63 +847,31 @@ Provides conversion and formatting utilities:
 4. **Template Customization**: Specialty-specific re-evaluation templates
 5. **Automated Findings**: AI-suggested comparison points
 6. **Export Features**: Re-evaluation summary reports
+7. **Comparison Tab**: Implement the comparison mode tab in PreviousFindingsEnhanced
 
 ## Testing Checklist
 
-- [ ] Create patient with initial evaluation
-- [ ] Verify evaluation type selector appears
-- [ ] Test loading previous findings
-- [ ] Verify findings extraction generates both JSON and markdown
-- [ ] Test enhanced findings panel:
-  - [ ] Clinical summary displays correctly
-  - [ ] Markdown formatting renders properly
-  - [ ] Toggle between markdown/JSON works
-  - [ ] Copy functionality works for all sections
-  - [ ] Panel animation and responsiveness
-- [ ] Test findings panel toggle during recording
-- [ ] Verify evaluation metadata saves correctly with both formats
-- [ ] Check LLM output includes comparisons
-- [ ] Test error handling:
-  - [ ] Missing evaluations
-  - [ ] Extraction failures
-  - [ ] Malformed JSON responses
-- [ ] Verify proper data isolation between users
-- [ ] Test with both Deepgram and Speechmatics
-- [ ] Test backward compatibility (old transcripts without markdown)
-
-## Enhanced Extraction System
-
-### Extraction Prompts
-The system now uses enhanced extraction prompts that generate both structured JSON and formatted markdown:
-
-1. **General Medical Prompt** (`ENHANCED_INITIAL_EVALUATION_PROMPT`):
-   - Comprehensive extraction for all medical specialties
-   - Organizes findings by body systems
-   - Includes pain assessment, ROM, tests, diagnoses
-
-2. **Chiropractic-Specific Prompt** (`ENHANCED_CHIROPRACTIC_PROMPT`):
-   - Focuses on subluxations and spinal assessment
-   - Includes postural analysis
-   - Detailed palpation findings
-
-3. **Output Format**:
-   ```
-   ```json
-   {structured_findings_object}
-   ```
-   
-   ```markdown
-   # Clinical Findings Summary
-   [Formatted medical report]
-   ```
-   ```
-
-### Extraction Process
-1. System detects user's medical specialty
-2. Selects appropriate enhanced extraction prompt
-3. Vertex AI (Gemini 2.5 Flash) processes transcript
-4. Response parsed to extract both JSON and markdown
-5. Both formats stored in Firestore for optimal use
+- [x] Create patient with initial evaluation
+- [x] Verify evaluation type selector appears
+- [x] Test loading previous findings with animation
+- [x] Verify findings extraction generates both JSON and markdown
+- [x] Test enhanced findings panel:
+  - [x] Clinical summary displays correctly
+  - [x] Markdown formatting renders properly
+  - [x] Toggle between markdown/JSON works
+  - [x] Copy functionality works for all sections
+  - [x] Panel animation and responsiveness
+- [x] Test findings panel toggle during recording
+- [x] Verify evaluation metadata saves correctly with both formats
+- [x] Check LLM output includes comparisons
+- [x] Test error handling:
+  - [x] Missing evaluations
+  - [x] Extraction failures
+  - [x] Malformed JSON responses
+  - [x] Old format migration
+- [x] Verify proper data isolation between users
+- [x] Test with both Deepgram and Speechmatics
+- [x] Test backward compatibility (old transcripts without markdown)
 
 ## Configuration
 

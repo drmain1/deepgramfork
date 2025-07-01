@@ -4,14 +4,77 @@
  */
 
 /**
+ * Helper function to detect if a string is likely markdown or JSON
+ * @param {string} str - String to check
+ * @returns {boolean} - True if likely markdown, false if likely JSON
+ */
+export const isLikelyMarkdown = (str) => {
+  if (!str || typeof str !== 'string') return false;
+  
+  const trimmed = str.trim();
+  
+  // If it starts with JSON indicators, it's not markdown
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) return false;
+  
+  // Check for markdown indicators
+  const markdownIndicators = [
+    /^#{1,6}\s/m,  // Headers
+    /\*\*/,         // Bold
+    /\*/,           // Italic
+    /^-\s/m,        // Bullet lists
+    /^\d+\.\s/m,    // Numbered lists
+    /\[.*\]\(.*\)/, // Links
+    /^>/m,          // Blockquotes
+    /\|.*\|/        // Tables
+  ];
+  
+  return markdownIndicators.some(pattern => pattern.test(trimmed));
+};
+
+/**
  * Convert JSON findings to markdown format for display
  * @param {Object} findings - Structured findings object from backend
  * @returns {string} Markdown formatted findings
  */
 export const convertFindingsToMarkdown = (findings) => {
+  console.log('convertFindingsToMarkdown called with:', findings);
   if (!findings || typeof findings !== 'object') {
-    return 'No previous findings available.';
+    return '### No Previous Findings Available\n\nThe transcript may need to be processed for findings extraction.';
   }
+
+  // Check if findings contains raw_findings field with JSON string
+  if (findings.raw_findings && typeof findings.raw_findings === 'string') {
+    console.log('Found raw_findings field, attempting to parse JSON');
+    try {
+      // Extract JSON from markdown code blocks if present
+      let jsonStr = findings.raw_findings;
+      const jsonMatch = jsonStr.match(/```json\n([\s\S]*?)\n```/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[1];
+      }
+      
+      // Parse the JSON
+      const parsedFindings = JSON.parse(jsonStr);
+      console.log('Successfully parsed findings from raw_findings:', parsedFindings);
+      
+      // Now convert the parsed findings to markdown
+      return convertFindingsToMarkdown(parsedFindings);
+    } catch (e) {
+      console.error('Failed to parse raw_findings JSON:', e);
+      // Fall through to regular processing
+    }
+  }
+
+  // Check if this is the enhanced format with arrays of findings
+  if (findings.pain_findings || findings.range_of_motion_findings || findings.neurological_findings || 
+      findings.orthopedic_test_findings || findings.palpation_findings || findings.functional_limitations ||
+      findings.posture_and_gait_findings || findings.outcome_assessment_tools) {
+    console.log('Detected enhanced format, using convertSimpleFormatToMarkdown');
+    return convertSimpleFormatToMarkdown(findings);
+  }
+
+  // Log the keys to help debug
+  console.log('Findings object keys:', Object.keys(findings));
 
   let markdown = '';
 
@@ -196,8 +259,133 @@ export const convertFindingsToMarkdown = (findings) => {
     });
   }
 
-  return markdown.trim();
+  const trimmedMarkdown = markdown.trim();
+  return trimmedMarkdown || 'No clinical findings data available to display.';
 };
+
+/**
+ * Convert simple format findings (from enhanced extraction) to markdown
+ */
+function convertSimpleFormatToMarkdown(findings) {
+  console.log('convertSimpleFormatToMarkdown called with:', findings);
+  let markdown = '### Clinical Baseline Summary\n\n';
+  let hasContent = false;
+
+  // Pain Findings
+  if (findings.pain_findings && Array.isArray(findings.pain_findings) && findings.pain_findings.length > 0) {
+    markdown += '#### Pain Findings\n';
+    findings.pain_findings.forEach(finding => {
+      if (finding && finding.trim()) {
+        markdown += `- ${finding}\n`;
+        hasContent = true;
+      }
+    });
+    markdown += '\n';
+  }
+
+  // Range of Motion Findings
+  if (findings.range_of_motion_findings && Array.isArray(findings.range_of_motion_findings) && findings.range_of_motion_findings.length > 0) {
+    markdown += '#### Range of Motion Findings\n';
+    findings.range_of_motion_findings.forEach(finding => {
+      if (finding && finding.trim()) {
+        markdown += `- ${finding}\n`;
+        hasContent = true;
+      }
+    });
+    markdown += '\n';
+  }
+
+  // Neurological Findings
+  if (findings.neurological_findings && Array.isArray(findings.neurological_findings) && findings.neurological_findings.length > 0) {
+    markdown += '#### Neurological Findings\n';
+    findings.neurological_findings.forEach(finding => {
+      if (finding && finding.trim()) {
+        markdown += `- ${finding}\n`;
+        hasContent = true;
+      }
+    });
+    markdown += '\n';
+  }
+
+  // Palpation Findings
+  if (findings.palpation_findings && Array.isArray(findings.palpation_findings) && findings.palpation_findings.length > 0) {
+    markdown += '#### Palpation Findings\n';
+    findings.palpation_findings.forEach(finding => {
+      if (finding && finding.trim()) {
+        markdown += `- ${finding}\n`;
+        hasContent = true;
+      }
+    });
+    markdown += '\n';
+  }
+
+  // Orthopedic Test Findings
+  if (findings.orthopedic_test_findings && Array.isArray(findings.orthopedic_test_findings) && findings.orthopedic_test_findings.length > 0) {
+    markdown += '#### Orthopedic Test Findings\n';
+    findings.orthopedic_test_findings.forEach(finding => {
+      if (finding && finding.trim()) {
+        markdown += `- ${finding}\n`;
+        hasContent = true;
+      }
+    });
+    markdown += '\n';
+  }
+
+  // Functional Limitations
+  if (findings.functional_limitations && Array.isArray(findings.functional_limitations) && findings.functional_limitations.length > 0) {
+    markdown += '#### Functional Limitations\n';
+    findings.functional_limitations.forEach(finding => {
+      if (finding && finding.trim()) {
+        markdown += `- ${finding}\n`;
+        hasContent = true;
+      }
+    });
+    markdown += '\n';
+  }
+
+  // Posture and Gait Findings
+  if (findings.posture_and_gait_findings && Array.isArray(findings.posture_and_gait_findings) && findings.posture_and_gait_findings.length > 0) {
+    markdown += '#### Posture and Gait Findings\n';
+    findings.posture_and_gait_findings.forEach(finding => {
+      if (finding && finding.trim()) {
+        markdown += `- ${finding}\n`;
+        hasContent = true;
+      }
+    });
+    markdown += '\n';
+  }
+
+  // Outcome Assessment Tools
+  if (findings.outcome_assessment_tools && Array.isArray(findings.outcome_assessment_tools) && findings.outcome_assessment_tools.length > 0) {
+    markdown += '#### Outcome Assessment Tools\n';
+    findings.outcome_assessment_tools.forEach(tool => {
+      if (typeof tool === 'object' && tool.tool_name) {
+        markdown += `- **${tool.tool_name}**: ${tool.score}`;
+        if (tool.interpretation) {
+          markdown += ` (${tool.interpretation})`;
+        }
+        markdown += '\n';
+        hasContent = true;
+      } else if (typeof tool === 'string' && tool.trim()) {
+        markdown += `- ${tool}\n`;
+        hasContent = true;
+      }
+    });
+    markdown += '\n';
+  }
+
+  // If we have the date, add it at the end
+  if (findings.date) {
+    const dateStr = new Date(findings.date).toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+    markdown += `\n*Initial evaluation performed on ${dateStr}*\n`;
+  }
+
+  return hasContent ? markdown.trim() : '### No clinical findings available\n\nThe initial evaluation may not have extractable positive findings.';
+}
 
 /**
  * Helper function to format nested objects

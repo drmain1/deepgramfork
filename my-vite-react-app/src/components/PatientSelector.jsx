@@ -297,19 +297,20 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
               <React.Fragment key={patient.id}>
                 {index > 0 && <Divider />}
                 <ListItem
-                  button
+                  component="li"
                   selected={selectedPatient?.id === patient.id}
                   onClick={() => onSelectPatient(patient)}
+                  sx={{ cursor: 'pointer' }}
                 >
                   <ListItemText
                     primary={`${patient.last_name}, ${patient.first_name}`}
                     secondary={
-                      <Box>
-                        <Typography variant="caption" component="div">
+                      <Box component="span">
+                        <Typography variant="caption" component="span" display="block">
                           DOB: {format(new Date(patient.date_of_birth), 'MM/dd/yyyy')}
                         </Typography>
                         {patient.date_of_accident && (
-                          <Typography variant="caption" component="div">
+                          <Typography variant="caption" component="span" display="block">
                             DOA: {format(new Date(patient.date_of_accident), 'MM/dd/yyyy')}
                           </Typography>
                         )}
