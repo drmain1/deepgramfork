@@ -36,6 +36,7 @@ class UserDocument(BaseModel):
     custom_vocabulary: List[str] = Field(default_factory=list)
     macro_phrases: Dict[str, str] = Field(default_factory=dict)
     transcription_profiles: List[Dict[str, Any]] = Field(default_factory=list)
+    cpt_fees: Dict[str, float] = Field(default_factory=dict)
     
     # References to GCS files
     logo_gcs_path: Optional[str] = None

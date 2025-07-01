@@ -32,6 +32,7 @@ import { generatePdfFromText } from './pdfUtils';
 import { 
   CPT_DESCRIPTIONS, 
   CPT_FEES, 
+  getCptFee,
   formatBillingDataAsText,
   formatBillingDataAsHtml 
 } from '../utils/billingFormatter';
@@ -67,10 +68,10 @@ function BillingStatement({ billingData, patientInfo, doctorInfo, onClose }) {
   
   const billingLedger = parsedJson?.billing_data_ledger || [];
 
-  // Calculate totals
+  // Calculate totals using user-specific fees if available
   const calculateServiceTotal = (cptCodes) => {
     return cptCodes.reduce((total, code) => {
-      return total + (CPT_FEES[code] || 0);
+      return total + getCptFee(code, doctorInfo?.cptFees);
     }, 0);
   };
 
@@ -89,7 +90,7 @@ function BillingStatement({ billingData, patientInfo, doctorInfo, onClose }) {
 
   // Handle print/download
   const handleDownloadPDF = async () => {
-    const billingText = formatBillingDataAsText(billingLedger, patientInfo, doctorInfo);
+    const billingText = formatBillingDataAsText(billingLedger, patientInfo, doctorInfo, doctorInfo?.cptFees);
     const fileName = `billing_${patientInfo?.last_name || 'patient'}_${patientInfo?.first_name || ''}_${new Date().toISOString().split('T')[0]}`;
     
     // Add clinic location header for consistency with your PDF system
@@ -236,7 +237,7 @@ function BillingStatement({ billingData, patientInfo, doctorInfo, onClose }) {
                             {CPT_DESCRIPTIONS[code] || 'Service'}
                           </TableCell>
                           <TableCell align="right">
-                            ${(CPT_FEES[code] || 0).toFixed(2)}
+                            ${getCptFee(code, doctorInfo?.cptFees).toFixed(2)}
                           </TableCell>
                         </TableRow>
                       ))}

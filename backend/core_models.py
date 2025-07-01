@@ -24,6 +24,7 @@ class UserSettingsData(BaseModel):
     includeLogoOnPdf: bool = Field(default=False, description="Include clinic logo on PDF forms")
     medicalSpecialty: Optional[str] = Field(default="", description="Medical specialty of the doctor")
     customBillingRules: Optional[str] = Field(default="", description="Custom billing rules to append to base rules")
+    cptFees: Optional[Dict[str, float]] = Field(default_factory=dict, description="Custom CPT code fees for billing")
 
 # Default user settings structure
 DEFAULT_USER_SETTINGS = UserSettingsData(

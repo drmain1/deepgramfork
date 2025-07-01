@@ -18,6 +18,7 @@ export const UserSettingsProvider = ({ children }) => {
     includeLogoOnPdf: false,
     medicalSpecialty: '',
     customBillingRules: '',
+    cptFees: {},
   });
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [settingsError, setSettingsError] = useState(null);
@@ -64,6 +65,7 @@ export const UserSettingsProvider = ({ children }) => {
           includeLogoOnPdf: data.includeLogoOnPdf || false,
           medicalSpecialty: data.medicalSpecialty || '',
           customBillingRules: data.customBillingRules || '',
+          cptFees: data.cptFees || {},
         });
       }
     } catch (error) {
@@ -180,6 +182,11 @@ export const UserSettingsProvider = ({ children }) => {
     updateCustomBillingRules: (customBillingRules) => {
         console.log('updateCustomBillingRules called with:', customBillingRules?.substring(0, 100) + '...');
         const updatedSettings = { ...userSettings, customBillingRules };
+        return saveUserSettings(updatedSettings);
+    },
+    updateCptFees: (cptFees) => {
+        console.log('updateCptFees called with:', cptFees);
+        const updatedSettings = { ...userSettings, cptFees };
         return saveUserSettings(updatedSettings);
     },
   };

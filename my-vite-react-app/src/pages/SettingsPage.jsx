@@ -15,7 +15,8 @@ function SettingsPage() {
     updateTranscriptionProfiles,
     updateCustomVocabulary,
     updateMacroPhrases,
-    updateCustomBillingRules
+    updateCustomBillingRules,
+    updateCptFees
   } = useUserSettings();
 
   const handleTabChange = (newValue) => {
@@ -60,7 +61,8 @@ function SettingsPage() {
     'Custom Vocabulary',
     'Office Information',
     'Transcription Profiles',
-    'Billing Rules'
+    'Billing Rules',
+    'CPT Fees'
   ];
 
   if (authLoading || settingsLoading) {
@@ -134,6 +136,8 @@ function SettingsPage() {
           saveOfficeInformation={updateOfficeInformation}
           customBillingRules={userSettings.customBillingRules}
           saveCustomBillingRules={updateCustomBillingRules}
+          cptFees={userSettings.cptFees}
+          saveCptFees={updateCptFees}
           settingsLoading={settingsLoading}
         />
       </div>

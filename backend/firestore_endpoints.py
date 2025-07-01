@@ -164,7 +164,9 @@ async def get_user_settings_firestore(
             "doctorSignature": user_doc.get('doctor_signature'),
             "clinicLogo": user_doc.get('clinic_logo'),
             "includeLogoOnPdf": user_doc.get('include_logo_on_pdf', False),
-            "officeInformation": user_doc.get('office_information', [])
+            "officeInformation": user_doc.get('office_information', []),
+            "customBillingRules": user_doc.get('custom_billing_rules', ''),
+            "cptFees": user_doc.get('cpt_fees', {})
         }
         
         logger.info(f"Returning settings to frontend: {settings}")
@@ -219,7 +221,9 @@ async def update_user_settings_firestore(
             'doctor_signature': settings_data.get('doctorSignature'),
             'clinic_logo': settings_data.get('clinicLogo'),
             'include_logo_on_pdf': settings_data.get('includeLogoOnPdf', False),
-            'office_information': settings_data.get('officeInformation', [])
+            'office_information': settings_data.get('officeInformation', []),
+            'custom_billing_rules': settings_data.get('customBillingRules', ''),
+            'cpt_fees': settings_data.get('cptFees', {})
         }
         
         # Log what we're saving for debugging

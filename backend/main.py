@@ -303,6 +303,8 @@ class UserSettingsData(BaseModel):
     clinicLogo: Optional[str] = Field(default=None, description="URL to clinic logo in GCS")
     includeLogoOnPdf: bool = Field(default=False, description="Include clinic logo on PDF forms")
     medicalSpecialty: Optional[str] = Field(default="", description="Medical specialty of the doctor")
+    customBillingRules: Optional[str] = Field(default="", description="Custom billing rules for the clinic")
+    cptFees: Dict[str, float] = Field(default_factory=dict, description="Custom CPT code fees mapping")
 
 class SaveUserSettingsRequest(BaseModel):
     user_id: str # This should ideally come from a validated token in the future
@@ -317,7 +319,9 @@ DEFAULT_USER_SETTINGS = UserSettingsData(
     doctorSignature=None,
     clinicLogo=None,
     includeLogoOnPdf=False,
-    medicalSpecialty=''
+    medicalSpecialty='',
+    customBillingRules='',
+    cptFees={}
 ).model_dump()
 
 @app.get("/api/v1/user_settings/{user_id}", response_model=UserSettingsData)
@@ -345,7 +349,9 @@ async def get_user_settings(
         doctorSignature=settings.get("doctorSignature"),
         clinicLogo=settings.get("clinicLogo"),
         includeLogoOnPdf=settings.get("includeLogoOnPdf", False),
-        officeInformation=settings.get("officeInformation", [])
+        officeInformation=settings.get("officeInformation", []),
+        customBillingRules=settings.get("customBillingRules", ""),
+        cptFees=settings.get("cptFees", {})
     )
 
 @app.get("/api/v1/debug/transcription_profiles/{user_id}")
@@ -1169,7 +1175,7 @@ async def generate_patient_billing(
         # Get base billing rules
         base_rules = get_base_billing_rules()
         
-        # Get user's custom billing rules
+        # Get user's custom billing rules and CPT fees
         try:
             user_settings = await get_user_settings_firestore(
                 user_id=current_user_id,
@@ -1177,9 +1183,11 @@ async def generate_patient_billing(
                 request=req
             )
             custom_rules = user_settings.get('customBillingRules', '') or user_settings.get('custom_billing_rules', '')
+            custom_cpt_fees = user_settings.get('cptFees', {})
         except Exception as e:
             logger.warning(f"Failed to fetch user settings for billing: {str(e)}")
             custom_rules = ""
+            custom_cpt_fees = {}
         
         # Combine rules: base + custom + any additional instructions from request
         combined_billing_instructions = base_rules
@@ -1197,6 +1205,7 @@ async def generate_patient_billing(
             billing_instructions=combined_billing_instructions,
             encounter_type=', '.join(encounter_types) if encounter_types else 'Medical Encounter',
             service_date=service_dates[0] if service_dates else None,
+            custom_cpt_fees=custom_cpt_fees,
             model_name="gemini-2.5-pro"
         )
         

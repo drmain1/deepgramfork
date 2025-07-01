@@ -5,6 +5,7 @@ import CustomVocabularyTab from './CustomVocabularyTab';
 import TranscriptionProfilesTab from './TranscriptionProfilesTab';
 import OfficeInformationTab from './OfficeInformationTab';
 import BillingRulesTab from './BillingRulesTab';
+import CPTFeesTab from './CPTFeesTab';
 
 function SettingsTabs({ 
   tabValue, 
@@ -19,6 +20,8 @@ function SettingsTabs({
   saveOfficeInformation, 
   customBillingRules,
   saveCustomBillingRules,
+  cptFees,
+  saveCptFees,
   settingsLoading 
 }) { 
   return (
@@ -30,7 +33,8 @@ function SettingsTabs({
       {tabValue === 2 && <CustomVocabularyTab customVocabulary={customVocabulary} saveCustomVocabulary={saveCustomVocabulary} settingsLoading={settingsLoading} />}
       {tabValue === 3 && <OfficeInformationTab officeInformation={officeInformation} saveOfficeInformation={saveOfficeInformation} settingsLoading={settingsLoading} />}
       {tabValue === 4 && <TranscriptionProfilesTab transcriptionProfiles={transcriptionProfiles} deleteTranscriptionProfile={deleteTranscriptionProfile} settingsLoading={settingsLoading} />}
-      {tabValue === 5 && <BillingRulesTab customBillingRules={customBillingRules} saveCustomBillingRules={saveCustomBillingRules} settingsLoading={settingsLoading} />} 
+      {tabValue === 5 && <BillingRulesTab customBillingRules={customBillingRules} saveCustomBillingRules={saveCustomBillingRules} settingsLoading={settingsLoading} />}
+      {tabValue === 6 && <CPTFeesTab cptFees={cptFees} saveCptFees={saveCptFees} settingsLoading={settingsLoading} />} 
     </>
   );
 }

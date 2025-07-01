@@ -20,30 +20,23 @@ export const CPT_DESCRIPTIONS = {
   '99214': 'Established Patient Office Visit (30-39 min)'
 };
 
-// Standard fees (can be customized per practice)
-export const CPT_FEES = {
-  '98940': 45.00,
-  '98941': 65.00,
-  '98942': 85.00,
-  '97140': 55.00,
-  '97110': 45.00,
-  '97124': 50.00,
-  '97035': 35.00,
-  '97032': 40.00,
-  '97010': 25.00,
-  '97012': 45.00,
-  '99202': 125.00,
-  '99203': 175.00,
-  '99204': 225.00,
-  '99212': 75.00,
-  '99213': 100.00,
-  '99214': 150.00
-};
+// Legacy default fees - no longer used for new practices
+export const CPT_FEES = {};
+
+/**
+ * Get the fee for a CPT code, using user-specific fees
+ */
+export function getCptFee(code, userCptFees) {
+  if (userCptFees && userCptFees[code] !== undefined) {
+    return parseFloat(userCptFees[code]);
+  }
+  return 0; // No default fees
+}
 
 /**
  * Format billing data as a structured HTML table for PDF generation
  */
-export function formatBillingDataAsHtml(billingLedger, patientInfo, doctorInfo) {
+export function formatBillingDataAsHtml(billingLedger, patientInfo, doctorInfo, userCptFees = null) {
   let html = `
     <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">
       <h1 style="text-align: center; color: #333;">MEDICAL BILLING STATEMENT</h1>
@@ -109,7 +102,7 @@ export function formatBillingDataAsHtml(billingLedger, patientInfo, doctorInfo) 
     `;
     
     service.cpt_codes.forEach(code => {
-      const fee = CPT_FEES[code] || 0;
+      const fee = getCptFee(code, userCptFees);
       serviceTotal += fee;
       html += `
             <tr>
@@ -147,7 +140,7 @@ export function formatBillingDataAsHtml(billingLedger, patientInfo, doctorInfo) 
 /**
  * Format billing data as plain text for simple PDF
  */
-export function formatBillingDataAsText(billingLedger, patientInfo, doctorInfo) {
+export function formatBillingDataAsText(billingLedger, patientInfo, doctorInfo, userCptFees = null) {
   let text = `MEDICAL BILLING STATEMENT\n\n`;
   text += `${doctorInfo?.doctorName || 'Healthcare Provider'}\n`;
   if (doctorInfo?.clinicName) text += `${doctorInfo.clinicName}\n`;
@@ -181,7 +174,7 @@ export function formatBillingDataAsText(billingLedger, patientInfo, doctorInfo) 
     
     let dateTotal = 0;
     service.cpt_codes.forEach(code => {
-      const fee = CPT_FEES[code] || 0;
+      const fee = getCptFee(code, userCptFees);
       dateTotal += fee;
       const description = (CPT_DESCRIPTIONS[code] || 'Service').substring(0, 45).padEnd(45);
       text += `${code.padEnd(9)} │  ${description} │  $${fee.toFixed(2).padStart(7)}\n`;

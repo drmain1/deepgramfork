@@ -153,6 +153,7 @@ def generate_billing_with_gemini(
     billing_instructions: str,
     encounter_type: str,
     service_date: Optional[str] = None,
+    custom_cpt_fees: Optional[Dict[str, float]] = None,
     model_name: str = "gemini-2.5-pro"
 ) -> Dict[str, Any]:
     """
@@ -197,6 +198,12 @@ def generate_billing_with_gemini(
         # Add custom billing instructions
         prompt_parts.append("\n\nBilling Instructions:")
         prompt_parts.append(billing_instructions)
+        
+        # Add custom CPT fees if provided
+        if custom_cpt_fees:
+            prompt_parts.append("\n\nCustom CPT Code Fees:")
+            for cpt_code, fee in custom_cpt_fees.items():
+                prompt_parts.append(f"{cpt_code}: ${fee}")
         
         # Add the transcript
         prompt_parts.append("\n\nMedical Transcript:")
