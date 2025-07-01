@@ -52,6 +52,7 @@ function SetupView({
   const [lastTranscript, setLastTranscript] = useState(null);
   const [loadingTranscript, setLoadingTranscript] = useState(false);
   const [loadingFindings, setLoadingFindings] = useState(false);
+  const [recommendedEvalType, setRecommendedEvalType] = useState(null);
   const { getToken, user } = useAuth();
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
@@ -254,6 +255,8 @@ function SetupView({
                           // Clear selected patient if user manually types
                           if (selectedPatient) {
                             setSelectedPatient(null);
+                            setEvaluationType(''); // Clear evaluation type
+                            setRecommendedEvalType(null); // Clear recommendation
                           }
                         }}
                         autoComplete="off"
@@ -285,6 +288,8 @@ function SetupView({
                             onClick={() => {
                               setSelectedPatient(null);
                               setPatientDetails('');
+                              setEvaluationType(''); // Clear evaluation type
+                              setRecommendedEvalType(null); // Clear recommendation
                             }}
                           >
                             <span className="material-icons">close</span>
@@ -502,44 +507,151 @@ function SetupView({
 
                   {/* Evaluation Type Selector - Only show when patient is selected */}
                   {selectedPatient && (
-                    <div className="mt-10 p-8 bg-indigo-50 rounded-lg border border-indigo-200">
-                      <div className="form-group">
-                        <label className="form-label text-xl" htmlFor="evaluation-type">
-                          Evaluation Type
-                        </label>
-                        <select
-                          className="input-field text-xl py-5"
-                          id="evaluation-type"
-                          name="evaluation-type"
-                          value={evaluationType}
-                          onChange={(e) => {
-                            setEvaluationType(e.target.value);
-                            // Clear previous findings if not re-evaluation
-                            if (e.target.value !== 're_evaluation') {
-                              setInitialEvaluationId(null);
-                              setPreviousFindings(null);
-                            }
+                    <div className="mt-10">
+                      <h3 className="text-xl font-medium text-gray-800 mb-4">
+                        Visit Type
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* Initial Evaluation Button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEvaluationType('initial');
+                            setInitialEvaluationId(null);
+                            setPreviousFindings(null);
                           }}
+                          className={`p-6 rounded-xl border-2 transition-all duration-200 relative ${
+                            evaluationType === 'initial'
+                              ? 'border-indigo-600 bg-indigo-50 shadow-lg'
+                              : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-md'
+                          }`}
                         >
-                          <option value="">Select evaluation type...</option>
-                          <option value="initial">Initial Evaluation</option>
-                          <option value="follow_up">Follow-up Visit</option>
-                          <option value="re_evaluation">Re-evaluation</option>
-                        </select>
-                        <p className="text-lg text-gray-600 mt-3">
-                          {evaluationType === 'initial' && "This is the patient's first evaluation"}
-                          {evaluationType === 'follow_up' && "Routine follow-up visit"}
-                          {evaluationType === 're_evaluation' && "Comprehensive re-evaluation to assess progress since initial evaluation"}
-                        </p>
-                      </div>
+                          {recommendedEvalType === 'initial' && (
+                            <span className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full font-medium shadow-sm">
+                              Recommended
+                            </span>
+                          )}
+                          <div className="flex flex-col items-center text-center">
+                            <span className={`material-icons text-3xl mb-3 ${
+                              evaluationType === 'initial' ? 'text-indigo-600' : 'text-gray-400'
+                            }`}>
+                              article
+                            </span>
+                            <h4 className={`font-semibold text-lg mb-2 ${
+                              evaluationType === 'initial' ? 'text-indigo-900' : 'text-gray-700'
+                            }`}>
+                              Initial Evaluation
+                            </h4>
+                            <p className={`text-sm ${
+                              evaluationType === 'initial' ? 'text-indigo-700' : 'text-gray-500'
+                            }`}>
+                              First comprehensive assessment
+                            </p>
+                          </div>
+                        </button>
 
-                      {/* Show previous findings loading when re-evaluation is selected */}
-                      {evaluationType === 're_evaluation' && (
-                        <div className="mt-6 p-6 bg-white rounded-lg border border-indigo-200">
-                          <h4 className="text-lg font-medium text-indigo-800 mb-4">
-                            Previous Initial Evaluation
-                          </h4>
-                          {!previousFindings ? (
+                        {/* Follow-up Visit Button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEvaluationType('follow_up');
+                            setInitialEvaluationId(null);
+                            setPreviousFindings(null);
+                          }}
+                          className={`p-6 rounded-xl border-2 transition-all duration-200 relative ${
+                            evaluationType === 'follow_up'
+                              ? 'border-indigo-600 bg-indigo-50 shadow-lg'
+                              : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-md'
+                          }`}
+                        >
+                          {recommendedEvalType === 'follow_up' && (
+                            <span className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full font-medium shadow-sm">
+                              Recommended
+                            </span>
+                          )}
+                          <div className="flex flex-col items-center text-center">
+                            <span className={`material-icons text-3xl mb-3 ${
+                              evaluationType === 'follow_up' ? 'text-indigo-600' : 'text-gray-400'
+                            }`}>
+                              update
+                            </span>
+                            <h4 className={`font-semibold text-lg mb-2 ${
+                              evaluationType === 'follow_up' ? 'text-indigo-900' : 'text-gray-700'
+                            }`}>
+                              Follow-up Visit
+                            </h4>
+                            <p className={`text-sm ${
+                              evaluationType === 'follow_up' ? 'text-indigo-700' : 'text-gray-500'
+                            }`}>
+                              Routine treatment session
+                            </p>
+                          </div>
+                        </button>
+
+                        {/* Re-evaluation Button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEvaluationType('re_evaluation');
+                          }}
+                          className={`p-6 rounded-xl border-2 transition-all duration-200 relative ${
+                            evaluationType === 're_evaluation'
+                              ? 'border-indigo-600 bg-indigo-50 shadow-lg'
+                              : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-md'
+                          }`}
+                        >
+                          {recommendedEvalType === 're_evaluation' && (
+                            <span className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full font-medium shadow-sm">
+                              Recommended
+                            </span>
+                          )}
+                          <div className="flex flex-col items-center text-center">
+                            <span className={`material-icons text-3xl mb-3 ${
+                              evaluationType === 're_evaluation' ? 'text-indigo-600' : 'text-gray-400'
+                            }`}>
+                              assessment
+                            </span>
+                            <h4 className={`font-semibold text-lg mb-2 ${
+                              evaluationType === 're_evaluation' ? 'text-indigo-900' : 'text-gray-700'
+                            }`}>
+                              Re-evaluation
+                            </h4>
+                            <p className={`text-sm ${
+                              evaluationType === 're_evaluation' ? 'text-indigo-700' : 'text-gray-500'
+                            }`}>
+                              Progress assessment
+                            </p>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Re-evaluation Workflow - Show when re-evaluation is selected */}
+                  {selectedPatient && evaluationType === 're_evaluation' && (
+                    <div className="mt-8">
+                      <div className="bg-gradient-to-r from-indigo-500 to-purple-600 p-6 rounded-xl text-white shadow-lg">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="text-2xl font-semibold flex items-center gap-3">
+                              <span className="material-icons text-3xl">assessment</span>
+                              Re-evaluation Workflow
+                            </h3>
+                            <p className="text-indigo-100 mt-2">
+                              Compare current findings with initial evaluation
+                            </p>
+                          </div>
+                          {!previousFindings && (
+                            <div className="text-right">
+                              <p className="text-sm text-indigo-100">Step 1 of 2</p>
+                              <p className="text-xs text-indigo-200 mt-1">Load previous findings</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="mt-6 bg-white p-6 rounded-lg shadow-md border border-gray-200">
+                        {!previousFindings ? (
                             <button
                               type="button"
                               disabled={loadingFindings}
@@ -675,15 +787,30 @@ function SetupView({
                               )}
                             </button>
                           ) : (
-                            <div className="max-h-96 overflow-y-auto">
-                              <PreviousFindings 
-                                findings={previousFindings} 
-                                evaluationDate={previousFindings.date}
-                              />
+                            <div>
+                              <div className="flex items-center justify-between mb-4">
+                                <h4 className="text-lg font-medium text-gray-800">
+                                  Previous Findings Loaded
+                                </h4>
+                                <span className="text-sm text-green-600 flex items-center gap-1">
+                                  <span className="material-icons text-base">check_circle</span>
+                                  Ready to compare
+                                </span>
+                              </div>
+                              <div className="max-h-96 overflow-y-auto bg-gray-50 p-4 rounded-lg">
+                                <PreviousFindings 
+                                  findings={previousFindings} 
+                                  evaluationDate={previousFindings.date}
+                                />
+                              </div>
+                              <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                                <p className="text-sm text-blue-800">
+                                  <span className="font-medium">Tip:</span> The previous findings will be automatically included in your transcription context for easy comparison.
+                                </p>
+                              </div>
                             </div>
                           )}
-                        </div>
-                      )}
+                      </div>
                     </div>
                   )}
 
@@ -784,8 +911,17 @@ function SetupView({
                       Ensure patient information is complete before starting your encounter session
                     </p>
                     
-                    {/* Microphone Monitor Section */}
-                    <div className="mb-8 p-6 bg-blue-100 rounded-lg border border-blue-200">
+                    {/* Microphone Monitor Section - Animated based on evaluation type */}
+                    <div 
+                      className={`mb-8 p-6 bg-blue-100 rounded-lg border border-blue-200 transition-all duration-500 ${
+                        evaluationType === 're_evaluation' 
+                          ? 'transform scale-95 opacity-75' 
+                          : 'transform scale-100 opacity-100'
+                      }`}
+                      style={{
+                        maxHeight: evaluationType === 're_evaluation' ? '120px' : '400px',
+                        overflow: 'hidden'
+                      }}>
                       <h4 className="text-lg font-medium mb-4 flex items-center justify-center gap-2 text-blue-900">
                         <span className="material-icons text-xl text-blue-600">hearing</span>
                         Microphone Monitor
@@ -921,10 +1057,32 @@ function SetupView({
                       )}
                     </div>
 
+                    {/* Re-evaluation Notice */}
+                    {evaluationType === 're_evaluation' && (
+                      <div className="mb-6 p-4 bg-indigo-100 rounded-lg border border-indigo-300 transition-all duration-500">
+                        <div className="flex items-start gap-3">
+                          <span className="material-icons text-2xl text-indigo-600 mt-0.5">info</span>
+                          <div>
+                            <h5 className="font-medium text-indigo-900 mb-1">Re-evaluation Mode Active</h5>
+                            <p className="text-sm text-indigo-700">
+                              {previousFindings 
+                                ? "Previous findings loaded and will be included in the transcription context for comparison."
+                                : "Please load previous findings before starting the re-evaluation."
+                              }
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <button
-                      className="w-full bg-blue-600 text-white font-semibold text-xl py-5 px-8 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-300 disabled:text-blue-100"
+                      className={`w-full font-semibold text-xl py-5 px-8 rounded-lg transition-all duration-300 disabled:bg-gray-300 disabled:text-gray-500 ${
+                        evaluationType === 're_evaluation' 
+                          ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg' 
+                          : 'bg-blue-600 hover:bg-blue-700 text-white'
+                      }`}
                       type="submit"
-                      disabled={!patientDetails.trim() || (isDictationMode && !dateOfService)}
+                      disabled={!patientDetails.trim() || (isDictationMode && !dateOfService) || (evaluationType === 're_evaluation' && !previousFindings)}
                       onClick={(e) => {
                         console.log('Button clicked!', e);
                         console.log('Patient details:', patientDetails);
@@ -932,8 +1090,13 @@ function SetupView({
                       }}
                     >
                       <span className="flex items-center justify-center gap-4">
-                        <span className="material-icons text-3xl">play_arrow</span>
-                        Start Encounter
+                        <span className="material-icons text-3xl">
+                          {evaluationType === 're_evaluation' ? 'assessment' : 'play_arrow'}
+                        </span>
+                        {evaluationType === 're_evaluation' 
+                          ? 'Start Re-evaluation' 
+                          : 'Start Encounter'
+                        }
                       </span>
                     </button>
                   </div>
@@ -950,7 +1113,7 @@ function SetupView({
           <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[80vh] overflow-auto">
             <PatientSelector
               selectedPatient={selectedPatient}
-              onSelectPatient={(patient) => {
+              onSelectPatient={async (patient) => {
                 setSelectedPatient(patient);
                 if (patient) {
                   // Set patient details when a patient is selected
@@ -964,6 +1127,54 @@ function SetupView({
                   if (patient.date_of_accident && !patientContext.includes('DOA:')) {
                     const doaFormatted = new Date(patient.date_of_accident).toLocaleDateString();
                     setPatientContext(prev => prev ? `${prev}\nDOA: ${doaFormatted}` : `DOA: ${doaFormatted}`);
+                  }
+                  
+                  // Auto-detect evaluation type based on visit history
+                  try {
+                    const token = await getToken();
+                    const response = await fetch(`/api/v1/patients/${patient.id}/transcripts`, {
+                      headers: {
+                        'Authorization': `Bearer ${token}`
+                      }
+                    });
+                    
+                    if (response.ok) {
+                      const transcripts = await response.json();
+                      
+                      // If no previous transcripts, automatically set to initial evaluation
+                      if (transcripts.length === 0) {
+                        setEvaluationType('initial');
+                        setRecommendedEvalType('initial');
+                      } else {
+                        // Check if re-evaluation is needed
+                        const reEvalResponse = await fetch(`/api/v1/patients/${patient.id}/re-evaluation-status`, {
+                          headers: {
+                            'Authorization': `Bearer ${token}`
+                          }
+                        });
+                        
+                        if (reEvalResponse.ok) {
+                          const reEvalStatus = await reEvalResponse.json();
+                          
+                          // If re-evaluation is overdue (red status), suggest re-evaluation
+                          if (reEvalStatus.color === 'red') {
+                            setEvaluationType('re_evaluation');
+                            setRecommendedEvalType('re_evaluation');
+                          } else if (reEvalStatus.color === 'yellow') {
+                            // If due soon, still suggest re-evaluation
+                            setEvaluationType('re_evaluation');
+                            setRecommendedEvalType('re_evaluation');
+                          } else {
+                            // Otherwise default to follow-up
+                            setEvaluationType('follow_up');
+                            setRecommendedEvalType('follow_up');
+                          }
+                        }
+                      }
+                    }
+                  } catch (error) {
+                    console.error('Error checking patient visit history:', error);
+                    // Don't set evaluation type on error, let user choose manually
                   }
                 }
                 setShowPatientSelector(false);

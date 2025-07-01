@@ -922,3 +922,81 @@ A minimalist component that:
 - **Contextual**: Appears exactly where patient information is shown
 - **Action-oriented**: Clear visual cues guide practitioners to perform timely re-evaluations
 - **Compliance**: Helps maintain insurance requirements and best practices
+
+## UI Improvements (December 2024)
+
+### Modern Evaluation Type Selection
+Replaced the dropdown menu with a modern button-based interface:
+
+#### 1. **Button-Based Selection**
+- Three visually distinct buttons with icons and descriptions
+- Initial Evaluation (article icon)
+- Follow-up Visit (update icon)  
+- Re-evaluation (assessment icon)
+- Selected button shows enhanced styling with shadow and indigo color scheme
+
+#### 2. **Auto-Detection Logic**
+When a patient is selected, the system automatically:
+- Checks patient transcript history via `/api/v1/patients/{id}/transcripts`
+- For new patients (no transcripts): Sets to "Initial Evaluation"
+- For existing patients: Checks re-evaluation status
+  - Red status (overdue) → Suggests "Re-evaluation"
+  - Yellow status (due soon) → Suggests "Re-evaluation"
+  - Green status → Defaults to "Follow-up"
+- Shows green "Recommended" badge on the suggested option
+
+#### 3. **Re-evaluation Workflow UI**
+Enhanced workflow when re-evaluation is selected:
+- **Gradient Header**: Purple-to-indigo gradient with workflow title
+- **Progress Indicator**: Shows "Step 1 of 2" when loading findings
+- **Previous Findings Display**: Clean white card with loading animation
+- **Success State**: Green checkmark when findings are loaded
+- **Helpful Tips**: Blue info box explaining the workflow
+
+#### 4. **Microphone Monitor Animation**
+Smooth transitions when re-evaluation is selected:
+- Scales down to 95% with reduced opacity (75%)
+- Height limitation to save space (max 120px)
+- 500ms transition duration for polish
+
+#### 5. **Dynamic Start Button**
+Button adapts based on evaluation type:
+- Changes text to "Start Re-evaluation" for re-evaluations
+- Uses assessment icon instead of play icon
+- Indigo color scheme for re-evaluation mode
+- Disabled until previous findings are loaded
+
+#### 6. **Re-evaluation Notice**
+Informative notice box that appears in re-evaluation mode:
+- Icon-based design with info icon
+- Clear messaging about workflow status
+- Guides users to load findings before starting
+
+### Implementation Details
+
+#### State Management
+```javascript
+// Added recommended evaluation type tracking
+const [recommendedEvalType, setRecommendedEvalType] = useState(null);
+
+// Auto-detection on patient selection
+if (transcripts.length === 0) {
+  setEvaluationType('initial');
+  setRecommendedEvalType('initial');
+} else {
+  // Check re-evaluation status and set recommendations
+}
+```
+
+#### CSS Classes Used
+- Transitions: `transition-all duration-200/300/500`
+- Shadows: `shadow-lg`, `shadow-md`
+- Colors: Indigo theme for re-evaluations, blue for standard
+- Animations: `animate-spin` for loading states
+- Transforms: `scale()` for microphone monitor
+
+### Future UI Enhancements Planned
+1. **Compact Design**: Move evaluation buttons to patient info section
+2. **Smart Options**: Show only relevant options based on patient history
+3. **Simplified UX**: Remove follow-up option for new patients
+4. **Position Optimization**: Better integration with patient selection flow
