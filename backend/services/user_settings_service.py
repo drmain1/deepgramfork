@@ -1,0 +1,369 @@
+"""Centralized service for managing user settings."""
+import json
+import logging
+from typing import Dict, Any, Optional, List
+from datetime import datetime, timezone
+from pydantic import BaseModel
+
+from gcs_utils import GCSClient
+from firestore_client import firestore_client
+
+logger = logging.getLogger(__name__)
+
+
+class UserSettingsService:
+    """Manages user settings stored in GCS and provides a unified interface."""
+    
+    DEFAULT_USER_SETTINGS = {
+        "macroPhrases": [],
+        "customVocabulary": [],
+        "officeInformation": [],
+        "transcriptionProfiles": [],
+        "doctorName": "",
+        "doctorSignature": None,
+        "clinicLogo": None,
+        "includeLogoOnPdf": False,
+        "medicalSpecialty": "",
+        "customBillingRules": "",
+        "cptFees": {}
+    }
+    
+    def __init__(self, gcs_client: GCSClient):
+        """Initialize the service with a GCS client.
+        
+        Args:
+            gcs_client: The Google Cloud Storage client
+        """
+        self.gcs_client = gcs_client
+        self._cache = {}  # Simple in-memory cache
+        self._cache_ttl = 300  # 5 minutes
+    
+    def _get_settings_key(self, user_id: str) -> str:
+        """Get the GCS key for user settings."""
+        return f"{user_id}/settings/user_settings.json"
+    
+    def _get_cache_key(self, user_id: str) -> str:
+        """Get the cache key for user settings."""
+        return f"settings:{user_id}"
+    
+    def _is_cache_valid(self, cache_entry: dict) -> bool:
+        """Check if a cache entry is still valid."""
+        if not cache_entry:
+            return False
+        
+        cached_at = cache_entry.get("cached_at", 0)
+        age = datetime.now(timezone.utc).timestamp() - cached_at
+        return age < self._cache_ttl
+    
+    async def get_user_settings(
+        self, 
+        user_id: str, 
+        use_cache: bool = True
+    ) -> Dict[str, Any]:
+        """Get user settings from GCS with caching.
+        
+        Args:
+            user_id: The user's ID
+            use_cache: Whether to use cached settings if available
+            
+        Returns:
+            User settings dictionary
+        """
+        cache_key = self._get_cache_key(user_id)
+        
+        # Check cache first
+        if use_cache and cache_key in self._cache:
+            cache_entry = self._cache[cache_key]
+            if self._is_cache_valid(cache_entry):
+                logger.debug(f"Returning cached settings for user {user_id}")
+                return cache_entry["data"]
+        
+        # Load from GCS
+        settings_key = self._get_settings_key(user_id)
+        try:
+            settings_content = self.gcs_client.get_gcs_object_content(settings_key)
+            
+            if settings_content:
+                settings = json.loads(settings_content)
+                logger.info(f"Loaded settings from GCS for user {user_id}")
+            else:
+                settings = self.DEFAULT_USER_SETTINGS.copy()
+                logger.info(f"Using default settings for user {user_id}")
+            
+            # Update cache
+            self._cache[cache_key] = {
+                "data": settings,
+                "cached_at": datetime.now(timezone.utc).timestamp()
+            }
+            
+            return settings
+            
+        except Exception as e:
+            logger.error(f"Error loading settings for user {user_id}: {e}")
+            return self.DEFAULT_USER_SETTINGS.copy()
+    
+    async def save_user_settings(
+        self, 
+        user_id: str, 
+        settings: Dict[str, Any],
+        partial_update: bool = False
+    ) -> bool:
+        """Save user settings to GCS.
+        
+        Args:
+            user_id: The user's ID
+            settings: The settings to save
+            partial_update: If True, merge with existing settings
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            if partial_update:
+                # Load existing settings and merge
+                current_settings = await self.get_user_settings(user_id, use_cache=False)
+                current_settings.update(settings)
+                settings = current_settings
+            
+            # Save to GCS
+            settings_key = self._get_settings_key(user_id)
+            success = self.gcs_client.save_data_to_gcs(
+                user_id=user_id,
+                data_type="settings",
+                session_id="user_settings",
+                content=json.dumps(settings)
+            )
+            
+            if success:
+                # Update cache
+                cache_key = self._get_cache_key(user_id)
+                self._cache[cache_key] = {
+                    "data": settings,
+                    "cached_at": datetime.now(timezone.utc).timestamp()
+                }
+                logger.info(f"Saved settings for user {user_id}")
+            else:
+                logger.error(f"Failed to save settings for user {user_id}")
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"Error saving settings for user {user_id}: {e}")
+            return False
+    
+    async def update_setting(
+        self, 
+        user_id: str, 
+        key: str, 
+        value: Any
+    ) -> bool:
+        """Update a single setting.
+        
+        Args:
+            user_id: The user's ID
+            key: The setting key
+            value: The new value
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        return await self.save_user_settings(
+            user_id, 
+            {key: value}, 
+            partial_update=True
+        )
+    
+    async def get_setting(
+        self, 
+        user_id: str, 
+        key: str, 
+        default: Any = None
+    ) -> Any:
+        """Get a single setting value.
+        
+        Args:
+            user_id: The user's ID
+            key: The setting key
+            default: Default value if key doesn't exist
+            
+        Returns:
+            The setting value or default
+        """
+        settings = await self.get_user_settings(user_id)
+        return settings.get(key, default)
+    
+    async def reset_user_settings(self, user_id: str) -> bool:
+        """Reset user settings to defaults.
+        
+        Args:
+            user_id: The user's ID
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        return await self.save_user_settings(
+            user_id, 
+            self.DEFAULT_USER_SETTINGS.copy()
+        )
+    
+    def invalidate_cache(self, user_id: str) -> None:
+        """Invalidate cached settings for a user.
+        
+        Args:
+            user_id: The user's ID
+        """
+        cache_key = self._get_cache_key(user_id)
+        if cache_key in self._cache:
+            del self._cache[cache_key]
+            logger.debug(f"Invalidated cache for user {user_id}")
+    
+    async def migrate_legacy_format(self, user_id: str) -> bool:
+        """Migrate legacy settings format to new format.
+        
+        Args:
+            user_id: The user's ID
+            
+        Returns:
+            True if migration was performed, False if not needed
+        """
+        settings = await self.get_user_settings(user_id, use_cache=False)
+        
+        # Check if migration is needed
+        needs_migration = False
+        
+        # Convert macroPhrases from dict to list format
+        macro_phrases = settings.get("macroPhrases", {})
+        if isinstance(macro_phrases, dict):
+            settings["macroPhrases"] = [
+                {"shortcut": k, "expansion": v} 
+                for k, v in macro_phrases.items()
+            ]
+            needs_migration = True
+            logger.info(f"Migrating macroPhrases format for user {user_id}")
+        
+        # Add any other format migrations here
+        
+        if needs_migration:
+            success = await self.save_user_settings(user_id, settings)
+            if success:
+                logger.info(f"Successfully migrated settings for user {user_id}")
+            return success
+        
+        return False
+    
+    async def get_transcription_profile(
+        self, 
+        user_id: str, 
+        profile_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Get a specific transcription profile.
+        
+        Args:
+            user_id: The user's ID
+            profile_id: The profile ID
+            
+        Returns:
+            The profile data or None if not found
+        """
+        profiles = await self.get_setting(user_id, "transcriptionProfiles", [])
+        
+        for profile in profiles:
+            if profile.get("id") == profile_id:
+                return profile
+        
+        return None
+    
+    async def get_default_transcription_profile(
+        self, 
+        user_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Get the default transcription profile.
+        
+        Args:
+            user_id: The user's ID
+            
+        Returns:
+            The default profile or None if not set
+        """
+        profiles = await self.get_setting(user_id, "transcriptionProfiles", [])
+        
+        for profile in profiles:
+            if profile.get("isDefault", False):
+                return profile
+        
+        # Return first profile if no default is set
+        return profiles[0] if profiles else None
+    
+    async def update_transcription_profile(
+        self, 
+        user_id: str, 
+        profile_id: str,
+        profile_data: Dict[str, Any]
+    ) -> bool:
+        """Update a transcription profile.
+        
+        Args:
+            user_id: The user's ID
+            profile_id: The profile ID to update
+            profile_data: The new profile data
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        profiles = await self.get_setting(user_id, "transcriptionProfiles", [])
+        
+        # Find and update the profile
+        updated = False
+        for i, profile in enumerate(profiles):
+            if profile.get("id") == profile_id:
+                profiles[i] = {**profile, **profile_data, "id": profile_id}
+                updated = True
+                break
+        
+        if not updated:
+            # Profile doesn't exist, add it
+            profile_data["id"] = profile_id
+            profiles.append(profile_data)
+        
+        return await self.update_setting(user_id, "transcriptionProfiles", profiles)
+    
+    async def sync_to_firestore(self, user_id: str) -> bool:
+        """Sync user settings to Firestore for faster queries.
+        
+        This is useful for settings that need to be queried frequently
+        or across multiple users.
+        
+        Args:
+            user_id: The user's ID
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            settings = await self.get_user_settings(user_id)
+            
+            # Extract key fields for Firestore
+            firestore_data = {
+                "user_id": user_id,
+                "doctor_name": settings.get("doctorName", ""),
+                "medical_specialty": settings.get("medicalSpecialty", ""),
+                "has_logo": bool(settings.get("clinicLogo")),
+                "has_signature": bool(settings.get("doctorSignature")),
+                "profile_count": len(settings.get("transcriptionProfiles", [])),
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+            
+            # Save to Firestore
+            success = await firestore_client.save_user_settings_summary(
+                user_id, 
+                firestore_data
+            )
+            
+            if success:
+                logger.info(f"Synced settings to Firestore for user {user_id}")
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"Error syncing to Firestore for user {user_id}: {e}")
+            return False
