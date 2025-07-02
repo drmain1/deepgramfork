@@ -679,6 +679,7 @@ function SetupView({ onStartEncounter }) {
           setPatientContext(prev => prev ? `${prev}\n\n${relevantInfo}` : relevantInfo);
         }}
       />
+      
     </main>
   );
 }

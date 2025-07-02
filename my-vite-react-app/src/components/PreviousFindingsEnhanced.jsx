@@ -104,12 +104,14 @@ const PreviousFindingsEnhanced = ({ findings, onClose, isOpen, patientName }) =>
         height: 'calc(100vh - 64px)',
         width: { xs: '100%', sm: 480, md: 520 },
         bgcolor: 'background.paper',
-        boxShadow: 3,
+        boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
         zIndex: 1200,
         display: 'flex',
         flexDirection: 'column',
         transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
         transition: 'transform 0.3s ease-in-out',
+        borderLeft: '1px solid',
+        borderColor: 'divider',
       }}
     >
       {/* Header */}
@@ -121,53 +123,62 @@ const PreviousFindingsEnhanced = ({ findings, onClose, isOpen, patientName }) =>
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          bgcolor: 'primary.main',
-          color: 'primary.contrastText',
+          bgcolor: 'grey.50',
         }}
       >
         <Box>
-          <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            Previous Evaluation Findings
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'text.primary' }}>
+            Previous Findings
           </Typography>
-          <Typography variant="body2" sx={{ opacity: 0.9 }}>
-            {patientName || 'Patient'}
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            Initial evaluation • {patientName || 'Patient'}
           </Typography>
         </Box>
         <IconButton
           onClick={onClose}
           size="small"
-          sx={{ color: 'inherit' }}
+          sx={{ 
+            color: 'text.secondary',
+            '&:hover': { bgcolor: 'grey.200' }
+          }}
         >
-          <CloseIcon />
+          <CloseIcon fontSize="small" />
         </IconButton>
       </Box>
 
       {/* Clinical Summary Bar */}
-      <Alert 
-        severity="info" 
+      <Box 
         sx={{ 
           m: 2, 
           mb: 1,
-          '& .MuiAlert-message': { width: '100%' }
+          p: 1.5,
+          bgcolor: 'info.lighter',
+          border: '1px solid',
+          borderColor: 'info.light',
+          borderRadius: 1,
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 1,
         }}
-        action={
-          <Tooltip title="Copy summary">
-            <IconButton
-              size="small"
-              onClick={() => handleCopy(clinicalSummary, 'summary')}
-            >
-              <CopyIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        }
       >
-        <Typography variant="body2" sx={{ fontWeight: 500 }}>
-          Quick Summary
-        </Typography>
-        <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}>
-          {clinicalSummary}
-        </Typography>
-      </Alert>
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="caption" sx={{ fontWeight: 600, color: 'info.dark' }}>
+            Summary
+          </Typography>
+          <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: 'text.secondary' }}>
+            {clinicalSummary}
+          </Typography>
+        </Box>
+        <Tooltip title="Copy summary">
+          <IconButton
+            size="small"
+            onClick={() => handleCopy(clinicalSummary, 'summary')}
+            sx={{ p: 0.5 }}
+          >
+            <CopyIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+          </IconButton>
+        </Tooltip>
+      </Box>
 
       {/* Tab Navigation */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}>
@@ -214,17 +225,15 @@ const PreviousFindingsEnhanced = ({ findings, onClose, isOpen, patientName }) =>
             </Box>
 
             {/* Main Content */}
-            <Paper 
-              elevation={0} 
+            <Box 
               sx={{ 
                 p: 2, 
-                bgcolor: 'grey.50',
-                border: '1px solid',
-                borderColor: 'grey.300',
+                bgcolor: 'background.paper',
+                borderRadius: 1,
               }}
             >
               <FormattedMedicalText content={markdownContent} />
-            </Paper>
+            </Box>
 
             {/* Raw JSON View */}
             {showRawJson && (
@@ -269,11 +278,11 @@ const PreviousFindingsEnhanced = ({ findings, onClose, isOpen, patientName }) =>
           p: 2,
           borderTop: '1px solid',
           borderColor: 'divider',
-          bgcolor: 'grey.50',
+          bgcolor: 'background.paper',
         }}
       >
-        <Typography variant="caption" color="text.secondary">
-          These findings will be included in the AI processing to enhance the accuracy of your re-evaluation notes.
+        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+          Findings will be included in AI processing
         </Typography>
       </Box>
     </Box>
