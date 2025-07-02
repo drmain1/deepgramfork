@@ -42,8 +42,14 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
         console.log('Detected base64 logo, initiating auto-migration...');
         migrateBase64Logo();
       }
+      
+      // Auto-migrate base64 signatures to GCS
+      if (userSettings.doctorSignature && userSettings.doctorSignature.startsWith('data:')) {
+        console.log('Detected base64 signature, initiating auto-migration...');
+        migrateBase64Signature();
+      }
     }
-  }, [userSettings.doctorName, userSettings.clinicLogo, userSettings.includeLogoOnPdf, userSettings.medicalSpecialty]);
+  }, [userSettings.doctorName, userSettings.clinicLogo, userSettings.includeLogoOnPdf, userSettings.medicalSpecialty, userSettings.doctorSignature]);
 
   const handleInputChange = (e) => {
     setNewOfficeText(e.target.value);
@@ -119,14 +125,44 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
   const handleSignatureSave = async (signatureData) => {
     setIsSaving(true);
     try {
-      console.log('Saving signature for doctor:', userSettings.doctorName);
+      // Convert base64 to blob
+      const response = await fetch(signatureData);
+      const blob = await response.blob();
+      
+      // Create file from blob
+      const file = new File([blob], 'signature.png', { type: 'image/png' });
+      
+      // Upload signature to GCS
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      const accessToken = await getToken();
+      
+      const uploadResponse = await fetch(`${API_BASE_URL}/api/v1/upload_signature`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: formData
+      });
+      
+      if (!uploadResponse.ok) {
+        const error = await uploadResponse.json();
+        throw new Error(error.detail || 'Failed to upload signature');
+      }
+      
+      const { signatureUrl } = await uploadResponse.json();
+      
+      // Update user settings with the GCS URL
       const result = await updateDoctorInformation(
         userSettings.doctorName, 
-        signatureData,
+        signatureUrl,
         userSettings.clinicLogo,
         userSettings.includeLogoOnPdf,
-        medicalSpecialty || userSettings.medicalSpecialty  // Use local state if available
+        medicalSpecialty || userSettings.medicalSpecialty
       );
+      
       console.log('Signature save result:', result);
       setShowSignaturePad(false);
       alert('Signature saved successfully!');
@@ -297,6 +333,69 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
     }
   };
 
+  const migrateBase64Signature = async () => {
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      const accessToken = await getToken();
+      
+      const response = await fetch(`${API_BASE_URL}/api/v1/migrate_signature`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        }
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.migrated) {
+          console.log('Signature migrated successfully to:', result.signatureUrl);
+          // The settings will be updated automatically through the context
+        }
+      }
+    } catch (error) {
+      console.error('Error migrating base64 signature:', error);
+    }
+  };
+
+  const handleRemoveSignature = async () => {
+    if (window.confirm('Are you sure you want to remove your signature?')) {
+      setIsSaving(true);
+      try {
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+        const accessToken = await getToken();
+        
+        // Call delete endpoint
+        const deleteResponse = await fetch(`${API_BASE_URL}/api/v1/delete_signature`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+          }
+        });
+        
+        if (!deleteResponse.ok) {
+          const error = await deleteResponse.json();
+          throw new Error(error.detail || 'Failed to delete signature');
+        }
+        
+        // Update local state
+        await updateDoctorInformation(
+          userSettings.doctorName, 
+          null,
+          userSettings.clinicLogo,
+          userSettings.includeLogoOnPdf,
+          medicalSpecialty || userSettings.medicalSpecialty
+        );
+        
+        alert('Signature removed successfully!');
+      } catch (error) {
+        console.error('Error removing signature:', error);
+        alert('Failed to remove signature. Please try again.');
+      } finally {
+        setIsSaving(false);
+      }
+    }
+  };
+
   const isDoctorNameSaved = userSettings.doctorName && userSettings.doctorName.trim() !== '';
 
   if (settingsLoading) {
@@ -413,7 +512,8 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
                     maxWidth: '240px', 
                     maxHeight: '120px', 
                     border: '1px solid #ccc',
-                    borderRadius: '4px'
+                    borderRadius: '4px',
+                    marginBottom: '8px'
                   }} 
                 />
               </Box>
@@ -423,14 +523,28 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
               </Typography>
             )}
             
-            <Button 
-              variant="outlined" 
-              onClick={() => setShowSignaturePad(!showSignaturePad)}
-              size="small"
-              disabled={isSaving}
-            >
-              {userSettings.doctorSignature ? 'Update Signature' : 'Add Signature'}
-            </Button>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button 
+                variant="outlined" 
+                onClick={() => setShowSignaturePad(!showSignaturePad)}
+                size="small"
+                disabled={isSaving}
+              >
+                {userSettings.doctorSignature ? 'Update Signature' : 'Add Signature'}
+              </Button>
+              
+              {userSettings.doctorSignature && (
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={handleRemoveSignature}
+                  disabled={isSaving}
+                  size="small"
+                >
+                  Remove Signature
+                </Button>
+              )}
+            </Box>
 
             {showSignaturePad && (
               <Box sx={{ mt: 3 }}>

@@ -751,6 +751,260 @@ async def migrate_logo(
         print(f"Error migrating logo for user {current_user_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to migrate logo: {str(e)}")
 
+# Signature upload endpoint
+@app.post("/api/v1/upload_signature")
+async def upload_signature(
+    file: UploadFile = File(...),
+    current_user_id: str = Depends(get_user_id)
+):
+    """Upload a signature - stores file in GCS and URL in settings"""
+    
+    if not gcs_client:
+        raise HTTPException(status_code=503, detail="GCS client not initialized")
+    
+    # Debug logging
+    print(f"Signature upload - User: {current_user_id}, File: {file.filename}, Content-Type: {file.content_type}, Size: {file.size}")
+    
+    # Validate file type
+    allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/jpg"]
+    
+    # Handle case where content_type might be None or empty
+    if not file.content_type or file.content_type not in allowed_types:
+        # Try to infer from filename
+        file_ext = file.filename.lower().split('.')[-1] if '.' in file.filename else ''
+        ext_to_mime = {
+            'jpg': 'image/jpeg',
+            'jpeg': 'image/jpeg',
+            'png': 'image/png',
+            'gif': 'image/gif',
+            'webp': 'image/webp'
+        }
+        
+        if file_ext in ext_to_mime:
+            file.content_type = ext_to_mime[file_ext]
+            print(f"Inferred content type from extension: {file.content_type}")
+        else:
+            print(f"Invalid content type: {file.content_type}")
+            raise HTTPException(status_code=400, detail=f"Invalid file type: {file.content_type}. Allowed types: {allowed_types}")
+    
+    # Validate file size (2MB limit for signatures)
+    max_size = 2 * 1024 * 1024  # 2MB
+    contents = await file.read()
+    if len(contents) > max_size:
+        raise HTTPException(status_code=400, detail="File size exceeds 2MB limit")
+    
+    try:
+        # Generate unique filename
+        timestamp = int(time.time() * 1000)
+        file_ext = file.filename.lower().split('.')[-1] if '.' in file.filename else 'png'
+        signature_filename = f"signature_{timestamp}.{file_ext}"
+        signature_key = f"{current_user_id}/signatures/{signature_filename}"
+        
+        # Upload file directly to GCS
+        success = gcs_client.save_data_to_gcs(
+            user_id=current_user_id,
+            data_type="signatures",
+            session_id=signature_filename,
+            content=contents,
+            content_type=file.content_type
+        )
+        
+        if not success:
+            raise Exception("Failed to upload signature to GCS")
+        
+        # Generate public URL for the signature
+        signature_url = f"https://storage.googleapis.com/{gcs_client.bucket_name}/{signature_key}"
+        print(f"Signature uploaded to GCS: {signature_url}")
+        
+        # Get current settings from GCS
+        settings_key = f"{current_user_id}/settings/user_settings.json"
+        settings_content = gcs_client.get_gcs_object_content(settings_key)
+        
+        if settings_content:
+            current_settings = json.loads(settings_content)
+        else:
+            current_settings = DEFAULT_USER_SETTINGS.copy()
+        
+        # Check if there's an old signature to delete
+        old_signature_url = current_settings.get('doctorSignature')
+        if old_signature_url and old_signature_url.startswith('https://storage.googleapis.com/'):
+            # Extract the key from the URL and delete the old signature
+            try:
+                old_key = old_signature_url.replace(f"https://storage.googleapis.com/{gcs_client.bucket_name}/", "")
+                gcs_client.delete_gcs_object(old_key)
+                print(f"Deleted old signature: {old_key}")
+            except Exception as e:
+                print(f"Warning: Failed to delete old signature: {e}")
+        
+        # Update with new signature URL
+        current_settings['doctorSignature'] = signature_url
+        
+        # Save updated settings to GCS
+        success = gcs_client.save_data_to_gcs(
+            user_id=current_user_id,
+            data_type="settings",
+            session_id="user_settings",
+            content=json.dumps(current_settings)
+        )
+        
+        if not success:
+            raise Exception("Failed to save settings to GCS")
+        
+        return {"signatureUrl": signature_url, "message": "Signature uploaded successfully"}
+        
+    except Exception as e:
+        print(f"Error uploading signature for user {current_user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload signature: {str(e)}")
+
+@app.delete("/api/v1/delete_signature")
+async def delete_signature(
+    current_user_id: str = Depends(get_user_id)
+):
+    """Delete signature from GCS and user settings"""
+    if not gcs_client:
+        raise HTTPException(status_code=503, detail="GCS client not initialized")
+    
+    try:
+        # Get current settings from GCS
+        settings_key = f"{current_user_id}/settings/user_settings.json"
+        settings_content = gcs_client.get_gcs_object_content(settings_key)
+        
+        if settings_content:
+            current_settings = json.loads(settings_content)
+        else:
+            current_settings = DEFAULT_USER_SETTINGS.copy()
+        
+        # Delete the signature file from GCS if it exists
+        signature_url = current_settings.get('doctorSignature')
+        if signature_url and signature_url.startswith('https://storage.googleapis.com/'):
+            try:
+                # Extract the key from the URL
+                signature_key = signature_url.replace(f"https://storage.googleapis.com/{gcs_client.bucket_name}/", "")
+                deleted = gcs_client.delete_gcs_object(signature_key)
+                if deleted:
+                    print(f"Deleted signature file from GCS: {signature_key}")
+                else:
+                    print(f"Signature file not found in GCS: {signature_key}")
+            except Exception as e:
+                print(f"Warning: Failed to delete signature file from GCS: {e}")
+        
+        # Remove signature URL from settings
+        current_settings['doctorSignature'] = None
+        
+        # Save updated settings to GCS
+        success = gcs_client.save_data_to_gcs(
+            user_id=current_user_id,
+            data_type="settings",
+            session_id="user_settings",
+            content=json.dumps(current_settings)
+        )
+        
+        if not success:
+            raise Exception("Failed to save settings to GCS")
+        
+        return {"message": "Signature deleted successfully"}
+        
+    except Exception as e:
+        print(f"Error deleting signature for user {current_user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete signature: {str(e)}")
+
+@app.post("/api/v1/migrate_signature")
+async def migrate_signature(
+    current_user_id: str = Depends(get_user_id)
+):
+    """Migrate base64 signature to GCS file storage"""
+    import base64
+    
+    if not gcs_client:
+        raise HTTPException(status_code=503, detail="GCS client not initialized")
+    
+    try:
+        # Get current settings
+        settings_key = f"{current_user_id}/settings/user_settings.json"
+        settings_content = gcs_client.get_gcs_object_content(settings_key)
+        
+        if not settings_content:
+            return {"message": "No settings found", "migrated": False}
+        
+        current_settings = json.loads(settings_content)
+        signature_data = current_settings.get('doctorSignature')
+        
+        # Check if signature exists and is base64
+        if not signature_data:
+            return {"message": "No signature found", "migrated": False}
+        
+        if signature_data.startswith('https://'):
+            return {"message": "Signature already migrated to GCS", "migrated": False}
+        
+        if not signature_data.startswith('data:'):
+            return {"message": "Invalid signature format", "migrated": False}
+        
+        # Parse base64 data URL
+        try:
+            # Format: data:image/png;base64,iVBORw0KGgo...
+            header, base64_data = signature_data.split(',', 1)
+            mime_type = header.split(':')[1].split(';')[0]
+            
+            # Decode base64
+            image_data = base64.b64decode(base64_data)
+            
+            # Determine file extension
+            ext_map = {
+                'image/jpeg': 'jpg',
+                'image/jpg': 'jpg',
+                'image/png': 'png',
+                'image/gif': 'gif',
+                'image/webp': 'webp'
+            }
+            file_ext = ext_map.get(mime_type, 'png')
+            
+            # Generate filename
+            timestamp = int(time.time() * 1000)
+            signature_filename = f"signature_migrated_{timestamp}.{file_ext}"
+            
+            # Upload to GCS
+            success = gcs_client.save_data_to_gcs(
+                user_id=current_user_id,
+                data_type="signatures",
+                session_id=signature_filename,
+                content=image_data,
+                content_type=mime_type
+            )
+            
+            if not success:
+                raise Exception("Failed to upload migrated signature to GCS")
+            
+            # Generate public URL
+            signature_key = f"{current_user_id}/signatures/{signature_filename}"
+            signature_url = f"https://storage.googleapis.com/{gcs_client.bucket_name}/{signature_key}"
+            
+            # Update settings with new URL
+            current_settings['doctorSignature'] = signature_url
+            
+            # Save updated settings
+            success = gcs_client.save_data_to_gcs(
+                user_id=current_user_id,
+                data_type="settings",
+                session_id="user_settings",
+                content=json.dumps(current_settings)
+            )
+            
+            if not success:
+                raise Exception("Failed to save updated settings")
+            
+            print(f"Successfully migrated signature for user {current_user_id} to {signature_url}")
+            return {"message": "Signature migrated successfully", "signatureUrl": signature_url, "migrated": True}
+            
+        except Exception as e:
+            print(f"Error parsing base64 data: {e}")
+            raise HTTPException(status_code=400, detail=f"Failed to parse base64 data: {str(e)}")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error migrating signature for user {current_user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to migrate signature: {str(e)}")
+
 # --- End User Settings --- #
 
 class SaveSessionRequest(BaseModel):

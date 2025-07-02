@@ -1,12 +1,12 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. 
 
 ## Project Overview
 
-This is a multi tenat HIPAA-compliant medical transcription application that converts audio recordings into structured medical notes. The system uses speech-to-text services (Deepgram for medical, Speechmatics for multilingual) and LLM-based formatting (Google Vertex AI) to produce professional medical documentation.  
+This is a multi tenat HIPAA-compliant medical transcription application that converts audio recordings into structured medical notes. The system uses speech-to-text services (Deepgram for medical, Speechmatics for multilingual) and LLM-based formatting (Google Vertex AI) to produce professional medical documentation.  This file is getting towards production if you see code that could be refactored to be improved or made shorter for maintainability please advise me. 
 
-**Current Status**: Active migration from AWS to Google Cloud Platform (branch: `gcp-migration`)
+**Current Status**: Active migration from AWS to Google Cloud Platform (branch: `gcp-migration`) 
 
 ## Quick Reference
 
@@ -66,3 +66,26 @@ firebase deploy           # Deploy Firebase (Firestore rules, hosting)
 firebase deploy --only firestore  # Deploy only Firestore rules
 ```
 -
+refactor @recordingview 7/1/25
+1. Created reusable hooks and utilities:
+    - useTranscriptionWebSocket - Manages WebSocket
+  connections
+    - useAudioRecording - Handles audio recording logic
+    - sessionSaveUtils.js - Contains save/draft logic
+    - recordingConstants.js - All magic strings and constants
+  2. Simplified state management:
+    - Removed redundant combinedTranscript state (now computed
+   with useMemo)
+    - Combined error states from different sources
+    - Removed unnecessary refs
+  3. Cleaned up code:
+    - Removed all console.log statements
+    - Removed legacy WebSocket message handling
+    - Extracted complex functions into smaller, focused
+  utilities
+    - Used constants instead of magic strings
+  4. Improved maintainability:
+    - WebSocket logic is now encapsulated and reusable
+    - Audio recording logic is separate from UI concerns
+    - Save/draft logic is extracted and testable
+    - Constants are centralized

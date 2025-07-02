@@ -1,8 +1,23 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/FirebaseAuthContext';
 import { useRecordings } from '../contexts/RecordingsContext';
 import PreviousFindingsEnhanced from './PreviousFindingsEnhanced';
 import useTranscriptionSessionStore from '../stores/transcriptionSessionStore';
+import { useTranscriptionWebSocket } from '../hooks/useTranscriptionWebSocket';
+import { useAudioRecording } from '../hooks/useAudioRecording';
+import { 
+  buildSaveSessionPayload, 
+  saveSessionToBackend, 
+  saveDraftToBackend 
+} from '../utils/sessionSaveUtils';
+import { 
+  RECORDING_STATUS, 
+  WS_MESSAGE_TYPES, 
+  WS_CLOSE_CODES,
+  ERROR_MESSAGES,
+  WS_INIT_DELAY,
+  LOCATION_LEAVE_OUT
+} from '../constants/recordingConstants';
 import {
   Box,
   Button,
@@ -50,504 +65,303 @@ function RecordingView({
   const { user, getToken } = useAuth();
   const { startPendingRecording, updateRecording, removeRecording, fetchUserRecordings, selectRecording } = useRecordings();
 
-  const [isRecording, setIsRecording] = useState(false);
   const [hasStreamedOnce, setHasStreamedOnce] = useState(!!resumeData);
-  const [error, setError] = useState(null);
   const [finalTranscript, setFinalTranscript] = useState(resumeData?.savedTranscript || '');
   const [currentInterimTranscript, setCurrentInterimTranscript] = useState('');
-  const [combinedTranscript, setCombinedTranscript] = useState(resumeData?.savedTranscript || '');
   const [sessionId, setSessionId] = useState(resumeData?.sessionId || null);
   const [isSessionSaved, setIsSessionSaved] = useState(false);
   const [saveStatusMessage, setSaveStatusMessage] = useState('');
   const [currentProfileId, setCurrentProfileId] = useState(resumeData?.profileId || selectedProfileId);
   const [showCloseConfirmation, setShowCloseConfirmation] = useState(false);
+  const [error, setError] = useState(null);
 
-  const mediaRecorderRef = useRef(null);
-  const webSocketRef = useRef(null);
-  const audioStreamRef = useRef(null);
+  // Use custom hooks
+  const { 
+    connect: connectWebSocket, 
+    disconnect: disconnectWebSocket, 
+    sendMessage, 
+    isConnected: isWebSocketConnected,
+    error: wsError 
+  } = useTranscriptionWebSocket();
+  
+  const { 
+    startRecording: startAudioRecording, 
+    stopRecording: stopAudioRecording, 
+    cleanup: cleanupAudio,
+    isRecording,
+    error: audioError 
+  } = useAudioRecording();
 
-  // PHI-safe debug logging
-  console.log("RecordingView - location provided:", !!selectedLocation);
-  console.log("RecordingView - patient details provided:", !!patientDetails);
-  console.log("RecordingView - patient context provided:", !!patientContext);
+  // Compute combined transcript instead of storing it
+  const combinedTranscript = useMemo(() => 
+    finalTranscript + currentInterimTranscript, 
+    [finalTranscript, currentInterimTranscript]
+  );
 
+  // Combine errors from different sources
   useEffect(() => {
-    setCombinedTranscript(finalTranscript + currentInterimTranscript);
-  }, [finalTranscript, currentInterimTranscript]);
+    setError(wsError || audioError || null);
+  }, [wsError, audioError]);
 
-  // Handle resuming a draft session
-  useEffect(() => {
-    if (resumeData && resumeData.sessionId) {
-      // Don't update the status when resuming - keep it as draft until actually saved
-      // This prevents the race condition where draft status gets overwritten
-      console.log('[RecordingView] Resuming draft session:', resumeData.sessionId);
-    }
-  }, [resumeData]);
 
+
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
-        console.log("[WebSocket] Closing due to component unmount or panel close.");
-        webSocketRef.current.close();
-        webSocketRef.current = null;
-      }
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-        console.log("[MediaRecorder] Stopping due to component unmount or panel close.");
-        mediaRecorderRef.current.stop();
-        mediaRecorderRef.current = null;
-      }
-      if (audioStreamRef.current) {
-        console.log("[Stream] Stopping audio stream tracks due to component unmount or panel close.");
-        audioStreamRef.current.getTracks().forEach(track => track.stop());
-        audioStreamRef.current = null;
-      }
+      disconnectWebSocket();
+      cleanupAudio();
     };
-  }, []);
+  }, [disconnectWebSocket, cleanupAudio]);
+
+  const handleWebSocketMessage = (message) => {
+    if (message.type === WS_MESSAGE_TYPES.SESSION_INIT) {
+      const backendSessionId = message.session_id;
+      
+      if (!resumeData || !resumeData.sessionId) {
+        setSessionId(backendSessionId);
+        startPendingRecording(backendSessionId, patientDetails || 'New Session');
+      }
+      setError('');
+    } else if (message.type === WS_MESSAGE_TYPES.TRANSCRIPT) {
+      if (message.is_final) {
+        setFinalTranscript(prev => (prev ? prev + ' ' : '') + message.text);
+        setCurrentInterimTranscript('');
+      } else {
+        setCurrentInterimTranscript(message.text);
+      }
+    } else if (message.type === WS_MESSAGE_TYPES.TRANSLATION) {
+      const translationText = `[${message.language?.toUpperCase() || 'TRANSLATION'}] ${message.text}`;
+      if (message.is_final) {
+        setFinalTranscript(prev => (prev ? prev + '\n' : '') + translationText);
+        setCurrentInterimTranscript('');
+      } else {
+        setCurrentInterimTranscript(translationText);
+      }
+    } else if (message.type === WS_MESSAGE_TYPES.ERROR) {
+      setError(`Streaming error: ${message.message}`);
+    } else if (message.type === WS_MESSAGE_TYPES.STATUS) {
+      if (message.message.includes('GCS') || message.message.includes('Vertex')) {
+        setSaveStatusMessage(prev => prev ? `${prev}\n${message.message}` : message.message);
+      }
+    } else if (message.type === 'legacy') {
+      // Handle legacy plain text messages
+      handleLegacyMessage(message.text);
+    }
+  };
+
+  const handleLegacyMessage = (text) => {
+    if (text.startsWith('Interim: ')) {
+      setCurrentInterimTranscript(text.substring('Interim: '.length));
+    } else if (text.startsWith('Final: ')) {
+      setFinalTranscript(prev => (prev ? prev + ' ' : '') + text.substring('Final: '.length));
+      setCurrentInterimTranscript('');
+    } else if (text.startsWith('SessionID: ')) {
+      const id = text.substring('SessionID: '.length);
+      setSessionId(id);
+      setError('');
+    } else if (text.startsWith('Error: ')) {
+      setError(`Streaming error: ${text.substring('Error: '.length)}`);
+    }
+  };
 
   const startRecordingProcess = async () => {
+    console.log('[RecordingView] Starting recording process...');
     setError(null);
     if (!hasStreamedOnce || !sessionId) {
       setFinalTranscript('');
       setCurrentInterimTranscript('');
-      setCombinedTranscript('');
       setIsSessionSaved(false);
       setSaveStatusMessage('');
-
-      // Don't create a session ID here - wait for the backend to provide one
-      console.log("[RecordingView] Starting new recording session...");
     }
-
-    const activeProfile = userSettings.transcriptionProfiles?.find(p => p.id === currentProfileId);
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioStreamRef.current = stream;
-
-      if (webSocketRef.current && webSocketRef.current.readyState !== WebSocket.CLOSED) {
-        console.log("[WebSocket] Previous WebSocket connection exists. State:", webSocketRef.current.readyState, ". Closing it before resume.");
-        webSocketRef.current.close();
-        webSocketRef.current = null;
-      }
-
       // Get the access token for WebSocket authentication
       const accessToken = await getToken();
+      console.log('[RecordingView] Got access token');
       
       // Choose the correct WebSocket endpoint based on multilingual setting
-      const wsEndpoint = isMultilingual 
-        ? `ws://localhost:8000/stream/multilingual?token=${encodeURIComponent(accessToken)}`  // Speechmatics for multilingual
-        : `ws://localhost:8000/stream?token=${encodeURIComponent(accessToken)}`;              // Deepgram for monolingual medical
+      const wsBaseUrl = isMultilingual 
+        ? 'ws://localhost:8000/stream/multilingual'
+        : 'ws://localhost:8000/stream';
+      
+      console.log('[RecordingView] Connecting to WebSocket:', wsBaseUrl);
 
-      console.log(`[WebSocket] Attempting to connect to ${wsEndpoint} for ${isMultilingual ? 'multilingual (Speechmatics)' : 'monolingual medical (Deepgram)'} transcription...`);
-      webSocketRef.current = new WebSocket(wsEndpoint);
-
-      webSocketRef.current.onopen = () => {
-        console.log('[WebSocket] Connection OPENED successfully.');
-        setError(null);
-
-        // Send initial metadata for profile selection before anything else
-        if (user && (user.uid || user.sub) && currentProfileId) {
-          const initialMetadata = {
-            type: 'initial_metadata',
-            user_id: user.uid || user.sub,
-            profile_id: currentProfileId,
-            is_multilingual: isMultilingual,
-            target_language: targetLanguage,
-            // Include session_id if resuming a draft to reuse the same session
-            session_id: resumeData?.sessionId || undefined,
-            // Include date_of_service if in dictation mode
-            date_of_service: (isDictationMode && dateOfService && dateOfService.trim()) ? dateOfService : undefined
-          };
-          
-          try {
-            webSocketRef.current.send(JSON.stringify(initialMetadata));
-            console.log('[WebSocket] Sent initial_metadata:', initialMetadata);
-            console.log('[WebSocket] Dictation mode details:', {
-              isDictationMode,
-              dateOfService,
-              sentDateOfService: initialMetadata.date_of_service
-            });
-          } catch (error) {
-            console.error('[WebSocket] Error sending initial_metadata:', error);
-            setError('Failed to send initial configuration. Please try again.');
-            return;
+      await connectWebSocket(wsBaseUrl, {
+        accessToken,
+        onOpen: handleWebSocketOpen,
+        onMessage: handleWebSocketMessage,
+        onError: (error) => {
+          console.error('[RecordingView] WebSocket error:', error);
+          stopAudioRecording();
+        },
+        onClose: (event) => {
+          console.log('[RecordingView] WebSocket closed:', event.code, event.reason);
+          if (isRecording && event.code !== WS_CLOSE_CODES.NORMAL) {
+            setError(ERROR_MESSAGES.WS_CLOSED_UNEXPECTED);
           }
-        } else {
-          console.warn('[WebSocket] Could not send initial_metadata: user_id or profile_id missing.', { userId: user ? (user.uid || user.sub) : 'undefined', profileId: currentProfileId });
+          stopAudioRecording();
         }
-
-        if (audioStreamRef.current) {
-          // Small delay to ensure WebSocket is fully ready after sending initial metadata
-          setTimeout(() => {
-            if (!webSocketRef.current || webSocketRef.current.readyState !== WebSocket.OPEN) {
-              console.error('[WebSocket] Connection lost before MediaRecorder could start');
-              setError('WebSocket connection lost. Please try again.');
-              return;
-            }
-            
-            mediaRecorderRef.current = new MediaRecorder(audioStreamRef.current, { mimeType: 'audio/webm' });
-
-            mediaRecorderRef.current.ondataavailable = (event) => {
-              if (event.data.size > 0 && webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
-                webSocketRef.current.send(event.data);
-              }
-            };
-
-          mediaRecorderRef.current.onstop = () => {
-            console.log("[MediaRecorder] MediaRecorder stopped.");
-            if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
-              console.log("[WebSocket] Sending EOS due to MediaRecorder stop.");
-              webSocketRef.current.send(JSON.stringify({ type: 'eos' }));
-            }
-          };
-
-          mediaRecorderRef.current.onerror = (event) => {
-            console.error('[MediaRecorder] MediaRecorder error:', event.error);
-            setError(`MediaRecorder error: ${event.error.name}. Please ensure microphone access and try again.`);
-            setIsRecording(false);
-            if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
-              console.log("[WebSocket] Closing WebSocket due to MediaRecorder error.");
-              webSocketRef.current.close();
-            }
-          };
-
-            mediaRecorderRef.current.start(1000);
-            console.log("[MediaRecorder] MediaRecorder started.");
-            setIsRecording(true);
-            setHasStreamedOnce(true);
-          }, 100); // 100ms delay to ensure WebSocket is ready
-        } else {
-          console.error("[WebSocket] Audio stream is not available in onopen. Cannot start MediaRecorder.");
-          setError("Audio stream lost. Please try again.");
-          setIsRecording(false);
-        }
-      };
-
-      webSocketRef.current.onmessage = (event) => {
-        let message = event.data;
-        if (typeof message === 'string') {
-          if (message.startsWith('\uFEFF')) {
-            message = message.substring(1);
-          }
-
-          try {
-            const parsedMessage = JSON.parse(message);
-            if (parsedMessage.type === 'session_init') {
-              console.log('Received session_init (JSON):', parsedMessage);
-              const backendSessionId = parsedMessage.session_id;
-              
-              // Only update session ID if we don't already have one from resumeData
-              if (!resumeData || !resumeData.sessionId) {
-                setSessionId(backendSessionId);
-                console.log('[WebSocket] Creating new pending recording with backend session ID:', backendSessionId);
-                startPendingRecording(backendSessionId, patientDetails || 'New Session');
-              } else {
-                // We're resuming a draft - the session ID should already be set
-                console.log('[WebSocket] Resuming draft with existing session ID:', resumeData.sessionId);
-                // Don't update the recording here - it can cause race conditions
-                // The recording is already in draft state and should stay that way
-              }
-              setError('');
-            } else if (parsedMessage.type === 'transcript') {
-              if (parsedMessage.is_final) {
-                setFinalTranscript(prev => (prev ? prev + ' ' : '') + parsedMessage.text);
-                setCurrentInterimTranscript('');
-              } else {
-                setCurrentInterimTranscript(parsedMessage.text);
-              }
-            } else if (parsedMessage.type === 'translation') {
-              // Handle translation messages from Speechmatics
-              console.log('Received translation message:', parsedMessage);
-              const translationText = `[${parsedMessage.language?.toUpperCase() || 'TRANSLATION'}] ${parsedMessage.text}`;
-              if (parsedMessage.is_final) {
-                setFinalTranscript(prev => (prev ? prev + '\n' : '') + translationText);
-                setCurrentInterimTranscript('');
-              } else {
-                setCurrentInterimTranscript(translationText);
-              }
-            } else if (parsedMessage.type === 'error') {
-              console.error('Received error from server (JSON):', parsedMessage.message);
-              setError(`Streaming error: ${parsedMessage.message}`);
-            } else if (parsedMessage.type === 'status') {
-              console.log('Received status from server (JSON):', parsedMessage.message);
-              if (parsedMessage.message.includes('GCS') || parsedMessage.message.includes('Vertex')) {
-                setSaveStatusMessage(prev => prev ? `${prev}\n${parsedMessage.message}` : parsedMessage.message);
-              }
-            } else {
-              console.warn('Received unknown JSON message type:', parsedMessage);
-            }
-          } catch (e) {
-            if (message.startsWith('Interim: ')) {
-              const transcript = message.substring('Interim: '.length);
-              setCurrentInterimTranscript(transcript);
-            } else if (message.startsWith('Final: ')) {
-              const transcript = message.substring('Final: '.length);
-              setFinalTranscript(prev => (prev ? prev + ' ' : '') + transcript);
-              setCurrentInterimTranscript('');
-            } else if (message.startsWith('SessionID: ')) {
-              const id = message.substring('SessionID: '.length);
-              setSessionId(id);
-              console.log('Session ID received (plain text):', id);
-              setError('');
-            } else if (message.startsWith('Error: ')) {
-              const errorMessage = message.substring('Error: '.length);
-              console.error('Error from backend (plain text):', errorMessage);
-              setError(`Streaming error: ${errorMessage}`);
-            } else if (message.startsWith('Status: ')) {
-              const statusMessage = message.substring('Status: '.length);
-              console.log('Status from backend (plain text):', statusMessage);
-            } else if (message.startsWith("WebSocket connection established with Session ID:")) {
-                const parts = message.split(': ');
-                if (parts.length > 1) {
-                    const id = parts[parts.length -1].trim();
-                    setSessionId(id);
-                    console.log('Session ID received (legacy format):', id);
-                    setError('');
-                }
-            } else {
-              console.warn('Received unhandled string message from WebSocket (after failing JSON parse):', message);
-            }
-          }
-        } else {
-          console.warn('Received non-string message from WebSocket:', message);
-        }
-      };
-
-      webSocketRef.current.onerror = (event) => {
-        console.error('[WebSocket] WebSocket ERROR:', event);
-        setError('WebSocket connection error. Please check your connection or the server and try again.');
-        setIsRecording(false);
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-          console.log("[MediaRecorder] Stopping MediaRecorder due to WebSocket error.");
-          mediaRecorderRef.current.stop();
-        }
-      };
-
-      webSocketRef.current.onclose = (event) => {
-        console.log(`[WebSocket] WebSocket connection CLOSED. Code: ${event.code}, Reason: '${event.reason}', Clean: ${event.wasClean}`);
-        if (isRecording) {
-          console.warn("[WebSocket] Connection closed unexpectedly while 'isRecording' was true.");
-          setError("Live connection lost. You might need to resume or restart.");
-          setIsRecording(false);
-        }
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-          console.log("[MediaRecorder] WebSocket closed, ensuring MediaRecorder is stopped.");
-          mediaRecorderRef.current.stop();
-        }
-      };
-
+      });
+      
+      console.log('[RecordingView] WebSocket connected successfully');
     } catch (err) {
-      console.error('[Stream] Error starting recording process (getUserMedia or other setup):', err);
-      setError(`Error starting stream: ${err.message}. Please ensure microphone access.`);
-      setIsRecording(false);
+      console.error('[RecordingView] Error in startRecordingProcess:', err);
+      setError(`Error starting stream: ${err.message}. ${ERROR_MESSAGES.MICROPHONE_ACCESS}`);
     }
+  };
+
+  const handleWebSocketOpen = () => {
+    // Send initial metadata
+    if (user && (user.uid || user.sub) && currentProfileId) {
+      const initialMetadata = {
+        type: 'initial_metadata',
+        user_id: user.uid || user.sub,
+        profile_id: currentProfileId,
+        is_multilingual: isMultilingual,
+        target_language: targetLanguage,
+        session_id: resumeData?.sessionId || undefined,
+        date_of_service: (isDictationMode && dateOfService && dateOfService.trim()) ? dateOfService : undefined
+      };
+      
+      // Debug logging for dictation mode
+      if (isDictationMode) {
+        console.log('[DICTATION DEBUG] Sending WebSocket metadata:', {
+          isDictationMode,
+          dateOfService,
+          trimmedDate: dateOfService?.trim(),
+          willSendDate: !!(isDictationMode && dateOfService && dateOfService.trim())
+        });
+      }
+      
+      const sent = sendMessage(initialMetadata);
+      
+      if (!sent) {
+        setError(ERROR_MESSAGES.INITIAL_METADATA_SEND);
+        return;
+      }
+    }
+
+    // Start audio recording after a small delay
+    setTimeout(async () => {
+      const started = await startAudioRecording(
+        (audioData) => {
+          // Send audio data through WebSocket
+          sendMessage(audioData);
+        },
+        () => {
+          // On recording stop, send EOS
+          sendMessage({ type: 'eos' });
+        }
+      );
+      
+      if (started) {
+        setHasStreamedOnce(true);
+      } else {
+        setError(ERROR_MESSAGES.AUDIO_STREAM_LOST);
+        disconnectWebSocket();
+      }
+    }, WS_INIT_DELAY);
   };
 
   const stopRecording = () => {
-    console.log("[Action] stopRecording (Pause) called.");
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-      console.log("[MediaRecorder] Calling MediaRecorder.stop().");
-      mediaRecorderRef.current.stop();
-    } else {
-      console.log("[MediaRecorder] MediaRecorder not recording or not initialized.");
-    }
-
-    if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
-      console.log("[WebSocket] Closing WebSocket connection explicitly from stopRecording.");
-      webSocketRef.current.close(1000, "User paused recording");
-      webSocketRef.current = null;
-    } else {
-      console.log("[WebSocket] WebSocket not open or not initialized when stopRecording called.");
-    }
-
-    if (audioStreamRef.current) {
-      console.log("[Stream] Stopping audio stream tracks.");
-      audioStreamRef.current.getTracks().forEach(track => track.stop());
-      audioStreamRef.current = null;
-    }
-    setIsRecording(false);
+    stopAudioRecording();
+    disconnectWebSocket(WS_CLOSE_CODES.NORMAL, WS_CLOSE_CODES.USER_PAUSE);
   };
 
   const handleSaveSession = async () => {
+    // Validation
     if (isRecording) {
-      setError('Please pause or stop streaming before generating notes.');
+      setError(ERROR_MESSAGES.RECORDING_ACTIVE);
       return;
     }
     if (!sessionId) {
-      setError('Session ID is missing. Cannot save.');
+      setError(ERROR_MESSAGES.NO_SESSION_ID);
       setSaveStatusMessage('Error: Session ID missing.');
       return;
     }
     if (!combinedTranscript.trim()) {
-      setError('No transcript to save.');
+      setError(ERROR_MESSAGES.NO_TRANSCRIPT);
       setSaveStatusMessage('No transcript content to save.');
       return;
     }
-
     if (!user || (!user.uid && !user.sub)) {
-      setError('User not authenticated or user ID is missing. Cannot save session.');
+      setError(ERROR_MESSAGES.NO_USER_AUTH);
       setSaveStatusMessage('Error: User authentication issue.');
       return;
     }
 
-    // Update status to 'processing' immediately to show processing indicator
+    // Update status to 'processing' immediately
     updateRecording(sessionId, { 
-      status: 'processing', 
+      status: RECORDING_STATUS.PROCESSING, 
       name: `${patientDetails || 'New Note'}` 
     });
 
     setSaveStatusMessage('Generating and saving notes...');
     setIsSessionSaved(false);
-
-    console.log("[RecordingView] Saving session with ID:", sessionId);
     
     try {
       const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-      const url = `${API_BASE_URL}/api/v1/save_session_data`;
+      const accessToken = await getToken();
       
-      // Debug logging for date_of_service
-      console.log('Save session debug:', {
+      const payload = buildSaveSessionPayload({
+        sessionId,
+        transcript: combinedTranscript,
+        location: selectedLocation,
+        patientDetails,
+        patientContext,
+        selectedPatient,
+        userSettings,
+        currentProfileId,
+        user,
         isDictationMode,
         dateOfService,
-        trimmedDate: dateOfService?.trim(),
-        willSendDate: (isDictationMode && dateOfService && dateOfService.trim()) ? dateOfService : null
+        evaluationType,
+        initialEvaluationId,
+        includePreviousFindingsInPrompt,
+        previousFindings
       });
       
-      // Get the active transcription profile and its LLM instructions
+      // Debug logging for dictation mode
+      if (isDictationMode) {
+        console.log('[DICTATION DEBUG] Saving with payload:', {
+          isDictationMode,
+          dateOfService,
+          date_of_service_in_payload: payload.date_of_service,
+          willSendDate: !!(isDictationMode && dateOfService && dateOfService.trim())
+        });
+      }
+      
+      const result = await saveSessionToBackend(payload, accessToken, API_BASE_URL);
+      
+      setSaveStatusMessage('Notes generated and saved!');
+      setIsSessionSaved(true);
+      
+      const savedName = patientDetails || `Session ${sessionId}`;
       const activeProfile = userSettings.transcriptionProfiles?.find(p => p.id === currentProfileId);
-      const llmTemplate = activeProfile ? activeProfile.name : 'General Summary';
-      const llmTemplateId = activeProfile ? activeProfile.id : null;
-      const llmInstructions = activeProfile ? (activeProfile.llmInstructions || activeProfile.llmPrompt) : null;
       const encounterType = activeProfile ? activeProfile.name : patientContext || 'General';
       
-      // Comprehensive debug logging
-      console.log('=== SAVE SESSION DEBUG ===');
-      console.log('currentProfileId:', currentProfileId);
-      // PHI-safe logging
-      console.log('userSettings.transcriptionProfiles count:', userSettings.transcriptionProfiles?.length || 0);
-      console.log('activeProfile found:', activeProfile);
-      if (activeProfile) {
-        console.log('activeProfile details:', {
-          id: activeProfile.id,
-          name: activeProfile.name,
-          llmInstructions: activeProfile.llmInstructions ? `${activeProfile.llmInstructions.substring(0, 100)}...` : null,
-          llmPrompt: activeProfile.llmPrompt ? `${activeProfile.llmPrompt.substring(0, 100)}...` : null,
-          hasInstructions: !!activeProfile.llmInstructions,
-          hasPrompt: !!activeProfile.llmPrompt
-        });
-      }
-      console.log('Final values being sent:');
-      console.log('- llmTemplate:', llmTemplate);
-      console.log('- llmTemplateId:', llmTemplateId);
-      console.log('- encounterType:', encounterType);
-      console.log('- hasInstructions:', !!llmInstructions);
-      console.log('- patient_id:', selectedPatient?.id || 'No patient selected');
-      console.log('- patient_name:', patientDetails);
-      console.log('- isDictationMode:', isDictationMode);
-      console.log('- dateOfService:', dateOfService);
-      console.log('- date_of_service being sent:', (isDictationMode && dateOfService && dateOfService.trim()) ? dateOfService : null);
-      console.log('==========================')
-      
-      // Embed location data in the transcript content itself as a backup
-      const finalTranscriptContent = combinedTranscript;
-      let transcriptWithLocation = finalTranscriptContent;
-      if (selectedLocation && selectedLocation.trim() && selectedLocation !== '__LEAVE_OUT__') {
-        const locationHeader = `CLINIC LOCATION:\n${selectedLocation.trim()}\n\n---\n\n`;
-        transcriptWithLocation = locationHeader + finalTranscriptContent;
-      }
-      
-      const requestBody = {
-        session_id: sessionId,
-        final_transcript_text: transcriptWithLocation,
-        patient_context: patientContext,
-        patient_name: patientDetails,
-        patient_id: selectedPatient?.id || null,
-        encounter_type: encounterType,
-        llm_template: llmTemplate,
-        llm_template_id: llmTemplateId,
-        location: selectedLocation === '__LEAVE_OUT__' ? '' : selectedLocation,
-        user_id: user.uid || user.sub,
-        date_of_service: (isDictationMode && dateOfService && dateOfService.trim()) ? dateOfService : null,
-        evaluation_type: evaluationType || null,
-        initial_evaluation_id: initialEvaluationId || null,
-        previous_findings: (includePreviousFindingsInPrompt && previousFindings) ? previousFindings : null
-      };
-      
-      console.log('=== ACTUAL REQUEST BODY ===');
-      console.log('Include previous findings in prompt:', includePreviousFindingsInPrompt);
-      console.log('Has previous findings:', !!previousFindings);
-      console.log('Will send findings:', !!(includePreviousFindingsInPrompt && previousFindings));
-      console.log(JSON.stringify(requestBody, null, 2));
-      console.log('===========================');
-      
-      const accessToken = await getToken();
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify(requestBody),
+      updateRecording(sessionId, {
+        status: RECORDING_STATUS.PROCESSING,
+        name: savedName,
+        gcsPathTranscript: result.saved_paths?.original_transcript,
+        gcsPathPolished: result.saved_paths?.polished_transcript,
+        gcsPathAudio: result.saved_paths?.audio,
+        context: patientContext,
+        location: selectedLocation === LOCATION_LEAVE_OUT ? '' : selectedLocation,
+        encounterType: encounterType
       });
-
-      let result = {};
-      try {
-        result = await response.json();
-      } catch (jsonError) {
-        console.error('Failed to parse server response as JSON:', jsonError);
-        if (response.ok) {
-          throw new Error(`Successfully saved but failed to parse response: ${response.statusText || 'Unknown parse error'}`);
-        }
+      
+      if (resumeData && selectRecording) {
+        selectRecording(null);
       }
-
-      if (response.ok) {
-        setSaveStatusMessage('Notes generated and saved!');
-        setIsSessionSaved(true);
-        
-        // Keep the original patient name if provided, otherwise use a fallback
-        const savedName = patientDetails || `Session ${sessionId}`;
-        
-        // Update with correct property names that match RecordingsContext expectations
-        // Keep status as 'processing' until transcript is ready
-        updateRecording(sessionId, {
-          status: 'processing', // Keep as processing until backend confirms completion
-          name: savedName,
-          // Don't update date - preserve the original recording start time
-          gcsPathTranscript: result.saved_paths?.original_transcript,
-          gcsPathPolished: result.saved_paths?.polished_transcript,
-          gcsPathAudio: result.saved_paths?.audio,
-          context: patientContext,
-          location: selectedLocation === '__LEAVE_OUT__' ? '' : selectedLocation,
-          encounterType: encounterType
-        });
-        
-        // Clear the selection to prevent the "still being processed" error
-        // This ensures the UI doesn't try to show a draft or saving status recording
-        if (resumeData && selectRecording) {
-          selectRecording(null);
-        }
-        
-        // Immediately fetch recordings to get initial status
-        if (fetchUserRecordings) {
-          console.log('Fetching updated recordings after save...');
-          fetchUserRecordings();
-        }
-        
-        // The polling mechanism in useRecordings will handle checking for completion
-      } else {
-        const errorText = result.error || result.detail || `HTTP ${response.status}: ${response.statusText}`;
-        console.error('Server responded with error:', errorText);
-        setSaveStatusMessage(`Error saving notes: ${errorText}`);
-        updateRecording(sessionId, { 
-          status: 'failed', 
-          name: `Failed: ${patientDetails || 'New Note'}`,
-          error: errorText 
-        });
+      
+      if (fetchUserRecordings) {
+        fetchUserRecordings();
       }
     } catch (error) {
-      console.error('Error saving session:', error);
       setSaveStatusMessage(`Error saving notes: ${error.message}`);
       updateRecording(sessionId, { 
-        status: 'failed', 
+        status: RECORDING_STATUS.FAILED, 
         name: `Failed: ${patientDetails || 'New Note'}`,
         error: error.message 
       });
@@ -573,60 +387,37 @@ function RecordingView({
     }
     
     if (saveAsDraft && sessionId) {
-      // Update local recording to draft status
-      console.log('[DRAFT SAVE] Updating local recording to draft status:', {
-        sessionId,
-        status: 'draft',
-        name: `Draft: ${patientDetails || 'Untitled Session'}`,
-        profileId: currentProfileId,
-        transcriptLength: combinedTranscript?.length
-      });
-      
       updateRecording(sessionId, { 
-        status: 'draft',
+        status: RECORDING_STATUS.DRAFT,
         transcript: combinedTranscript,
         name: `Draft: ${patientDetails || 'Untitled Session'}`,
         profileId: currentProfileId,
-        lastUpdated: new Date().toISOString() // Ensure lastUpdated is set
+        lastUpdated: new Date().toISOString()
       });
       
-      // Save draft to backend
       try {
         const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
         const accessToken = await getToken();
         
-        console.log('[DRAFT SAVE] Calling backend save_draft endpoint...');
-        const response = await fetch(`${API_BASE_URL}/api/v1/save_draft`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({
-            session_id: sessionId,
-            transcript: combinedTranscript,
-            patient_name: patientDetails || 'Untitled Session',
-            profile_id: currentProfileId,
-            user_id: user.uid || user.sub,
-            date_of_service: (isDictationMode && dateOfService && dateOfService.trim()) ? dateOfService : null
-          }),
+        await saveDraftToBackend({
+          sessionId,
+          transcript: combinedTranscript,
+          patientDetails,
+          currentProfileId,
+          user,
+          isDictationMode,
+          dateOfService,
+          accessToken,
+          apiBaseUrl: API_BASE_URL
         });
         
-        if (!response.ok) {
-          console.error('Failed to save draft to backend:', await response.text());
-        } else {
-          console.log('[DRAFT SAVE] Draft saved successfully to backend');
-          // Force a refresh of recordings to get the draft from backend
-          setTimeout(() => {
-            console.log('[DRAFT SAVE] Triggering fetchUserRecordings...');
-            fetchUserRecordings();
-          }, 500);
-        }
+        setTimeout(() => {
+          fetchUserRecordings();
+        }, 500);
       } catch (error) {
-        console.error('Error saving draft to backend:', error);
+        // Error already logged in saveDraftToBackend
       }
     } else if (sessionId && !isSessionSaved) {
-      // User chose to discard - remove the recording
       removeRecording(sessionId);
     }
     

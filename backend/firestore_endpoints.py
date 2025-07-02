@@ -404,7 +404,10 @@ async def save_session_data_firestore(
                 'status': transcript_data['status'],
                 'evaluation_type': transcript_data.get('evaluation_type'),
                 'initial_evaluation_id': transcript_data.get('initial_evaluation_id'),
-                'positive_findings': transcript_data.get('positive_findings')
+                'positive_findings': transcript_data.get('positive_findings'),
+                'date_of_service': transcript_data.get('date_of_service'),
+                'is_dictation': transcript_data.get('is_dictation'),
+                'updated_at': transcript_data['updated_at']
             })
         else:
             # Create new transcript
