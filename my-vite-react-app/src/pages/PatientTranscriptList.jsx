@@ -1,11 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/FirebaseAuthContext';
-import { auth } from '../firebaseConfig';
-import { generatePdfFromText } from '../components/pdfUtils';
 import { useUserSettings } from '../contexts/UserSettingsContext';
-import { shouldShowClinicHeader } from '../utils/encounterTypeUtils';
 import BillingStatement from '../components/BillingStatement';
+
+// Custom hooks
+import { usePatientTranscripts } from '../hooks/usePatientTranscripts';
+import { useTranscriptSelection } from '../hooks/useTranscriptSelection';
+import { useBillingGeneration } from '../hooks/useBillingGeneration';
+import { usePdfGeneration } from '../hooks/usePdfGeneration';
+
+// Utilities
+import { formatDateWithFallback, formatTimeWithTimezone } from '../utils/dateUtils';
+import { UI_TEXT } from '../constants/patientTranscriptConstants';
+
+// MUI Components
 import {
   Box,
   Typography,
@@ -13,15 +22,12 @@ import {
   CardContent,
   Button,
   Chip,
-  Grid,
   IconButton,
   Menu,
   MenuItem,
   CircularProgress,
   Alert,
   Checkbox,
-  FormControlLabel,
-  Divider,
   Breadcrumbs,
   Link,
   Table,
@@ -44,17 +50,12 @@ import {
 import {
   ArrowBack as ArrowBackIcon,
   Print as PrintIcon,
-  Download as DownloadIcon,
   CalendarMonth as CalendarIcon,
   AccessTime as AccessTimeIcon,
   Description as DescriptionIcon,
   MoreVert as MoreVertIcon,
-  CheckBox as CheckBoxIcon,
-  CheckBoxOutlineBlank as CheckBoxOutlineBlankIcon,
-  Person as PersonIcon,
   Receipt as ReceiptIcon
 } from '@mui/icons-material';
-import { format } from 'date-fns';
 
 function PatientTranscriptList() {
   const { patientId } = useParams();
@@ -62,235 +63,71 @@ function PatientTranscriptList() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { userSettings } = useUserSettings();
   
-  const [patient, setPatient] = useState(null);
-  const [transcripts, setTranscripts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [selectedTranscripts, setSelectedTranscripts] = useState(new Set());
+  // Data fetching hook
+  const { 
+    patient, 
+    transcripts, 
+    loading, 
+    error, 
+    fetchTranscriptDetails 
+  } = usePatientTranscripts(patientId, isAuthenticated);
+  
+  // Selection management hook
+  const {
+    selectedTranscripts,
+    handleSelectAll,
+    handleSelectTranscript,
+    clearSelection,
+    getSelectedTranscriptObjects,
+    hasSelection,
+    isAllSelected,
+    isPartiallySelected
+  } = useTranscriptSelection(transcripts);
+  
+  // PDF generation hook
+  const {
+    generatingPreview,
+    generatingDownload,
+    generateTranscriptsPDF
+  } = usePdfGeneration(patient, userSettings);
+  
+  // Billing generation hook
+  const {
+    generatingBilling,
+    showBillingDialog,
+    billingData,
+    billingProgress,
+    showBillingProgress,
+    handleGenerateBilling,
+    closeBillingDialog
+  } = useBillingGeneration();
+  
+  // Local UI state
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedTranscript, setSelectedTranscript] = useState(null);
-  const [generatingPreview, setGeneratingPreview] = useState(false);
-  const [generatingDownload, setGeneratingDownload] = useState(false);
-  const [generatingBilling, setGeneratingBilling] = useState(false);
-  const [showBillingDialog, setShowBillingDialog] = useState(false);
-  const [billingData, setBillingData] = useState(null);
-  const [billingProgress, setBillingProgress] = useState({ step: 0, message: '' });
-  const [showBillingProgress, setShowBillingProgress] = useState(false);
 
-  useEffect(() => {
-    if (isAuthenticated && patientId) {
-      fetchPatientData();
-    }
-  }, [isAuthenticated, patientId]);
-
-  const fetchPatientData = async () => {
-    try {
-      setLoading(true);
-      const token = await auth.currentUser?.getIdToken();
-      
-      // Fetch patient info
-      const patientResponse = await fetch(`/api/v1/patients/${patientId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (patientResponse.ok) {
-        const patientData = await patientResponse.json();
-        setPatient(patientData);
-      } else {
-        throw new Error('Failed to fetch patient');
-      }
-      
-      // Fetch transcripts
-      const transcriptsResponse = await fetch(`/api/v1/patients/${patientId}/transcripts`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (transcriptsResponse.ok) {
-        const transcriptsData = await transcriptsResponse.json();
-        console.log(`Fetched ${transcriptsData.length} transcripts for patient ${patientId}`);
-        setTranscripts(transcriptsData);
-      } else {
-        const errorText = await transcriptsResponse.text();
-        console.error('Failed to fetch transcripts:', transcriptsResponse.status, errorText);
-        throw new Error('Failed to fetch transcripts');
-      }
-    } catch (error) {
-      console.error('Error fetching patient data:', error);
-      setError(error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSelectAll = () => {
-    if (selectedTranscripts.size === transcripts.length) {
-      setSelectedTranscripts(new Set());
-    } else {
-      setSelectedTranscripts(new Set(transcripts.map(t => t.id)));
-    }
-  };
-
-  const handleSelectTranscript = (transcriptId) => {
-    const newSelected = new Set(selectedTranscripts);
-    if (newSelected.has(transcriptId)) {
-      newSelected.delete(transcriptId);
-    } else {
-      newSelected.add(transcriptId);
-    }
-    setSelectedTranscripts(newSelected);
-  };
-
-  // Shared function for generating PDFs
-  const generateTranscriptsPDF = async (previewMode = false) => {
-    if (selectedTranscripts.size === 0) return;
-    
-    // Set the appropriate loading state based on mode
-    if (previewMode) {
-      setGeneratingPreview(true);
-    } else {
-      setGeneratingDownload(true);
-    }
-    
-    try {
-      // Get selected transcript objects
-      const selectedTranscriptObjects = transcripts.filter(t => 
-        selectedTranscripts.has(t.id)
-      );
-      
-      // Sort by date (oldest first)
-      selectedTranscriptObjects.sort((a, b) => 
-        new Date(a.date) - new Date(b.date)
-      );
-      
-      // Check if any transcripts have content
-      const hasContent = selectedTranscriptObjects.some(t => 
-        t.polishedTranscript || t.transcript
-      );
-      
-      console.log('Selected transcripts:', selectedTranscriptObjects.map(t => ({
-        id: t.id,
-        hasPolished: !!t.polishedTranscript,
-        hasOriginal: !!t.transcript,
-        polishedLength: t.polishedTranscript?.length || 0,
-        originalLength: t.transcript?.length || 0
-      })));
-      
-      if (!hasContent) {
-        // If no content, we need to fetch individual transcripts
-        console.log('No transcript content in list, fetching individual transcripts...');
-        const token = await auth.currentUser?.getIdToken();
-        
-        for (let i = 0; i < selectedTranscriptObjects.length; i++) {
-          const transcript = selectedTranscriptObjects[i];
-          try {
-            const response = await fetch(`/api/v1/transcript/${auth.currentUser.uid}/${transcript.id}`, {
-              headers: { 'Authorization': `Bearer ${token}` }
-            });
-            
-            if (response.ok) {
-              const detailedTranscript = await response.json();
-              console.log(`Fetched transcript ${transcript.id}:`, {
-                hasOriginalTranscript: !!detailedTranscript.originalTranscript,
-                hasTranscript: !!detailedTranscript.transcript,
-                hasPolishedTranscript: !!detailedTranscript.polishedTranscript,
-                hasPolishedSnakeCase: !!detailedTranscript.polished_transcript,
-                originalLength: (detailedTranscript.originalTranscript || detailedTranscript.transcript || '').length,
-                polishedLength: (detailedTranscript.polishedTranscript || detailedTranscript.polished_transcript || '').length
-              });
-              // Update the transcript object with the fetched content
-              // Handle both field naming conventions
-              transcript.transcript = detailedTranscript.originalTranscript || detailedTranscript.transcript || detailedTranscript.original_transcript;
-              transcript.polishedTranscript = detailedTranscript.polishedTranscript || detailedTranscript.polished_transcript || detailedTranscript.transcript_polished;
-            }
-          } catch (fetchError) {
-            console.error(`Error fetching transcript ${transcript.id}:`, fetchError);
-          }
-        }
-      }
-      
-      // Create combined transcript content
-      let combinedContent = '';
-      
-      // Add each transcript
-      for (let i = 0; i < selectedTranscriptObjects.length; i++) {
-        const transcript = selectedTranscriptObjects[i];
-        // Get transcript content (prefer polished over original)
-        let content = transcript.polishedTranscript || transcript.transcript || 'No transcript content available';
-        
-        console.log(`Processing transcript ${transcript.id} for PDF:`, {
-          hasPolished: !!transcript.polishedTranscript,
-          hasOriginal: !!transcript.transcript,
-          contentLength: content.length,
-          contentPreview: content.substring(0, 100)
-        });
-        
-        // Check if content already has a clinic location header
-        const hasClinicLocationHeader = content.startsWith('CLINIC LOCATION:');
-        
-        // Use utility function to determine if we should add a clinic header
-        // Only add if: content doesn't already have it, location exists, and encounter type warrants it
-        if (!hasClinicLocationHeader && 
-            transcript.location && 
-            transcript.location.trim() && 
-            shouldShowClinicHeader(transcript.encounterType)) {
-          const locationHeader = `CLINIC LOCATION:\n${transcript.location.trim()}\n\n---\n\n`;
-          content = locationHeader + content;
-        }
-        
-        combinedContent += content;
-        
-        // Add separator between transcripts if not the last one
-        if (i < selectedTranscriptObjects.length - 1) {
-          combinedContent += `\n\n${'='.repeat(80)}\n\n`;
-        }
-      }
-      
-      // PDF options - match the format used in EditableNote
-      const pdfOptions = {
-        doctorName: userSettings.doctorName || '',
-        doctorSignature: userSettings.doctorSignature || '',
-        isSigned: true, // Assuming all saved transcripts are signed
-        clinicLogo: userSettings.clinicLogo || '',
-        includeLogoOnPdf: userSettings.includeLogoOnPdf || false,
-        useProfessionalFormat: true,
-        usePagedFormat: true,
-        previewMode: previewMode // Add preview mode flag
-      };
-      
-      await generatePdfFromText(
-        combinedContent,
-        `${patient.last_name}_${patient.first_name}_transcripts`,
-        '', // location will be extracted from content
-        pdfOptions
-      );
-      
-      // Clear selections after successful PDF generation (only if downloading)
-      if (!previewMode) {
-        setSelectedTranscripts(new Set());
-      }
-      
-    } catch (error) {
-      console.error('Error generating PDF:', error);
-      alert('Error generating PDF. Please try again.');
-    } finally {
-      // Reset the appropriate loading state based on mode
-      if (previewMode) {
-        setGeneratingPreview(false);
-      } else {
-        setGeneratingDownload(false);
-      }
-    }
-  };
-
+  // PDF generation handlers
   const handleViewMultiple = async () => {
-    // Call the shared function with preview mode
-    await generateTranscriptsPDF(true);
+    const selected = getSelectedTranscriptObjects();
+    await generateTranscriptsPDF(selected, true, fetchTranscriptDetails);
+    // Keep selection after preview
   };
 
   const handlePrintAll = async () => {
-    // Call the shared function with download mode
-    await generateTranscriptsPDF(false);
+    const selected = getSelectedTranscriptObjects();
+    const success = await generateTranscriptsPDF(selected, false, fetchTranscriptDetails);
+    if (success) {
+      clearSelection();
+    }
   };
+  
+  // Billing generation handler
+  const onGenerateBilling = () => {
+    const selectedIds = Array.from(selectedTranscripts);
+    handleGenerateBilling(patientId, selectedIds);
+  };
+
+  // Menu handlers
 
   const handleMenuClick = (event, transcript) => {
     setAnchorEl(event.currentTarget);
@@ -300,162 +137,6 @@ function PatientTranscriptList() {
   const handleMenuClose = () => {
     setAnchorEl(null);
     setSelectedTranscript(null);
-  };
-
-  // Parse timestamp from session ID (format: YYYYMMDDHHMMSSxxxxxx)
-  const parseSessionIdTime = (sessionId) => {
-    if (!sessionId || sessionId.length < 14 || !sessionId.substring(0, 14).match(/^\d{14}$/)) {
-      return null;
-    }
-    
-    try {
-      const year = sessionId.substring(0, 4);
-      const month = sessionId.substring(4, 6);
-      const day = sessionId.substring(6, 8);
-      const hour = sessionId.substring(8, 10);
-      const minute = sessionId.substring(10, 12);
-      const second = sessionId.substring(12, 14);
-      
-      // Create UTC date string and parse it
-      // Session IDs are now generated in UTC on the backend
-      // For backward compatibility: session IDs created before June 26, 2025 are in server local time
-      const sessionDate = parseInt(year + month + day);
-      const migrationDate = 20250626; // Date when we switched to UTC
-      
-      if (sessionDate < migrationDate) {
-        // Old session IDs - parse as local time (server was likely in UTC or US timezone)
-        // This is a best-effort approach since we don't know the exact server timezone
-        return new Date(year, month - 1, day, hour, minute, second);
-      } else {
-        // New session IDs - parse as UTC
-        const utcDateString = `${year}-${month}-${day}T${hour}:${minute}:${second}Z`;
-        return new Date(utcDateString);
-      }
-    } catch (error) {
-      return null;
-    }
-  };
-
-  const formatDate = (dateString, sessionId) => {
-    // Try to parse from session ID first for accuracy
-    const sessionDate = parseSessionIdTime(sessionId);
-    if (sessionDate) {
-      try {
-        return format(sessionDate, 'MMM d, yyyy');
-      } catch {
-        // Fallback to dateString
-      }
-    }
-    
-    // Fallback to original date string
-    if (!dateString) return 'N/A';
-    
-    try {
-      // Handle UTC dates (e.g., date_of_accident) without timezone shift
-      if (dateString.endsWith('Z') || dateString.includes('T00:00:00')) {
-        const datePart = dateString.split('T')[0];
-        const [year, month, day] = datePart.split('-');
-        const localDate = new Date(year, month - 1, day);
-        return format(localDate, 'MMM d, yyyy');
-      }
-      
-      return format(new Date(dateString), 'MMM d, yyyy');
-    } catch {
-      return 'Invalid date';
-    }
-  };
-
-  const formatTime = (dateString, sessionId) => {
-    // Try to parse from session ID first for accuracy
-    const sessionDate = parseSessionIdTime(sessionId);
-    if (sessionDate) {
-      try {
-        return sessionDate.toLocaleString(undefined, {
-          hour: '2-digit',
-          minute: '2-digit',
-          timeZoneName: 'short'  // Shows timezone like "PST" or "EST"
-        });
-      } catch {
-        // Fallback to dateString
-      }
-    }
-    
-    // Fallback to original date string
-    if (!dateString) return 'N/A';
-    try {
-      return new Date(dateString).toLocaleString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZoneName: 'short'  // Shows timezone like "PST" or "EST"
-      });
-    } catch {
-      return 'Invalid time';
-    }
-  };
-
-  const handleGenerateBilling = async () => {
-    if (selectedTranscripts.size === 0) return;
-    
-    setGeneratingBilling(true);
-    setShowBillingProgress(true);
-    setBillingProgress({ step: 1, message: 'Gathering selected transcripts...' });
-    
-    try {
-      const token = await auth.currentUser?.getIdToken();
-      
-      // Simulate progress steps
-      setTimeout(() => {
-        setBillingProgress({ step: 2, message: 'Analyzing medical encounters...' });
-      }, 500);
-      
-      // Get selected transcript IDs
-      const transcriptIds = Array.from(selectedTranscripts);
-      
-      // Empty billing instructions - backend will use base + custom rules
-      const billingInstructions = "";
-      
-      setTimeout(() => {
-        setBillingProgress({ step: 3, message: 'Activating secret billing algorithms...' });
-      }, 1500);
-      
-      const response = await fetch(`/api/v1/patients/${patientId}/generate-billing`, {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          transcript_ids: transcriptIds,
-          billing_instructions: billingInstructions
-        })
-      });
-      
-      setBillingProgress({ step: 4, message: 'Finalizing billing codes...' });
-      
-      if (response.ok) {
-        const data = await response.json();
-        
-        setTimeout(() => {
-          setBillingProgress({ step: 5, message: 'Complete!' });
-          setTimeout(() => {
-            setShowBillingProgress(false);
-            setBillingData(data);
-            setShowBillingDialog(true);
-          }, 500);
-        }, 500);
-      } else {
-        const errorText = await response.text();
-        console.error('Failed to generate billing:', errorText);
-        setShowBillingProgress(false);
-        alert('Failed to generate billing. Please try again.');
-      }
-    } catch (error) {
-      console.error('Error generating billing:', error);
-      setShowBillingProgress(false);
-      alert('Error generating billing. Please try again.');
-    } finally {
-      setGeneratingBilling(false);
-    }
   };
 
 
@@ -508,13 +189,13 @@ function PatientTranscriptList() {
               <Box display="flex" gap={2} alignItems="center">
                 <Chip
                   icon={<CalendarIcon />}
-                  label={`DOB: ${formatDate(patient.date_of_birth)}`}
+                  label={`DOB: ${formatDateWithFallback(patient.date_of_birth)}`}
                   variant="outlined"
                 />
                 {patient.date_of_accident && (
                   <Chip
                     icon={<CalendarIcon />}
-                    label={`DOA: ${formatDate(patient.date_of_accident)}`}
+                    label={`DOA: ${formatDateWithFallback(patient.date_of_accident)}`}
                     color="error"
                     variant="outlined"
                   />
@@ -527,7 +208,7 @@ function PatientTranscriptList() {
           </Box>
 
           <Box display="flex" gap={2}>
-            {selectedTranscripts.size > 0 && (
+            {hasSelection && (
               <>
                 <Button
                   variant="outlined"
@@ -535,7 +216,7 @@ function PatientTranscriptList() {
                   onClick={handleViewMultiple}
                   disabled={generatingPreview}
                 >
-                  {generatingPreview ? 'Generating Preview...' : `View Selected (${selectedTranscripts.size})`}
+                  {generatingPreview ? UI_TEXT.GENERATING_PREVIEW : UI_TEXT.VIEW_SELECTED(selectedTranscripts.size)}
                 </Button>
                 <Button
                   variant="outlined"
@@ -543,16 +224,16 @@ function PatientTranscriptList() {
                   onClick={handlePrintAll}
                   disabled={generatingDownload}
                 >
-                  {generatingDownload ? 'Generating PDF...' : 'Print Selected'}
+                  {generatingDownload ? UI_TEXT.GENERATING_PDF : UI_TEXT.PRINT_SELECTED}
                 </Button>
                 <Button
                   variant="contained"
                   color="secondary"
                   startIcon={generatingBilling ? <CircularProgress size={20} /> : <ReceiptIcon />}
-                  onClick={handleGenerateBilling}
+                  onClick={onGenerateBilling}
                   disabled={generatingBilling}
                 >
-                  {generatingBilling ? 'Generating Billing...' : 'Generate Billing'}
+                  {generatingBilling ? UI_TEXT.GENERATING_BILLING : UI_TEXT.GENERATE_BILLING}
                 </Button>
               </>
             )}
@@ -574,10 +255,10 @@ function PatientTranscriptList() {
             <Box textAlign="center" py={4}>
               <DescriptionIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
               <Typography variant="h6" color="text.secondary">
-                No transcripts yet
+                {UI_TEXT.NO_TRANSCRIPTS_TITLE}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Transcripts will appear here after recording sessions
+                {UI_TEXT.NO_TRANSCRIPTS_MESSAGE}
               </Typography>
             </Box>
           </CardContent>
@@ -589,8 +270,8 @@ function PatientTranscriptList() {
               <TableRow sx={{ backgroundColor: 'grey.50' }}>
                 <TableCell padding="checkbox">
                   <Checkbox
-                    indeterminate={selectedTranscripts.size > 0 && selectedTranscripts.size < transcripts.length}
-                    checked={transcripts.length > 0 && selectedTranscripts.size === transcripts.length}
+                    indeterminate={isPartiallySelected}
+                    checked={isAllSelected}
                     onChange={handleSelectAll}
                   />
                 </TableCell>
@@ -624,12 +305,12 @@ function PatientTranscriptList() {
                     <Box>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <CalendarIcon fontSize="small" color="action" />
-                        <Typography variant="body2">{formatDate(transcript.date, transcript.id)}</Typography>
+                        <Typography variant="body2">{formatDateWithFallback(transcript.date, transcript.id)}</Typography>
                       </Box>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
                         <AccessTimeIcon fontSize="small" color="action" />
                         <Typography variant="caption" color="text.secondary">
-                          {formatTime(transcript.date, transcript.id)}
+                          {formatTimeWithTimezone(transcript.date, transcript.id)}
                         </Typography>
                       </Box>
                     </Box>
@@ -748,7 +429,7 @@ function PatientTranscriptList() {
             {billingProgress.step === 3 && (
               <Box sx={{ mt: 3, textAlign: 'center' }}>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  🔮 Magic happening... (30-90 seconds of pure wizardry)
+                  {UI_TEXT.BILLING_MAGIC_MESSAGE}
                 </Typography>
                 <LinearProgress />
               </Box>
@@ -760,7 +441,7 @@ function PatientTranscriptList() {
       {/* Billing Dialog */}
       <Dialog
         open={showBillingDialog}
-        onClose={() => setShowBillingDialog(false)}
+        onClose={closeBillingDialog}
         maxWidth="lg"
         fullWidth
       >
@@ -778,7 +459,7 @@ function PatientTranscriptList() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowBillingDialog(false)}>
+          <Button onClick={closeBillingDialog}>
             Close
           </Button>
         </DialogActions>
