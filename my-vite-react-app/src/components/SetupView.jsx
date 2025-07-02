@@ -10,6 +10,7 @@ import { useAuth } from '../contexts/FirebaseAuthContext';
 import useTranscriptionSessionStore from '../stores/transcriptionSessionStore';
 import { useUserSettings } from '../contexts/UserSettingsContext';
 import { useMicrophoneMonitor } from '../hooks/useMicrophoneMonitor';
+import { formatDateForDisplay } from '../utils/dateUtils';
 
 function SetupView({ onStartEncounter }) {
   // Get all state and actions from Zustand store
@@ -229,7 +230,7 @@ function SetupView({ onStartEncounter }) {
                             <span className="font-medium">Selected:</span> {selectedPatient.last_name}, {selectedPatient.first_name}
                             {selectedPatient.date_of_accident && (
                               <span className="text-base text-blue-600 ml-2">
-                                (DOA: {new Date(selectedPatient.date_of_accident).toLocaleDateString()})
+                                (DOA: {formatDateForDisplay(selectedPatient.date_of_accident)})
                               </span>
                             )}
                           </div>

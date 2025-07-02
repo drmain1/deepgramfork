@@ -349,7 +349,16 @@ function PatientTranscriptList() {
     
     // Fallback to original date string
     if (!dateString) return 'N/A';
+    
     try {
+      // Handle UTC dates (e.g., date_of_accident) without timezone shift
+      if (dateString.endsWith('Z') || dateString.includes('T00:00:00')) {
+        const datePart = dateString.split('T')[0];
+        const [year, month, day] = datePart.split('-');
+        const localDate = new Date(year, month - 1, day);
+        return format(localDate, 'MMM d, yyyy');
+      }
+      
       return format(new Date(dateString), 'MMM d, yyyy');
     } catch {
       return 'Invalid date';

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
+import { formatDateForDisplay } from '../utils/dateUtils';
 
 // HIPAA Compliant: This store does NOT persist any data to localStorage
 // All patient information is kept in memory only and cleared on page refresh
@@ -90,13 +91,13 @@ const useTranscriptionSessionStore = create(
       
       // Add DOB to context if not already present
       if (patient.date_of_birth && !context.includes('DOB:')) {
-        const dobFormatted = new Date(patient.date_of_birth).toLocaleDateString();
+        const dobFormatted = formatDateForDisplay(patient.date_of_birth);
         context = context ? `${context}\nDOB: ${dobFormatted}` : `DOB: ${dobFormatted}`;
       }
       
       // Add DOA to context if not already present
       if (patient.date_of_accident && !context.includes('DOA:')) {
-        const doaFormatted = new Date(patient.date_of_accident).toLocaleDateString();
+        const doaFormatted = formatDateForDisplay(patient.date_of_accident);
         context = context ? `${context}\nDOA: ${doaFormatted}` : `DOA: ${doaFormatted}`;
       }
       

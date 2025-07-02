@@ -106,3 +106,25 @@ Fixed! The issue was that new Date(formData.date_of_birth).toISOString() was
 
   Try adding a new patient now - the date should display correctly as
   01/01/2025.
+
+  7/2/25 
+
+   Fixed the date timezone issue for date_of_accident
+  (and date_of_birth) displays across all components.
+  The problem was that dates stored as UTC midnight
+  (e.g., "2025-01-01T00:00:00.000Z") were being
+  converted to local timezone when displayed, which
+  could shift them backward by a day.
+
+  The fix:
+  1. Created a utility function formatDateForDisplay
+  that extracts the date portion and creates a local
+  date object to avoid timezone shifts
+  2. Updated all components that display dates to use
+  this timezone-safe approach
+  3. Fixed both date_of_accident and date_of_birth
+  displays
+
+  Now when you enter January 1st, 2025 as the date of
+  accident, it will display as 01/01/2025 regardless of
+   your timezone.

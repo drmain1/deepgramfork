@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import time
 from typing import Optional
 from datetime import datetime
 from fastapi import Request, HTTPException, Security, Query, Depends
@@ -11,6 +12,10 @@ import firebase_admin
 from firebase_admin import auth as firebase_auth, credentials
 
 logger = logging.getLogger(__name__)
+
+# Clock skew configuration - configurable via environment variable
+CLOCK_SKEW_TOLERANCE_SECONDS = int(os.getenv('FIREBASE_CLOCK_SKEW_SECONDS', '60'))
+MAX_RETRY_ATTEMPTS = int(os.getenv('FIREBASE_TOKEN_RETRY_ATTEMPTS', '3'))
 
 # Initialize Firebase Admin SDK once
 if not firebase_admin._apps:
@@ -101,37 +106,90 @@ async def validate_firebase_jwt(token: str = Query(...)) -> str:
 
 def validate_firebase_token(token: str) -> str:
     """
-    Common function to validate Firebase tokens.
+    Common function to validate Firebase tokens with clock skew handling.
+    Implements retry logic for "Token used too early" errors.
     Returns the user's Firebase UID.
     """
-    try:
-        # Verify the token
-        decoded_token = firebase_auth.verify_id_token(token)
-        
-        # Extract user ID
-        user_id = decoded_token.get('uid')
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid token: no user ID")
-        
-        # Check if email is verified (required for HIPAA compliance)
-        email_verified = decoded_token.get('email_verified', False)
-        if not email_verified:
-            logger.warning(f"User {user_id} attempted access without verified email")
-            raise HTTPException(status_code=403, detail="Email verification required. Please verify your email address before accessing this application.")
-        
-        # Log successful authentication
-        logger.info(f"User authenticated via Firebase: {user_id}")
-        return user_id
-        
-    except firebase_auth.InvalidIdTokenError as e:
-        logger.error(f"Invalid Firebase token: {str(e)}")
-        raise HTTPException(status_code=401, detail="Invalid Firebase token")
-    except firebase_auth.ExpiredIdTokenError as e:
-        logger.error(f"Firebase token expired: {str(e)}")
-        raise HTTPException(status_code=401, detail="Firebase token expired")
-    except Exception as e:
-        logger.error(f"Firebase token validation failed: {type(e).__name__}: {str(e)}")
-        raise HTTPException(status_code=401, detail=f"Token validation failed: {str(e)}")
+    last_error = None
+    
+    for attempt in range(MAX_RETRY_ATTEMPTS):
+        try:
+            # Verify the token
+            decoded_token = firebase_auth.verify_id_token(token)
+            
+            # Extract user ID
+            user_id = decoded_token.get('uid')
+            if not user_id:
+                raise HTTPException(status_code=401, detail="Invalid token: no user ID")
+            
+            # Check if email is verified (required for HIPAA compliance)
+            email_verified = decoded_token.get('email_verified', False)
+            if not email_verified:
+                logger.warning(f"User {user_id} attempted access without verified email")
+                raise HTTPException(status_code=403, detail="Email verification required. Please verify your email address before accessing this application.")
+            
+            # Log successful authentication
+            logger.info(f"User authenticated via Firebase: {user_id}")
+            return user_id
+            
+        except firebase_auth.InvalidIdTokenError as e:
+            error_str = str(e)
+            
+            # Check if this is a clock skew issue
+            if "Token used too early" in error_str:
+                last_error = e
+                
+                # Extract the time difference from the error message
+                try:
+                    parts = error_str.split(",")
+                    if len(parts) > 1:
+                        time_parts = parts[1].strip().split("<")
+                        if len(time_parts) == 2:
+                            server_time = int(time_parts[0].strip())
+                            token_time = int(time_parts[1].strip().rstrip("."))
+                            time_diff = token_time - server_time
+                            
+                            # Log the clock skew for monitoring
+                            logger.warning(f"Clock skew detected: {time_diff} seconds (attempt {attempt + 1}/{MAX_RETRY_ATTEMPTS})")
+                            
+                            # If this is within our tolerance, wait and retry
+                            if time_diff <= CLOCK_SKEW_TOLERANCE_SECONDS and attempt < MAX_RETRY_ATTEMPTS - 1:
+                                # Wait for the time difference plus a small buffer
+                                sleep_time = min(time_diff + 1, 5)  # Cap at 5 seconds
+                                logger.info(f"Waiting {sleep_time} seconds before retry...")
+                                time.sleep(sleep_time)
+                                continue
+                except Exception as parse_error:
+                    logger.error(f"Failed to parse clock skew error: {parse_error}")
+                
+                # If we've exhausted retries or can't parse the error
+                logger.error(f"Clock skew issue persists after {attempt + 1} attempts: {error_str}")
+                raise HTTPException(
+                    status_code=401, 
+                    detail="Authentication failed due to clock synchronization. Please try again in a few seconds."
+                )
+            else:
+                # Other InvalidIdTokenError types
+                logger.error(f"Invalid Firebase token: {error_str}")
+                raise HTTPException(status_code=401, detail="Invalid Firebase token")
+                
+        except firebase_auth.ExpiredIdTokenError as e:
+            logger.error(f"Firebase token expired: {str(e)}")
+            raise HTTPException(status_code=401, detail="Firebase token expired")
+        except HTTPException:
+            # Re-raise HTTP exceptions as-is
+            raise
+        except Exception as e:
+            logger.error(f"Firebase token validation failed: {type(e).__name__}: {str(e)}")
+            raise HTTPException(status_code=401, detail=f"Token validation failed: {str(e)}")
+    
+    # If we've exhausted all retries
+    if last_error:
+        logger.error(f"All retry attempts exhausted for clock skew error")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication failed due to persistent clock synchronization issues. Please contact support."
+        )
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security)) -> dict:
     """

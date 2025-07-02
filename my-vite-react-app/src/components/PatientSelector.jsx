@@ -300,11 +300,19 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
                     secondary={
                       <Box component="span">
                         <Typography variant="caption" component="span" display="block">
-                          DOB: {format(new Date(patient.date_of_birth), 'MM/dd/yyyy')}
+                          DOB: {(() => {
+                            const datePart = patient.date_of_birth.split('T')[0];
+                            const [year, month, day] = datePart.split('-');
+                            return format(new Date(year, month - 1, day), 'MM/dd/yyyy');
+                          })()}
                         </Typography>
                         {patient.date_of_accident && (
                           <Typography variant="caption" component="span" display="block">
-                            DOA: {format(new Date(patient.date_of_accident), 'MM/dd/yyyy')}
+                            DOA: {(() => {
+                              const datePart = patient.date_of_accident.split('T')[0];
+                              const [year, month, day] = datePart.split('-');
+                              return format(new Date(year, month - 1, day), 'MM/dd/yyyy');
+                            })()}
                           </Typography>
                         )}
                       </Box>
