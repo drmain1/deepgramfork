@@ -484,6 +484,12 @@ async def save_session_data_firestore(
                     if original_date_of_service:
                         custom_instructions += f"\nDate of Service: {original_date_of_service}"
                     custom_instructions += f"\nTemplate: {llm_template}"
+                    
+                    # Add previous findings context for re-evaluations (also in fallback path)
+                    if evaluation_type == 're_evaluation' and previous_findings:
+                        custom_instructions += f"\n\nPrevious Initial Evaluation Findings:\n{json.dumps(previous_findings, indent=2)}"
+                        logger.info("Added previous findings to LLM context for re-evaluation (fallback path)")
+                        logger.info(f"Previous findings added (first 500 chars): {json.dumps(previous_findings, indent=2)[:500]}...")
                 else:
                     # Append context to profile instructions
                     patient_name = request_data.get('patient_name', '')
@@ -500,8 +506,12 @@ async def save_session_data_firestore(
                     if evaluation_type == 're_evaluation' and previous_findings:
                         custom_instructions += f"\n\nPrevious Initial Evaluation Findings:\n{json.dumps(previous_findings, indent=2)}"
                         logger.info("Added previous findings to LLM context for re-evaluation")
+                        logger.info(f"Previous findings added (first 500 chars): {json.dumps(previous_findings, indent=2)[:500]}...")
+                    else:
+                        logger.info(f"Re-evaluation check: evaluation_type={evaluation_type}, has_previous_findings={bool(previous_findings)}")
                 
-                logger.info(f"Custom instructions being sent to LLM: {custom_instructions[:200]}...")
+                logger.info(f"Custom instructions being sent to LLM (first 500 chars): {custom_instructions[:500]}...")
+                logger.info(f"Total custom instructions length: {len(custom_instructions)} characters")
                 
                 # Polish transcript using Gemini
                 polished_result = await asyncio.get_event_loop().run_in_executor(

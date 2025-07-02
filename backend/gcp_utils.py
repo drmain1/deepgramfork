@@ -83,6 +83,14 @@ def polish_transcript_with_gemini(
         # Log the instructions portion for debugging
         logger.info(f"LLM Instructions section: {llm_instructions[:300]}...")
         
+        # Additional logging for re-evaluation debugging
+        if "Previous Initial Evaluation Findings:" in llm_instructions:
+            logger.info("Re-evaluation detected - Previous findings ARE included in LLM instructions")
+            findings_start = llm_instructions.find("Previous Initial Evaluation Findings:")
+            logger.info(f"Previous findings section preview: {llm_instructions[findings_start:findings_start+200]}...")
+        else:
+            logger.info("No previous findings section found in LLM instructions")
+        
         # Configure the model with fallback options
         model = None
         model_used = model_name

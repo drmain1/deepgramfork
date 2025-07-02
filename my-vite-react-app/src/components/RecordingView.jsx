@@ -43,6 +43,7 @@ function RecordingView({
     evaluationType,
     initialEvaluationId,
     previousFindings,
+    includePreviousFindingsInPrompt,
     showPreviousFindingsSidebar,
     setShowPreviousFindingsSidebar
   } = useTranscriptionSessionStore();
@@ -468,10 +469,13 @@ function RecordingView({
         date_of_service: (isDictationMode && dateOfService && dateOfService.trim()) ? dateOfService : null,
         evaluation_type: evaluationType || null,
         initial_evaluation_id: initialEvaluationId || null,
-        previous_findings: previousFindings || null
+        previous_findings: (includePreviousFindingsInPrompt && previousFindings) ? previousFindings : null
       };
       
       console.log('=== ACTUAL REQUEST BODY ===');
+      console.log('Include previous findings in prompt:', includePreviousFindingsInPrompt);
+      console.log('Has previous findings:', !!previousFindings);
+      console.log('Will send findings:', !!(includePreviousFindingsInPrompt && previousFindings));
       console.log(JSON.stringify(requestBody, null, 2));
       console.log('===========================');
       

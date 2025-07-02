@@ -555,7 +555,20 @@ async def get_re_evaluation_status(
         last_evaluation = evaluations[0]
         
         # Calculate days since last evaluation
-        last_eval_date = datetime.fromisoformat(last_evaluation.get('created_at').replace('Z', '+00:00'))
+        created_at = last_evaluation.get('created_at')
+        if not created_at:
+            logger.error(f"No created_at timestamp for evaluation: {last_evaluation.get('id')}")
+            return {
+                "status": "error",
+                "days_since_last": None,
+                "session_count": 0,
+                "sessions_since_evaluation": 0,
+                "last_evaluation_date": None,
+                "last_evaluation_type": None,
+                "color": "gray",
+                "message": "Invalid evaluation data"
+            }
+        last_eval_date = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
         days_since = (datetime.now(timezone.utc) - last_eval_date).days
         
         # Count sessions SINCE the last evaluation (initial or re-evaluation)
@@ -565,9 +578,11 @@ async def get_re_evaluation_status(
         # Find sessions that occurred after the last evaluation
         sessions_since_evaluation = 0
         for transcript in transcripts:
-            transcript_date = datetime.fromisoformat(transcript.get('created_at').replace('Z', '+00:00'))
-            if transcript_date > last_eval_date:
-                sessions_since_evaluation += 1
+            transcript_created_at = transcript.get('created_at')
+            if transcript_created_at:
+                transcript_date = datetime.fromisoformat(transcript_created_at.replace('Z', '+00:00'))
+                if transcript_date > last_eval_date:
+                    sessions_since_evaluation += 1
         
         # Determine status color based on sessions since last evaluation
         # Green: 0-30 days AND less than 12 sessions

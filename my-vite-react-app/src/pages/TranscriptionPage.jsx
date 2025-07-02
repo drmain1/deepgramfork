@@ -113,8 +113,16 @@ function TranscriptionPage() {
     setCurrentView('setup');
     // Navigate back to clean transcription URL
     navigate('/transcription', { replace: true });
-    // Reset session will clear all patient data but keep settings
-    resetSession();
+    // Reset session state manually since we're not using the Zustand store here
+    setSelectedPatient(null);
+    setPatientDetails('');
+    setPatientContext('');
+    setIsDictationMode(false);
+    setDateOfService('');
+    setEvaluationType('');
+    setInitialEvaluationId(null);
+    setPreviousFindings(null);
+    setError(null);
     // Clear selected recording if it was a draft
     if (selectedRecordingId) {
       const recording = recordings.find(r => r.id === selectedRecordingId);

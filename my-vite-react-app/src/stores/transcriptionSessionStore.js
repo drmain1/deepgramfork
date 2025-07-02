@@ -24,6 +24,7 @@ const useTranscriptionSessionStore = create(
     evaluationType: '',
     initialEvaluationId: null,
     previousFindings: null,
+    includePreviousFindingsInPrompt: true, // Default to true for backwards compatibility
     
     // UI State
     currentView: 'setup',
@@ -38,7 +39,8 @@ const useTranscriptionSessionStore = create(
       // Clear evaluation type when patient changes
       evaluationType: '',
       initialEvaluationId: null,
-      previousFindings: null
+      previousFindings: null,
+      includePreviousFindingsInPrompt: true // Reset to default
     }),
     
     // Actions - Session Settings
@@ -68,6 +70,7 @@ const useTranscriptionSessionStore = create(
     setCurrentView: (view) => set({ currentView: view }),
     setError: (error) => set({ error: error }),
     setShowPreviousFindingsSidebar: (show) => set({ showPreviousFindingsSidebar: show }),
+    setIncludePreviousFindingsInPrompt: (include) => set({ includePreviousFindingsInPrompt: include }),
     
     // Complex Actions
     updatePatientFromSelector: (patient) => {
@@ -130,6 +133,7 @@ const useTranscriptionSessionStore = create(
       evaluationType: '',
       initialEvaluationId: null,
       previousFindings: null,
+      includePreviousFindingsInPrompt: true, // Reset to default
       currentView: 'setup',
       error: null,
       showPreviousFindingsSidebar: false
