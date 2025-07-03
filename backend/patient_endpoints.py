@@ -539,50 +539,66 @@ async def get_re_evaluation_status(
         ]
         
         if not evaluations:
+            # Count all sessions as they're all "since" a non-existent evaluation
+            all_sessions = len(transcripts)
             return {
                 "status": "no_evaluation",
                 "days_since_last": None,
-                "session_count": 0,
-                "sessions_since_evaluation": 0,
+                "session_count": all_sessions,
+                "sessions_since_evaluation": all_sessions,
                 "last_evaluation_date": None,
                 "last_evaluation_type": None,
-                "color": "gray",
-                "message": "No evaluations found"
+                "color": "gray" if all_sessions < 10 else "yellow" if all_sessions < 12 else "red",
+                "message": f"{all_sessions} visits - Initial evaluation needed",
+                "patient_name": f"{patient['last_name']}, {patient['first_name']}"
             }
         
-        # Sort evaluations by date (newest first)
-        evaluations.sort(key=lambda x: x.get('created_at', ''), reverse=True)
-        last_evaluation = evaluations[0]
+        # Filter out evaluations without created_at timestamp
+        valid_evaluations = [e for e in evaluations if e.get('created_at')]
+        
+        if not valid_evaluations:
+            # If no evaluations have timestamps, count all sessions
+            all_sessions = len(transcripts)
+            logger.warning(f"Found {len(evaluations)} evaluations but none have created_at timestamps")
+            return {
+                "status": "no_evaluation",
+                "days_since_last": None,
+                "session_count": all_sessions,
+                "sessions_since_evaluation": all_sessions,
+                "last_evaluation_date": None,
+                "last_evaluation_type": None,
+                "color": "gray" if all_sessions < 10 else "yellow" if all_sessions < 12 else "red",
+                "message": f"{all_sessions} visits - No valid evaluation dates found",
+                "patient_name": f"{patient['last_name']}, {patient['first_name']}"
+            }
+        
+        # Sort valid evaluations by date (newest first)
+        valid_evaluations.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+        last_evaluation = valid_evaluations[0]
         
         # Calculate days since last evaluation
         created_at = last_evaluation.get('created_at')
-        if not created_at:
-            logger.error(f"No created_at timestamp for evaluation: {last_evaluation.get('id')}")
-            return {
-                "status": "error",
-                "days_since_last": None,
-                "session_count": 0,
-                "sessions_since_evaluation": 0,
-                "last_evaluation_date": None,
-                "last_evaluation_type": None,
-                "color": "gray",
-                "message": "Invalid evaluation data"
-            }
         last_eval_date = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
         days_since = (datetime.now(timezone.utc) - last_eval_date).days
         
         # Count sessions SINCE the last evaluation (initial or re-evaluation)
         # Sort all transcripts by date
-        transcripts.sort(key=lambda x: x.get('created_at', ''), reverse=False)
+        transcripts_with_dates = [t for t in transcripts if t.get('created_at')]
+        transcripts_with_dates.sort(key=lambda x: x.get('created_at', ''), reverse=False)
         
         # Find sessions that occurred after the last evaluation
         sessions_since_evaluation = 0
-        for transcript in transcripts:
+        for transcript in transcripts_with_dates:
             transcript_created_at = transcript.get('created_at')
-            if transcript_created_at:
-                transcript_date = datetime.fromisoformat(transcript_created_at.replace('Z', '+00:00'))
-                if transcript_date > last_eval_date:
-                    sessions_since_evaluation += 1
+            transcript_date = datetime.fromisoformat(transcript_created_at.replace('Z', '+00:00'))
+            if transcript_date > last_eval_date:
+                sessions_since_evaluation += 1
+                
+        # Also count transcripts without dates (they might be newer)
+        transcripts_without_dates = len([t for t in transcripts if not t.get('created_at')])
+        if transcripts_without_dates > 0:
+            logger.warning(f"Found {transcripts_without_dates} transcripts without created_at timestamps")
+            sessions_since_evaluation += transcripts_without_dates
         
         # Determine status color based on sessions since last evaluation
         # Green: 0-30 days AND less than 12 sessions

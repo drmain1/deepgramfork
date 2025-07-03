@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. 
 
+this product uses venv on python backend, please ask human if you need backend commands. 
+
+
+
 ## Project Overview
 
 This is a multi tenat HIPAA-compliant medical transcription application that converts audio recordings into structured medical notes. The system uses speech-to-text services (Deepgram for medical, Speechmatics for multilingual) and LLM-based formatting (Google Vertex AI) to produce professional medical documentation.  This file is getting towards production if you see code that could be refactored to be improved or made shorter for maintainability please advise me. 
@@ -48,7 +52,7 @@ This is a multi tenat HIPAA-compliant medical transcription application that con
 
 ## Development Commands
 
-
+Please remove all debugging once we have confirmed a feature is functional
 
 ### Testing & Utilities
 ```bash

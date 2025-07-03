@@ -1,10 +1,8 @@
 import React from 'react';
-import useTranscriptionSessionStore from '../stores/transcriptionSessionStore';
 
 function ReEvaluationWorkflow({ 
   previousFindings
 }) {
-  const { includePreviousFindingsInPrompt, setIncludePreviousFindingsInPrompt } = useTranscriptionSessionStore();
   
   // Only show when findings are loaded
   if (!previousFindings) {
@@ -26,26 +24,6 @@ function ReEvaluationWorkflow({
               </p>
             </div>
           </div>
-        </div>
-        
-        <div className="mt-3 flex items-start gap-3">
-          <input
-            type="checkbox"
-            id="includeFindings"
-            checked={includePreviousFindingsInPrompt}
-            onChange={(e) => setIncludePreviousFindingsInPrompt(e.target.checked)}
-            className="mt-0.5 h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-          />
-          <label htmlFor="includeFindings" className="flex-1 cursor-pointer">
-            <span className="block text-xs font-medium text-gray-700">
-              Include in AI processing
-            </span>
-            <span className="block text-xs text-gray-500">
-              {includePreviousFindingsInPrompt 
-                ? "AI will compare findings automatically"
-                : "Findings visible but not sent to AI"}
-            </span>
-          </label>
         </div>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import React from 'react';
+import useTranscriptionSessionStore from '../stores/transcriptionSessionStore';
 
 function EvaluationTypeSelector({ 
   evaluationType, 
@@ -10,6 +11,7 @@ function EvaluationTypeSelector({
   previousFindings = null,
   onLoadFindings = null
 }) {
+  const { includePreviousFindingsInPrompt, setIncludePreviousFindingsInPrompt } = useTranscriptionSessionStore();
   const handleTypeChange = (type) => {
     setEvaluationType(type);
     if (onTypeChange) {
@@ -128,10 +130,25 @@ function EvaluationTypeSelector({
             
             {/* Success indicator when findings are loaded */}
             {previousFindings && (
-              <span className="px-3 py-2 text-sm text-green-700 bg-green-50 rounded-lg flex items-center gap-1">
-                <span className="material-icons text-base">check_circle</span>
-                Findings Loaded
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="px-3 py-2 text-sm text-green-700 bg-green-50 rounded-lg flex items-center gap-1">
+                  <span className="material-icons text-base">check_circle</span>
+                  Findings Loaded
+                </span>
+                
+                {/* Include in AI processing checkbox */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includePreviousFindingsInPrompt}
+                    onChange={(e) => setIncludePreviousFindingsInPrompt(e.target.checked)}
+                    className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                  />
+                  <span className="text-xs text-gray-600">
+                    Automatically place previous findings in re-eval
+                  </span>
+                </label>
+              </div>
             )}
           </>
         )}

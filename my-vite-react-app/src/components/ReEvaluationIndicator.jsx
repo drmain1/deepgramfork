@@ -5,16 +5,18 @@ function ReEvaluationIndicator({ patient }) {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const [error, setError] = useState(null);
   const { getToken } = useAuth();
 
   useEffect(() => {
-    if (patient?.id) {
+    if (patient?.id && !loading) {
       fetchReEvaluationStatus();
     }
   }, [patient?.id]);
 
   const fetchReEvaluationStatus = async () => {
     setLoading(true);
+    setError(null);
     try {
       const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       const token = await getToken();
@@ -24,6 +26,7 @@ function ReEvaluationIndicator({ patient }) {
         {
           headers: {
             'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
           },
         }
       );
@@ -31,20 +34,41 @@ function ReEvaluationIndicator({ patient }) {
       if (response.ok) {
         const data = await response.json();
         setStatus(data);
+      } else {
+        const errorText = await response.text();
+        console.error('Re-evaluation API error:', response.status, errorText);
+        setError(`API Error: ${response.status}`);
       }
     } catch (error) {
       console.error('Error fetching re-evaluation status:', error);
+      setError(error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  if (!patient || loading || !status) {
-    return null;
+  // Debug rendering
+  if (!patient) {
+    return <span className="text-xs text-red-500">No patient</span>;
+  }
+  
+  if (loading) {
+    return <span className="text-xs text-gray-500">Loading visits...</span>;
+  }
+  
+  if (error) {
+    return <span className="text-xs text-red-500">Error: {error}</span>;
+  }
+  
+  if (!status) {
+    return <span className="text-xs text-orange-500">No status data</span>;
   }
 
   // Determine icon and color based on status
   const getStatusIcon = () => {
+    if (status.status === 'error') {
+      return 'warning';
+    }
     switch (status.color) {
       case 'green':
         return 'check_circle';
@@ -52,6 +76,8 @@ function ReEvaluationIndicator({ patient }) {
         return 'schedule';
       case 'red':
         return 'error_outline';
+      case 'gray':
+        return 'pending';
       default:
         return 'info';
     }
@@ -65,6 +91,8 @@ function ReEvaluationIndicator({ patient }) {
         return 'text-yellow-600';
       case 'red':
         return 'text-red-600';
+      case 'gray':
+        return 'text-gray-500';
       default:
         return 'text-gray-600';
     }
@@ -78,6 +106,8 @@ function ReEvaluationIndicator({ patient }) {
         return 'bg-yellow-50 border-yellow-200';
       case 'red':
         return 'bg-red-50 border-red-200';
+      case 'gray':
+        return 'bg-gray-50 border-gray-200';
       default:
         return 'bg-gray-50 border-gray-200';
     }
@@ -94,7 +124,23 @@ function ReEvaluationIndicator({ patient }) {
         <span className={`material-icons text-sm ${getStatusColor()}`}>
           {getStatusIcon()}
         </span>
-        Re-evaluation Status
+        <span>
+          {status.status === 'error' ? (
+            <>
+              {status.session_count} total visit{status.session_count !== 1 ? 's' : ''}
+            </>
+          ) : status.status === 'no_evaluation' ? (
+            <>
+              {status.sessions_since_evaluation} visit{status.sessions_since_evaluation !== 1 ? 's' : ''}
+            </>
+          ) : status.sessions_since_evaluation > 0 ? (
+            <>
+              {status.sessions_since_evaluation} visit{status.sessions_since_evaluation !== 1 ? 's' : ''} since {status.last_evaluation_type === 're_evaluation' ? 're-evaluation' : 'initial eval'}
+            </>
+          ) : (
+            'Re-evaluation Status'
+          )}
+        </span>
         {/* Pulse animation for yellow/red status */}
         {(status.color === 'yellow' || status.color === 'red') && (
           <span className="relative flex h-2 w-2 ml-1">
@@ -149,22 +195,24 @@ function ReEvaluationIndicator({ patient }) {
 
             {/* Progress indicators */}
             <div className="space-y-3">
-              {/* Days progress */}
-              <div>
-                <div className="flex justify-between text-xs text-gray-600 mb-1">
-                  <span>Days since evaluation</span>
-                  <span className="font-medium">{status.days_since_last} days</span>
+              {/* Days progress - only show if we have a last evaluation */}
+              {status.days_since_last !== null && (
+                <div>
+                  <div className="flex justify-between text-xs text-gray-600 mb-1">
+                    <span>Days since evaluation</span>
+                    <span className="font-medium">{status.days_since_last} days</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className={`h-2 rounded-full transition-all duration-500 ${
+                        status.days_since_last <= 30 ? 'bg-green-500' :
+                        status.days_since_last <= 45 ? 'bg-yellow-500' : 'bg-red-500'
+                      }`}
+                      style={{ width: `${Math.min(100, (status.days_since_last / 45) * 100)}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div 
-                    className={`h-2 rounded-full transition-all duration-500 ${
-                      status.days_since_last <= 30 ? 'bg-green-500' :
-                      status.days_since_last <= 45 ? 'bg-yellow-500' : 'bg-red-500'
-                    }`}
-                    style={{ width: `${Math.min(100, (status.days_since_last / 45) * 100)}%` }}
-                  />
-                </div>
-              </div>
+              )}
 
               {/* Sessions progress */}
               <div>
@@ -186,10 +234,12 @@ function ReEvaluationIndicator({ patient }) {
 
             {/* Additional info */}
             <div className="mt-4 pt-4 border-t border-gray-200">
-              <div className="flex justify-between text-xs text-gray-600">
-                <span>Last {status.last_evaluation_type === 're_evaluation' ? 're-evaluation' : 'evaluation'}</span>
-                <span>{new Date(status.last_evaluation_date).toLocaleDateString()}</span>
-              </div>
+              {status.last_evaluation_date && (
+                <div className="flex justify-between text-xs text-gray-600">
+                  <span>Last {status.last_evaluation_type === 're_evaluation' ? 're-evaluation' : 'evaluation'}</span>
+                  <span>{new Date(status.last_evaluation_date).toLocaleDateString()}</span>
+                </div>
+              )}
               <div className="flex justify-between text-xs text-gray-600 mt-1">
                 <span>Total patient sessions</span>
                 <span>{status.session_count}</span>
