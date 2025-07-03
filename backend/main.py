@@ -14,12 +14,12 @@ else:
 
 import uvicorn
 import asyncio
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Query, UploadFile, File, Response
+from typing import List, Dict, Any, Optional
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Query, UploadFile, File, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 from contextlib import asynccontextmanager
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
+# Middleware imports moved to separate modules
 from deepgram import AsyncLiveClient, DeepgramClientOptions, LiveOptions, LiveTranscriptionEvents
 from deepgram.clients.listen.v1.websocket.response import CloseResponse
 import logging
@@ -30,14 +30,26 @@ import time
 
 # Set up logging
 logger = logging.getLogger(__name__)
-from pydantic import BaseModel, Field
-from fastapi import HTTPException
-from typing import Optional, List, Dict, Any
-from fastapi import Path
+from fastapi import HTTPException, Path
 from datetime import datetime, timedelta, timezone
+
+# Import models
+from models import (
+    TranscriptionProfileItem,
+    UserSettingsData,
+    SaveUserSettingsRequest,
+    SaveSessionRequest,
+    SaveDraftRequest,
+    RecordingInfo,
+    UpdateTranscriptRequest,
+    DEFAULT_USER_SETTINGS
+)
 
 # Import the refactored Deepgram handler
 from deepgram_utils import handle_deepgram_websocket
+
+# Import routers
+from routers import image_router
 
 # Import the new Speechmatics handler for multilingual support
 from speechmatics_utils import handle_speechmatics_websocket
@@ -69,20 +81,33 @@ DEFAULT_TENANT_ID = os.getenv("DEFAULT_TENANT_ID", "dev-tenant")
 # Import GCS utilities early
 from gcs_utils import GCSClient
 
-# Global placeholders for clients, to be initialized in startup event
+# Global placeholders for clients and services, to be initialized in startup event
 gcs_client = None
 vertex_ai_client = None
+user_settings_service = None
+image_handler_instance = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    global gcs_client, vertex_ai_client
+    global gcs_client, vertex_ai_client, user_settings_service, image_handler_instance
     print("FastAPI startup: Initializing GCP clients...")
     
     # Initialize GCS client
     try:
         gcs_client = GCSClient()
         print("✓ GCS client initialized successfully during startup.")
+        
+        # Initialize new services
+        user_settings_service = UserSettingsService(gcs_client)
+        print("✓ User Settings Service initialized")
+        
+        image_handler_instance = ImageHandler(gcs_client)
+        print("✓ Image Handler initialized")
+        
+        # Initialize the image router with dependencies
+        image_router.init_router(image_handler_instance, DEFAULT_USER_SETTINGS)
+        print("✓ Image router initialized")
         
         # Log bucket information
         print(f"✓ Using GCS bucket: {gcs_client.bucket_name}")
@@ -96,8 +121,10 @@ async def lifespan(app: FastAPI):
         print("   ✓ All data encrypted at rest and in transit")
         
     except Exception as e:
-        print(f"Failed to initialize GCS client during startup: {e}")
+        print(f"Failed to initialize services during startup: {e}")
         gcs_client = None
+        user_settings_service = None
+        image_handler_instance = None
     
     # Initialize Vertex AI for transcription polish
     if os.getenv('GCP_PROJECT_ID'):
@@ -132,56 +159,31 @@ async def health_check():
         "environment": os.getenv("ENVIRONMENT", "development")
     }
 
-# CORS Configuration
-origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "https://scribe.medlegaldoc.com",
-    "https://medlegaldoc.com",
-    # Add any other origins if necessary (e.g., your deployed frontend URL)
-]
+# Import and configure middleware
+from middleware import create_security_middleware_stack, configure_cors
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"], # Allow all common methods
-    allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"], # Explicit headers only
-)
+# Configure CORS
+configure_cors(app)
 
-# Security Headers Middleware for HIPAA Compliance
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        
-        # HIPAA-compliant security headers
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        
-        # Content Security Policy (adjust as needed for your application)
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; "
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-            "font-src 'self' https://fonts.gstatic.com data:; "
-            "img-src 'self' data: blob: https:; "
-            "connect-src 'self' wss: https://*.googleapis.com;"
-        )
-        
-        return response
-
-app.add_middleware(SecurityHeadersMiddleware)
+# Apply security middleware stack
+create_security_middleware_stack(app)
 
 # Add rate limiting middleware
 from rate_limiter import RateLimitMiddleware
 app.add_middleware(RateLimitMiddleware)
 logger.info("Rate limiting middleware enabled")
 
+# Include routers
+app.include_router(image_router.router)
+
 # Import audit logger for HIPAA compliance
 from audit_logger import AuditLogger
+
+# Import new refactored modules
+from websocket_auth import WebSocketAuthWrapper, websocket_manager
+from services.user_settings_service import UserSettingsService
+from image_handler import ImageHandler
+from routers import image_router
 
 config = DeepgramClientOptions(
     api_key=deepgram_api_key, 
@@ -191,133 +193,26 @@ deepgram_client = AsyncLiveClient(config)
 
 @app.websocket("/stream")
 async def websocket_stream_endpoint(websocket: WebSocket, token: str = Query(...)):
-    """
-    Handles the primary WebSocket streaming connection for Deepgram transcription.
-    This endpoint delegates to handle_deepgram_websocket for monolingual medical transcription.
-    For multilingual support, clients should use the /stream/multilingual endpoint.
-    """
-    # Verify Firebase token before accepting WebSocket connection
-    connection_id = f"ws_deepgram_{int(time.time() * 1000)}"
-    start_time = time.time()
-    
-    try:
-        # Always use production Firebase Admin SDK for token verification
-        from gcp_auth_middleware import validate_firebase_token
-        user_id = validate_firebase_token(token)
-        
-        # Accept the WebSocket connection
-        await websocket.accept()
-        
-        # Log WebSocket connection start
-        AuditLogger.log_websocket_event(
-            user_id=user_id,
-            event_type="CONNECT",
-            connection_id=connection_id
-        )
-        
-        # Pass the authenticated user_id to the handler
-        await handle_deepgram_websocket(websocket, get_user_settings, user_id)
-        
-        # Log successful completion
-        duration = time.time() - start_time
-        AuditLogger.log_websocket_event(
-            user_id=user_id,
-            event_type="DISCONNECT",
-            connection_id=connection_id,
-            duration_seconds=duration
-        )
-    except HTTPException as e:
-        # Close WebSocket with policy violation code for auth failures
-        await websocket.close(code=1008, reason=f"Authentication failed: {e.detail}")
-    except Exception as e:
-        await websocket.close(code=1011, reason=f"Server error: {str(e)}")
+    """Handles WebSocket streaming for Deepgram transcription."""
+    await WebSocketAuthWrapper.handle_authenticated_websocket(
+        websocket=websocket,
+        token=token,
+        handler_func=handle_deepgram_websocket,
+        get_user_settings_func=lambda user_id: user_settings_service.get_user_settings(user_id),
+        connection_type="DEEPGRAM"
+    )
 
 @app.websocket("/stream/multilingual")
 async def websocket_multilingual_stream_endpoint(websocket: WebSocket, token: str = Query(...)):
-    """
-    Handles WebSocket streaming connection for Speechmatics multilingual transcription.
-    This endpoint provides Spanish/English code-switching and translation capabilities.
-    """
-    # Verify Firebase token before accepting WebSocket connection
-    connection_id = f"ws_speechmatics_{int(time.time() * 1000)}"
-    start_time = time.time()
-    
-    try:
-        # Always use production Firebase Admin SDK for token verification
-        from gcp_auth_middleware import validate_firebase_token
-        user_id = validate_firebase_token(token)
-        
-        # Accept the WebSocket connection
-        await websocket.accept()
-        
-        # Log WebSocket connection start
-        AuditLogger.log_websocket_event(
-            user_id=user_id,
-            event_type="CONNECT_MULTILINGUAL",
-            connection_id=connection_id
-        )
-        
-        # Pass the authenticated user_id to the handler
-        await handle_speechmatics_websocket(websocket, get_user_settings, user_id)
-        
-        # Log successful completion
-        duration = time.time() - start_time
-        AuditLogger.log_websocket_event(
-            user_id=user_id,
-            event_type="DISCONNECT_MULTILINGUAL",
-            connection_id=connection_id,
-            duration_seconds=duration
-        )
-    except HTTPException as e:
-        # Close WebSocket with policy violation code for auth failures
-        await websocket.close(code=1008, reason=f"Authentication failed: {e.detail}")
-    except Exception as e:
-        await websocket.close(code=1011, reason=f"Server error: {str(e)}")
+    """Handles WebSocket streaming for Speechmatics multilingual transcription."""
+    await WebSocketAuthWrapper.handle_authenticated_websocket(
+        websocket=websocket,
+        token=token,
+        handler_func=handle_speechmatics_websocket,
+        get_user_settings_func=lambda user_id: user_settings_service.get_user_settings(user_id),
+        connection_type="SPEECHMATICS"
+    )
 
-class TranscriptionProfileItem(BaseModel):
-    id: str = Field(..., description="Unique identifier for the profile")
-    name: str = Field(..., description="User-defined name for the profile")
-    llmInstructions: Optional[str] = Field(default=None, description="Custom LLM instructions/template for this profile")
-    llmPrompt: Optional[str] = Field(default=None, description="Custom LLM prompt/template for this profile (deprecated, use llmInstructions)")
-    isDefault: Optional[bool] = Field(default=False, description="Whether this is the default profile")
-    # Deepgram specific options
-    smart_format: Optional[bool] = Field(default=True, description="Enable Deepgram Smart Formatting")
-    diarize: Optional[bool] = Field(default=False, description="Enable Deepgram Speaker Diarization")
-    num_speakers: Optional[int] = Field(default=None, ge=1, description="Suggested number of speakers if diarization is enabled") # ge=1 means greater than or equal to 1 if set
-    utterances: Optional[bool] = Field(default=False, description="Enable Deepgram Word-Level Timestamps (utterances)")
-    specialty: Optional[str] = Field(default=None, description="Medical specialty category")
-    originalTemplateId: Optional[str] = Field(default=None, description="Original template ID from templateConfig")
-
-class UserSettingsData(BaseModel):
-    macroPhrases: List[Dict[str, Any]] = Field(default_factory=list)
-    customVocabulary: List[Dict[str, Any]] = Field(default_factory=list)
-    officeInformation: List[str] = Field(default_factory=list) # Consider changing to List[Dict[str, Any]] based on UIsetup.md
-    transcriptionProfiles: List[TranscriptionProfileItem] = Field(default_factory=list)
-    doctorName: Optional[str] = Field(default="", description="Doctor's name for signatures")
-    doctorSignature: Optional[str] = Field(default=None, description="Doctor's signature image (base64 data URL)")
-    clinicLogo: Optional[str] = Field(default=None, description="URL to clinic logo in GCS")
-    includeLogoOnPdf: bool = Field(default=False, description="Include clinic logo on PDF forms")
-    medicalSpecialty: Optional[str] = Field(default="", description="Medical specialty of the doctor")
-    customBillingRules: Optional[str] = Field(default="", description="Custom billing rules for the clinic")
-    cptFees: Dict[str, float] = Field(default_factory=dict, description="Custom CPT code fees mapping")
-
-class SaveUserSettingsRequest(BaseModel):
-    user_id: str # This should ideally come from a validated token in the future
-    settings: UserSettingsData
-
-DEFAULT_USER_SETTINGS = UserSettingsData(
-    macroPhrases=[],
-    customVocabulary=[],
-    officeInformation=[],
-    transcriptionProfiles=[],
-    doctorName='',
-    doctorSignature=None,
-    clinicLogo=None,
-    includeLogoOnPdf=False,
-    medicalSpecialty='',
-    customBillingRules='',
-    cptFees={}
-).model_dump()
 
 @app.get("/api/v1/user_settings/{user_id}", response_model=UserSettingsData)
 async def get_user_settings(
@@ -325,19 +220,18 @@ async def get_user_settings(
     current_user_id: str = Depends(get_user_id),
     request: Request = None
 ):
+    # Verify authorization
+    if user_id != current_user_id:
+        raise HTTPException(status_code=403, detail="You can only view your own settings")
+    
+    # Get settings from Firestore directly
+    from firestore_endpoints import get_user_settings_firestore
     settings = await get_user_settings_firestore(user_id, current_user_id, request)
-    # Convert to UserSettingsData model
-    # Handle the existing data - convert dict to list format if needed
-    macro_phrases = settings.get("macroPhrases", {})
-    if isinstance(macro_phrases, dict):
-        # Convert dict to list of MacroPhraseItem objects
-        macro_list = [{"shortcut": k, "expansion": v} for k, v in macro_phrases.items()]
-    else:
-        macro_list = macro_phrases
-        
+    
+    # Settings are already in the correct format from get_user_settings_firestore
     return UserSettingsData(
         customVocabulary=settings.get("customVocabulary", []),
-        macroPhrases=macro_list,
+        macroPhrases=settings.get("macroPhrases", []),
         transcriptionProfiles=settings.get("transcriptionProfiles", []),
         doctorName=settings.get("doctorName", ""),
         medicalSpecialty=settings.get("medicalSpecialty", ""),
@@ -459,569 +353,30 @@ async def save_user_settings(
     current_user_id: str = Depends(get_user_id),
     req: Request = None
 ):
+    # Verify authorization
+    if request.user_id != current_user_id:
+        raise HTTPException(status_code=403, detail="You can only update your own settings")
+    
+    # Save through service
     settings_dict = request.settings.model_dump()
-    return await update_user_settings_firestore(
+    success = await user_settings_service.save_user_settings(
         user_id=request.user_id,
-        settings_data=settings_dict,
-        current_user_id=current_user_id,
-        request=req
+        settings=settings_dict
     )
+    
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to save settings")
+    
+    # Sync to Firestore for faster queries
+    await user_settings_service.sync_to_firestore(request.user_id)
+    
+    # Log for audit trail
+    logger.info(f"User {current_user_id} updated settings")
+    
+    return {"success": True, "message": "Settings updated successfully"}
 
-# Logo upload endpoint
-@app.post("/api/v1/upload_logo")
-async def upload_logo(
-    file: UploadFile = File(...),
-    current_user_id: str = Depends(get_user_id)
-):
-    """Upload a clinic logo - stores file in GCS and URL in settings"""
-    
-    if not gcs_client:
-        raise HTTPException(status_code=503, detail="GCS client not initialized")
-    
-    # Debug logging
-    print(f"Logo upload - User: {current_user_id}, File: {file.filename}, Content-Type: {file.content_type}, Size: {file.size}")
-    
-    # Validate file type
-    allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/jpg"]
-    
-    # Handle case where content_type might be None or empty
-    if not file.content_type or file.content_type not in allowed_types:
-        # Try to infer from filename
-        file_ext = file.filename.lower().split('.')[-1] if '.' in file.filename else ''
-        ext_to_mime = {
-            'jpg': 'image/jpeg',
-            'jpeg': 'image/jpeg',
-            'png': 'image/png',
-            'gif': 'image/gif',
-            'webp': 'image/webp'
-        }
-        
-        if file_ext in ext_to_mime:
-            file.content_type = ext_to_mime[file_ext]
-            print(f"Inferred content type from extension: {file.content_type}")
-        else:
-            print(f"Invalid content type: {file.content_type}")
-            raise HTTPException(status_code=400, detail=f"Invalid file type: {file.content_type}. Allowed types: {allowed_types}")
-    
-    # Validate file size (5MB limit for direct GCS storage)
-    max_size = 5 * 1024 * 1024  # 5MB
-    contents = await file.read()
-    if len(contents) > max_size:
-        raise HTTPException(status_code=400, detail="File size exceeds 5MB limit")
-    
-    try:
-        # Generate unique filename
-        timestamp = int(time.time() * 1000)
-        file_ext = file.filename.lower().split('.')[-1] if '.' in file.filename else 'png'
-        logo_filename = f"logo_{timestamp}.{file_ext}"
-        logo_key = f"{current_user_id}/logos/{logo_filename}"
-        
-        # Upload file directly to GCS
-        success = gcs_client.save_data_to_gcs(
-            user_id=current_user_id,
-            data_type="logos",
-            session_id=logo_filename,
-            content=contents,
-            content_type=file.content_type
-        )
-        
-        if not success:
-            raise Exception("Failed to upload logo to GCS")
-        
-        # Generate public URL for the logo
-        logo_url = f"https://storage.googleapis.com/{gcs_client.bucket_name}/{logo_key}"
-        print(f"Logo uploaded to GCS: {logo_url}")
-        
-        # Get current settings from GCS
-        settings_key = f"{current_user_id}/settings/user_settings.json"
-        settings_content = gcs_client.get_gcs_object_content(settings_key)
-        
-        if settings_content:
-            current_settings = json.loads(settings_content)
-        else:
-            current_settings = DEFAULT_USER_SETTINGS.copy()
-        
-        # Check if there's an old logo to delete
-        old_logo_url = current_settings.get('clinicLogo')
-        if old_logo_url and old_logo_url.startswith('https://storage.googleapis.com/'):
-            # Extract the key from the URL and delete the old logo
-            try:
-                old_key = old_logo_url.replace(f"https://storage.googleapis.com/{gcs_client.bucket_name}/", "")
-                gcs_client.delete_gcs_object(old_key)
-                print(f"Deleted old logo: {old_key}")
-            except Exception as e:
-                print(f"Warning: Failed to delete old logo: {e}")
-        
-        # Update with new logo URL
-        current_settings['clinicLogo'] = logo_url
-        
-        # Save updated settings to GCS
-        success = gcs_client.save_data_to_gcs(
-            user_id=current_user_id,
-            data_type="settings",
-            session_id="user_settings",
-            content=json.dumps(current_settings)
-        )
-        
-        if not success:
-            raise Exception("Failed to save settings to GCS")
-        
-        return {"logoUrl": logo_url, "message": "Logo uploaded successfully"}
-        
-    except Exception as e:
-        print(f"Error uploading logo for user {current_user_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to upload logo: {str(e)}")
+# --- Image endpoints moved to routers/image_router.py ---
 
-@app.delete("/api/v1/delete_logo")
-async def delete_logo(
-    current_user_id: str = Depends(get_user_id)
-):
-    """Delete clinic logo from GCS and user settings"""
-    if not gcs_client:
-        raise HTTPException(status_code=503, detail="GCS client not initialized")
-    
-    try:
-        # Get current settings from GCS
-        settings_key = f"{current_user_id}/settings/user_settings.json"
-        settings_content = gcs_client.get_gcs_object_content(settings_key)
-        
-        if settings_content:
-            current_settings = json.loads(settings_content)
-        else:
-            current_settings = DEFAULT_USER_SETTINGS.copy()
-        
-        # Delete the logo file from GCS if it exists
-        logo_url = current_settings.get('clinicLogo')
-        if logo_url and logo_url.startswith('https://storage.googleapis.com/'):
-            try:
-                # Extract the key from the URL
-                logo_key = logo_url.replace(f"https://storage.googleapis.com/{gcs_client.bucket_name}/", "")
-                deleted = gcs_client.delete_gcs_object(logo_key)
-                if deleted:
-                    print(f"Deleted logo file from GCS: {logo_key}")
-                else:
-                    print(f"Logo file not found in GCS: {logo_key}")
-            except Exception as e:
-                print(f"Warning: Failed to delete logo file from GCS: {e}")
-        
-        # Remove logo URL and reset flag
-        current_settings['clinicLogo'] = None
-        current_settings['includeLogoOnPdf'] = False
-        
-        # Save updated settings to GCS
-        success = gcs_client.save_data_to_gcs(
-            user_id=current_user_id,
-            data_type="settings",
-            session_id="user_settings",
-            content=json.dumps(current_settings)
-        )
-        
-        if not success:
-            raise Exception("Failed to save settings to GCS")
-        
-        return {"message": "Logo deleted successfully"}
-        
-    except Exception as e:
-        print(f"Error deleting logo for user {current_user_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete logo: {str(e)}")
-
-@app.get("/api/v1/debug_logo/{user_id}")
-async def debug_logo(
-    user_id: str,
-    current_user_id: str = Depends(get_user_id)
-):
-    """Debug endpoint to check logo status"""
-    if user_id != current_user_id:
-        raise HTTPException(status_code=403, detail="Unauthorized")
-    
-    if not gcs_client:
-        raise HTTPException(status_code=503, detail="GCS client not initialized")
-    
-    try:
-        settings_key = f"{user_id}/settings/user_settings.json"
-        settings_content = gcs_client.get_gcs_object_content(settings_key)
-        
-        if settings_content:
-            settings = json.loads(settings_content)
-            return {
-                "clinicLogo": settings.get('clinicLogo'),
-                "includeLogoOnPdf": settings.get('includeLogoOnPdf'),
-                "hasLogo": bool(settings.get('clinicLogo'))
-            }
-        else:
-            return {"error": "No settings found", "clinicLogo": None}
-    except Exception as e:
-        print(f"Error in debug_logo: {e}")
-        raise HTTPException(status_code=500, detail=f"Error fetching logo info: {str(e)}")
-
-@app.post("/api/v1/migrate_logo")
-async def migrate_logo(
-    current_user_id: str = Depends(get_user_id)
-):
-    """Migrate base64 logo to GCS file storage"""
-    import base64
-    
-    if not gcs_client:
-        raise HTTPException(status_code=503, detail="GCS client not initialized")
-    
-    try:
-        # Get current settings
-        settings_key = f"{current_user_id}/settings/user_settings.json"
-        settings_content = gcs_client.get_gcs_object_content(settings_key)
-        
-        if not settings_content:
-            return {"message": "No settings found", "migrated": False}
-        
-        current_settings = json.loads(settings_content)
-        logo_data = current_settings.get('clinicLogo')
-        
-        # Check if logo exists and is base64
-        if not logo_data:
-            return {"message": "No logo found", "migrated": False}
-        
-        if logo_data.startswith('https://'):
-            return {"message": "Logo already migrated to GCS", "migrated": False}
-        
-        if not logo_data.startswith('data:'):
-            return {"message": "Invalid logo format", "migrated": False}
-        
-        # Parse base64 data URL
-        try:
-            # Format: data:image/png;base64,iVBORw0KGgo...
-            header, base64_data = logo_data.split(',', 1)
-            mime_type = header.split(':')[1].split(';')[0]
-            
-            # Decode base64
-            image_data = base64.b64decode(base64_data)
-            
-            # Determine file extension
-            ext_map = {
-                'image/jpeg': 'jpg',
-                'image/jpg': 'jpg',
-                'image/png': 'png',
-                'image/gif': 'gif',
-                'image/webp': 'webp'
-            }
-            file_ext = ext_map.get(mime_type, 'png')
-            
-            # Generate filename
-            timestamp = int(time.time() * 1000)
-            logo_filename = f"logo_migrated_{timestamp}.{file_ext}"
-            
-            # Upload to GCS
-            success = gcs_client.save_data_to_gcs(
-                user_id=current_user_id,
-                data_type="logos",
-                session_id=logo_filename,
-                content=image_data,
-                content_type=mime_type
-            )
-            
-            if not success:
-                raise Exception("Failed to upload migrated logo to GCS")
-            
-            # Generate public URL
-            logo_key = f"{current_user_id}/logos/{logo_filename}"
-            logo_url = f"https://storage.googleapis.com/{gcs_client.bucket_name}/{logo_key}"
-            
-            # Update settings with new URL
-            current_settings['clinicLogo'] = logo_url
-            
-            # Save updated settings
-            success = gcs_client.save_data_to_gcs(
-                user_id=current_user_id,
-                data_type="settings",
-                session_id="user_settings",
-                content=json.dumps(current_settings)
-            )
-            
-            if not success:
-                raise Exception("Failed to save updated settings")
-            
-            print(f"Successfully migrated logo for user {current_user_id} to {logo_url}")
-            return {"message": "Logo migrated successfully", "logoUrl": logo_url, "migrated": True}
-            
-        except Exception as e:
-            print(f"Error parsing base64 data: {e}")
-            raise HTTPException(status_code=400, detail=f"Failed to parse base64 data: {str(e)}")
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error migrating logo for user {current_user_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to migrate logo: {str(e)}")
-
-# Signature upload endpoint
-@app.post("/api/v1/upload_signature")
-async def upload_signature(
-    file: UploadFile = File(...),
-    current_user_id: str = Depends(get_user_id)
-):
-    """Upload a signature - stores file in GCS and URL in settings"""
-    
-    if not gcs_client:
-        raise HTTPException(status_code=503, detail="GCS client not initialized")
-    
-    # Debug logging
-    print(f"Signature upload - User: {current_user_id}, File: {file.filename}, Content-Type: {file.content_type}, Size: {file.size}")
-    
-    # Validate file type
-    allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/jpg"]
-    
-    # Handle case where content_type might be None or empty
-    if not file.content_type or file.content_type not in allowed_types:
-        # Try to infer from filename
-        file_ext = file.filename.lower().split('.')[-1] if '.' in file.filename else ''
-        ext_to_mime = {
-            'jpg': 'image/jpeg',
-            'jpeg': 'image/jpeg',
-            'png': 'image/png',
-            'gif': 'image/gif',
-            'webp': 'image/webp'
-        }
-        
-        if file_ext in ext_to_mime:
-            file.content_type = ext_to_mime[file_ext]
-            print(f"Inferred content type from extension: {file.content_type}")
-        else:
-            print(f"Invalid content type: {file.content_type}")
-            raise HTTPException(status_code=400, detail=f"Invalid file type: {file.content_type}. Allowed types: {allowed_types}")
-    
-    # Validate file size (2MB limit for signatures)
-    max_size = 2 * 1024 * 1024  # 2MB
-    contents = await file.read()
-    if len(contents) > max_size:
-        raise HTTPException(status_code=400, detail="File size exceeds 2MB limit")
-    
-    try:
-        # Generate unique filename
-        timestamp = int(time.time() * 1000)
-        file_ext = file.filename.lower().split('.')[-1] if '.' in file.filename else 'png'
-        signature_filename = f"signature_{timestamp}.{file_ext}"
-        signature_key = f"{current_user_id}/signatures/{signature_filename}"
-        
-        # Upload file directly to GCS
-        success = gcs_client.save_data_to_gcs(
-            user_id=current_user_id,
-            data_type="signatures",
-            session_id=signature_filename,
-            content=contents,
-            content_type=file.content_type
-        )
-        
-        if not success:
-            raise Exception("Failed to upload signature to GCS")
-        
-        # Generate public URL for the signature
-        signature_url = f"https://storage.googleapis.com/{gcs_client.bucket_name}/{signature_key}"
-        print(f"Signature uploaded to GCS: {signature_url}")
-        
-        # Get current settings from GCS
-        settings_key = f"{current_user_id}/settings/user_settings.json"
-        settings_content = gcs_client.get_gcs_object_content(settings_key)
-        
-        if settings_content:
-            current_settings = json.loads(settings_content)
-        else:
-            current_settings = DEFAULT_USER_SETTINGS.copy()
-        
-        # Check if there's an old signature to delete
-        old_signature_url = current_settings.get('doctorSignature')
-        if old_signature_url and old_signature_url.startswith('https://storage.googleapis.com/'):
-            # Extract the key from the URL and delete the old signature
-            try:
-                old_key = old_signature_url.replace(f"https://storage.googleapis.com/{gcs_client.bucket_name}/", "")
-                gcs_client.delete_gcs_object(old_key)
-                print(f"Deleted old signature: {old_key}")
-            except Exception as e:
-                print(f"Warning: Failed to delete old signature: {e}")
-        
-        # Update with new signature URL
-        current_settings['doctorSignature'] = signature_url
-        
-        # Save updated settings to GCS
-        success = gcs_client.save_data_to_gcs(
-            user_id=current_user_id,
-            data_type="settings",
-            session_id="user_settings",
-            content=json.dumps(current_settings)
-        )
-        
-        if not success:
-            raise Exception("Failed to save settings to GCS")
-        
-        return {"signatureUrl": signature_url, "message": "Signature uploaded successfully"}
-        
-    except Exception as e:
-        print(f"Error uploading signature for user {current_user_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to upload signature: {str(e)}")
-
-@app.delete("/api/v1/delete_signature")
-async def delete_signature(
-    current_user_id: str = Depends(get_user_id)
-):
-    """Delete signature from GCS and user settings"""
-    if not gcs_client:
-        raise HTTPException(status_code=503, detail="GCS client not initialized")
-    
-    try:
-        # Get current settings from GCS
-        settings_key = f"{current_user_id}/settings/user_settings.json"
-        settings_content = gcs_client.get_gcs_object_content(settings_key)
-        
-        if settings_content:
-            current_settings = json.loads(settings_content)
-        else:
-            current_settings = DEFAULT_USER_SETTINGS.copy()
-        
-        # Delete the signature file from GCS if it exists
-        signature_url = current_settings.get('doctorSignature')
-        if signature_url and signature_url.startswith('https://storage.googleapis.com/'):
-            try:
-                # Extract the key from the URL
-                signature_key = signature_url.replace(f"https://storage.googleapis.com/{gcs_client.bucket_name}/", "")
-                deleted = gcs_client.delete_gcs_object(signature_key)
-                if deleted:
-                    print(f"Deleted signature file from GCS: {signature_key}")
-                else:
-                    print(f"Signature file not found in GCS: {signature_key}")
-            except Exception as e:
-                print(f"Warning: Failed to delete signature file from GCS: {e}")
-        
-        # Remove signature URL from settings
-        current_settings['doctorSignature'] = None
-        
-        # Save updated settings to GCS
-        success = gcs_client.save_data_to_gcs(
-            user_id=current_user_id,
-            data_type="settings",
-            session_id="user_settings",
-            content=json.dumps(current_settings)
-        )
-        
-        if not success:
-            raise Exception("Failed to save settings to GCS")
-        
-        return {"message": "Signature deleted successfully"}
-        
-    except Exception as e:
-        print(f"Error deleting signature for user {current_user_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete signature: {str(e)}")
-
-@app.post("/api/v1/migrate_signature")
-async def migrate_signature(
-    current_user_id: str = Depends(get_user_id)
-):
-    """Migrate base64 signature to GCS file storage"""
-    import base64
-    
-    if not gcs_client:
-        raise HTTPException(status_code=503, detail="GCS client not initialized")
-    
-    try:
-        # Get current settings
-        settings_key = f"{current_user_id}/settings/user_settings.json"
-        settings_content = gcs_client.get_gcs_object_content(settings_key)
-        
-        if not settings_content:
-            return {"message": "No settings found", "migrated": False}
-        
-        current_settings = json.loads(settings_content)
-        signature_data = current_settings.get('doctorSignature')
-        
-        # Check if signature exists and is base64
-        if not signature_data:
-            return {"message": "No signature found", "migrated": False}
-        
-        if signature_data.startswith('https://'):
-            return {"message": "Signature already migrated to GCS", "migrated": False}
-        
-        if not signature_data.startswith('data:'):
-            return {"message": "Invalid signature format", "migrated": False}
-        
-        # Parse base64 data URL
-        try:
-            # Format: data:image/png;base64,iVBORw0KGgo...
-            header, base64_data = signature_data.split(',', 1)
-            mime_type = header.split(':')[1].split(';')[0]
-            
-            # Decode base64
-            image_data = base64.b64decode(base64_data)
-            
-            # Determine file extension
-            ext_map = {
-                'image/jpeg': 'jpg',
-                'image/jpg': 'jpg',
-                'image/png': 'png',
-                'image/gif': 'gif',
-                'image/webp': 'webp'
-            }
-            file_ext = ext_map.get(mime_type, 'png')
-            
-            # Generate filename
-            timestamp = int(time.time() * 1000)
-            signature_filename = f"signature_migrated_{timestamp}.{file_ext}"
-            
-            # Upload to GCS
-            success = gcs_client.save_data_to_gcs(
-                user_id=current_user_id,
-                data_type="signatures",
-                session_id=signature_filename,
-                content=image_data,
-                content_type=mime_type
-            )
-            
-            if not success:
-                raise Exception("Failed to upload migrated signature to GCS")
-            
-            # Generate public URL
-            signature_key = f"{current_user_id}/signatures/{signature_filename}"
-            signature_url = f"https://storage.googleapis.com/{gcs_client.bucket_name}/{signature_key}"
-            
-            # Update settings with new URL
-            current_settings['doctorSignature'] = signature_url
-            
-            # Save updated settings
-            success = gcs_client.save_data_to_gcs(
-                user_id=current_user_id,
-                data_type="settings",
-                session_id="user_settings",
-                content=json.dumps(current_settings)
-            )
-            
-            if not success:
-                raise Exception("Failed to save updated settings")
-            
-            print(f"Successfully migrated signature for user {current_user_id} to {signature_url}")
-            return {"message": "Signature migrated successfully", "signatureUrl": signature_url, "migrated": True}
-            
-        except Exception as e:
-            print(f"Error parsing base64 data: {e}")
-            raise HTTPException(status_code=400, detail=f"Failed to parse base64 data: {str(e)}")
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error migrating signature for user {current_user_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to migrate signature: {str(e)}")
-
-# --- End User Settings --- #
-
-class SaveSessionRequest(BaseModel):
-    session_id: str
-    final_transcript_text: str 
-    user_id: str  
-    patient_context: Optional[str] = None 
-    patient_name: Optional[str] = None  # Add patient name field
-    patient_id: Optional[str] = None  # Reference to patient profile
-    encounter_type: Optional[str] = None  
-    llm_template: Optional[str] = None
-    llm_template_id: Optional[str] = None
-    location: Optional[str] = None  # Add location field too
-    date_of_service: Optional[str] = None  # Add date of service for dictation mode
-    evaluation_type: Optional[str] = None  # For tracking evaluation types
-    initial_evaluation_id: Optional[str] = None  # Link to initial evaluation for re-evaluations
-    previous_findings: Optional[Dict[str, Any]] = None  # Previous findings for context
 
 @app.post("/api/v1/save_session_data") 
 async def save_session_data_endpoint(
@@ -1040,12 +395,6 @@ async def save_session_data_endpoint(
         gcs_client=gcs_client
     )
 
-class SaveDraftRequest(BaseModel):
-    session_id: str
-    transcript: str
-    patient_name: str
-    profile_id: Optional[str] = None
-    user_id: str
 
 @app.post("/api/v1/save_draft")
 async def save_draft_endpoint(
@@ -1066,26 +415,8 @@ async def delete_session_recording(
     return await delete_recording_firestore(user_id, session_id, current_user_id, request, gcs_client)
 
 
-class RecordingInfo(BaseModel):
-    id: str # session_id
-    name: str # Derived name, e.g., from patient context or session title
-    date: datetime # Last modified date of the metadata file or a date from metadata
-    status: str = "saved" # Can be "saved", "draft", "pending", "saving", "failed"
-    gcsPathTranscript: Optional[str] = None
-    gcsPathPolished: Optional[str] = None
-    gcsPathMetadata: Optional[str] = None # GCS key for the session_metadata.json file itself, now optional
-    patientContext: Optional[str] = None
-    encounterType: Optional[str] = None # Or selected profile name
-    llmTemplateName: Optional[str] = None # Name of the LLM template/profile used
-    location: Optional[str] = None
-    durationSeconds: Optional[int] = None
-    # Draft-specific fields
-    transcript: Optional[str] = None
-    polishedTranscript: Optional[str] = None
-    profileId: Optional[str] = None
-    # Add any other relevant fields that might be in session_metadata.json and useful for display
 
-@app.get("/api/v1/user_recordings/{user_id}", response_model=List[RecordingInfo])
+@app.get("/api/v1/user_recordings/{user_id}")
 async def get_user_recordings(
     user_id: str = Path(..., description="User's unique identifier"),
     current_user_id: str = Depends(get_user_id),
@@ -1102,9 +433,6 @@ async def get_transcript_details(
     """Get transcript details including content from Firestore"""
     return await get_transcript_details_firestore(user_id, transcript_id, current_user_id, request)
 
-class UpdateTranscriptRequest(BaseModel):
-    polishedTranscript: Optional[str] = None
-    originalTranscript: Optional[str] = None
 
 @app.put("/api/v1/transcript/{user_id}/{transcript_id}")
 async def update_transcript(
@@ -1266,7 +594,7 @@ async def delete_patient_endpoint(
 ):
     return await delete_patient(patient_id, current_user_id, request)
 
-@app.get("/api/v1/patients/{patient_id}/transcripts", response_model=List[RecordingInfo])
+@app.get("/api/v1/patients/{patient_id}/transcripts")
 async def get_patient_transcripts_endpoint(
     patient_id: str = Path(..., description="Patient ID"),
     current_user_id: str = Depends(get_user_id),
@@ -1315,6 +643,7 @@ async def extract_transcript_findings_endpoint(
     request: Request = None
 ):
     return await extract_transcript_findings(transcript_id, current_user_id, request)
+
 
         
 if __name__ == "__main__":

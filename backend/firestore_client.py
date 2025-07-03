@@ -77,12 +77,35 @@ class FirestoreClient:
             # Add updated_at timestamp
             settings['updated_at'] = datetime.now(timezone.utc)
             
-            user_ref.update(settings)
+            # Debug logging
+            logger.info(f"=== DEBUG: About to save to Firestore for user {user_id} ===")
+            for key, value in settings.items():
+                if isinstance(value, (list, dict)):
+                    logger.info(f"{key}: {type(value).__name__} with {len(value)} items")
+                    if key == 'transcription_profiles' and isinstance(value, list) and len(value) > 0:
+                        logger.info(f"  First profile: {value[0]}")
+                else:
+                    logger.info(f"{key}: {value}")
+            
+            # Use set with merge=True instead of update()
+            # This handles complex fields better and creates the document if it doesn't exist
+            user_ref.set(settings, merge=True)
             logger.info(f"Updated settings for user {user_id}")
+            
+            # Verify what was actually saved
+            saved_doc = user_ref.get()
+            if saved_doc.exists:
+                saved_data = saved_doc.to_dict()
+                logger.info(f"=== DEBUG: Verified Firestore save ===")
+                logger.info(f"transcription_profiles in saved doc: {'transcription_profiles' in saved_data}")
+                if 'transcription_profiles' in saved_data:
+                    logger.info(f"transcription_profiles count: {len(saved_data['transcription_profiles'])}")
+            
             return True
             
         except Exception as e:
             logger.error(f"Error updating user settings: {str(e)}")
+            logger.error(f"Settings that failed to update: {settings}")
             return False
     
     async def get_user_settings(self, user_id: str) -> Optional[Dict[str, Any]]:
@@ -111,6 +134,22 @@ class FirestoreClient:
             
             # Create document using model
             transcript_doc = create_transcript_document(transcript_data)
+            
+            # Debug logging for dictation mode
+            if transcript_data.get('is_dictation'):
+                logger.info(f"[DICTATION DEBUG] Firestore client - created_at in transcript_data: {transcript_data.get('created_at')}")
+                logger.info(f"[DICTATION DEBUG] Firestore client - created_at in transcript_doc: {transcript_doc.get('created_at')}")
+                
+                # For dictation mode, ensure the created_at is preserved
+                if transcript_data.get('created_at'):
+                    # Convert datetime to ISO string for Firestore
+                    created_at_value = transcript_data['created_at']
+                    if isinstance(created_at_value, datetime):
+                        transcript_doc['created_at'] = created_at_value.isoformat()
+                    else:
+                        transcript_doc['created_at'] = created_at_value
+                    logger.info(f"[DICTATION DEBUG] Override created_at to: {transcript_doc['created_at']}")
+            
             transcript_ref.set(transcript_doc)
             
             logger.info(f"Created transcript document for session {session_id}")
@@ -131,6 +170,14 @@ class FirestoreClient:
             # If status is being set to completed, add completed_at
             if updates.get('status') == TranscriptStatus.COMPLETED:
                 updates['completed_at'] = datetime.now(timezone.utc)
+            
+            # Debug logging for dictation mode updates
+            if updates.get('is_dictation') and updates.get('created_at'):
+                logger.info(f"[DICTATION DEBUG] Update - created_at before update: {updates.get('created_at')}")
+                # Ensure created_at is properly formatted for Firestore
+                if isinstance(updates['created_at'], datetime):
+                    updates['created_at'] = updates['created_at'].isoformat()
+                logger.info(f"[DICTATION DEBUG] Update - created_at after formatting: {updates.get('created_at')}")
             
             transcript_ref.update(updates)
             logger.info(f"Updated transcript {session_id}")
@@ -236,16 +283,18 @@ class FirestoreClient:
     
     # Query helpers
     async def get_recent_transcripts(self, user_id: str, days: int = 7) -> List[Dict[str, Any]]:
-        """Get transcripts from the last N days"""
+        """Get transcripts from the last N days (uses updated_at to catch dictation recordings)"""
         try:
             cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
             
+            # Use updated_at instead of created_at to ensure we get dictation recordings
+            # that were created recently but have past service dates
             query = self.transcripts_collection.where(
                 filter=FieldFilter('user_id', '==', user_id)
             ).where(
-                filter=FieldFilter('created_at', '>=', cutoff_date)
+                filter=FieldFilter('updated_at', '>=', cutoff_date)
             ).order_by(
-                'created_at', direction=firestore.Query.DESCENDING
+                'updated_at', direction=firestore.Query.DESCENDING
             )
             
             transcripts = []
@@ -480,12 +529,28 @@ class FirestoreClient:
                 transcript_data = doc.to_dict()
                 transcript_data['id'] = doc.id
                 logger.info(f"Found transcript {doc.id} with patient_id: {transcript_data.get('patient_id')}, patient_name: {transcript_data.get('patient_name')}")
+                logger.info(f"Transcript {doc.id} created_at: {transcript_data.get('created_at')}, date_of_service: {transcript_data.get('date_of_service')}, is_dictation: {transcript_data.get('is_dictation')}")
+                
+                # Parse the created_at date properly
+                created_at_str = transcript_data.get('created_at')
+                if created_at_str:
+                    try:
+                        # Parse ISO format date string
+                        if isinstance(created_at_str, str):
+                            created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                        else:
+                            created_at = created_at_str
+                    except Exception as e:
+                        logger.warning(f"Error parsing created_at for transcript {doc.id}: {e}")
+                        created_at = datetime.now(timezone.utc)
+                else:
+                    created_at = datetime.now(timezone.utc)
                 
                 # Format the transcript data to match RecordingInfo model
                 recording_info = {
                     'id': doc.id,
                     'name': transcript_data.get('patient_name', 'Unknown Patient'),
-                    'date': transcript_data.get('created_at', datetime.now()),
+                    'date': created_at,
                     'status': transcript_data.get('status', 'saved'),
                     'gcsPathTranscript': transcript_data.get('gcs_path_transcript'),
                     'gcsPathPolished': transcript_data.get('gcs_path_polished'),

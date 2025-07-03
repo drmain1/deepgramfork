@@ -86,9 +86,13 @@ class UserSettingsService:
             if settings_content:
                 settings = json.loads(settings_content)
                 logger.info(f"Loaded settings from GCS for user {user_id}")
+                logger.info(f"=== DEBUG: GCS content for {user_id} ===")
+                logger.info(f"transcriptionProfiles: {len(settings.get('transcriptionProfiles', []))} items")
+                logger.info(f"doctorName: {settings.get('doctorName', '')}")
+                logger.info(f"medicalSpecialty: {settings.get('medicalSpecialty', '')}")
             else:
                 settings = self.DEFAULT_USER_SETTINGS.copy()
-                logger.info(f"Using default settings for user {user_id}")
+                logger.info(f"Using default settings for user {user_id} - NO GCS CONTENT FOUND")
             
             # Update cache
             self._cache[cache_key] = {
@@ -125,6 +129,12 @@ class UserSettingsService:
                 current_settings.update(settings)
                 settings = current_settings
             
+            # Log what we're about to save
+            logger.info(f"=== DEBUG: Saving to GCS for user {user_id} ===")
+            logger.info(f"transcriptionProfiles: {len(settings.get('transcriptionProfiles', []))} items")
+            logger.info(f"doctorName: {settings.get('doctorName', '')}")
+            logger.info(f"medicalSpecialty: {settings.get('medicalSpecialty', '')}")
+            
             # Save to GCS
             settings_key = self._get_settings_key(user_id)
             success = self.gcs_client.save_data_to_gcs(
@@ -142,6 +152,13 @@ class UserSettingsService:
                     "cached_at": datetime.now(timezone.utc).timestamp()
                 }
                 logger.info(f"Saved settings for user {user_id}")
+                
+                # Verify what was saved
+                saved_content = self.gcs_client.get_gcs_object_content(settings_key)
+                if saved_content:
+                    saved_data = json.loads(saved_content)
+                    logger.info(f"=== DEBUG: Verified GCS save for {user_id} ===")
+                    logger.info(f"transcriptionProfiles in saved data: {len(saved_data.get('transcriptionProfiles', []))} items")
             else:
                 logger.error(f"Failed to save settings for user {user_id}")
             
@@ -342,25 +359,53 @@ class UserSettingsService:
         try:
             settings = await self.get_user_settings(user_id)
             
-            # Extract key fields for Firestore
-            firestore_data = {
-                "user_id": user_id,
-                "doctor_name": settings.get("doctorName", ""),
-                "medical_specialty": settings.get("medicalSpecialty", ""),
-                "has_logo": bool(settings.get("clinicLogo")),
-                "has_signature": bool(settings.get("doctorSignature")),
-                "profile_count": len(settings.get("transcriptionProfiles", [])),
-                "updated_at": datetime.now(timezone.utc).isoformat()
+            # Log what we're getting from GCS
+            logger.info(f"=== DEBUG: Settings from GCS for user {user_id} ===")
+            logger.info(f"transcriptionProfiles: {len(settings.get('transcriptionProfiles', []))} items")
+            logger.info(f"customVocabulary: {len(settings.get('customVocabulary', []))} items")
+            logger.info(f"macroPhrases: {len(settings.get('macroPhrases', []))} items")
+            logger.info(f"doctorName: {settings.get('doctorName', '')}")
+            logger.info(f"medicalSpecialty: {settings.get('medicalSpecialty', '')}")
+            
+            # Convert to Firestore format (snake_case) and include ALL settings
+            firestore_settings = {
+                'custom_vocabulary': settings.get('customVocabulary', []),
+                'macro_phrases': settings.get('macroPhrases', []),
+                'transcription_profiles': settings.get('transcriptionProfiles', []),
+                'doctor_name': settings.get('doctorName', ''),
+                'medical_specialty': settings.get('medicalSpecialty', ''),
+                'doctor_signature': settings.get('doctorSignature'),
+                'clinic_logo': settings.get('clinicLogo'),
+                'include_logo_on_pdf': settings.get('includeLogoOnPdf', False),
+                'office_information': settings.get('officeInformation', []),
+                'custom_billing_rules': settings.get('customBillingRules', ''),
+                'cpt_fees': settings.get('cptFees', {}),
+                'updated_at': datetime.now(timezone.utc)
             }
             
-            # Save to Firestore
-            success = await firestore_client.save_user_settings_summary(
+            # Log what we're sending to Firestore
+            logger.info(f"=== DEBUG: Sending to Firestore for user {user_id} ===")
+            logger.info(f"transcription_profiles: {len(firestore_settings.get('transcription_profiles', []))} items")
+            logger.info(f"custom_vocabulary: {len(firestore_settings.get('custom_vocabulary', []))} items")
+            logger.info(f"macro_phrases: {len(firestore_settings.get('macro_phrases', []))} items")
+            
+            # Save full settings to Firestore
+            success = await firestore_client.update_user_settings(
                 user_id, 
-                firestore_data
+                firestore_settings
             )
             
             if success:
-                logger.info(f"Synced settings to Firestore for user {user_id}")
+                logger.info(f"Synced full settings to Firestore for user {user_id}")
+                
+                # Verify what was actually saved
+                saved_doc = await firestore_client.get_user_settings(user_id)
+                if saved_doc:
+                    logger.info(f"=== DEBUG: Verified in Firestore for user {user_id} ===")
+                    logger.info(f"transcription_profiles exists: {'transcription_profiles' in saved_doc}")
+                    logger.info(f"transcription_profiles count: {len(saved_doc.get('transcription_profiles', []))}")
+                    logger.info(f"doctor_name: {saved_doc.get('doctor_name', 'NOT FOUND')}")
+                    logger.info(f"medical_specialty: {saved_doc.get('medical_specialty', 'NOT FOUND')}")
             
             return success
             

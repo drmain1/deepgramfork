@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import PatientSelector from './PatientSelector';
 import ReEvaluationIndicator from './ReEvaluationIndicator';
 import MicrophoneMonitor from './MicrophoneMonitor';
@@ -40,7 +40,8 @@ function SetupView({ onStartEncounter }) {
     initialEvaluationId,
     setInitialEvaluationId,
     previousFindings,
-    setPreviousFindings
+    setPreviousFindings,
+    initializeSettings
   } = useTranscriptionSessionStore();
   
   // Get user settings from context
@@ -57,6 +58,13 @@ function SetupView({ onStartEncounter }) {
   
   // Use the microphone monitoring hook
   const { micLevel, micStatus, retryMicrophoneAccess } = useMicrophoneMonitor();
+  
+  // Initialize settings when user settings are loaded
+  useEffect(() => {
+    if (!settingsLoading && userSettings) {
+      initializeSettings(userSettings);
+    }
+  }, [userSettings, settingsLoading, initializeSettings]);
 
 
   const handleLoadFindings = async () => {

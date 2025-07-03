@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useRecordings } from '../contexts/RecordingsContext';
 import { useAuth } from '../contexts/FirebaseAuthContext';
 import { useState, useEffect } from 'react';
+import { parseSessionIdTime } from '../utils/dateUtils';
 
 function Sidebar() {
   const { recordings, deletePersistedRecording, isFetchingRecordings, selectRecording, selectedRecordingId } = useRecordings();
@@ -92,39 +93,6 @@ function Sidebar() {
     });
   };
 
-  // Parse timestamp from session ID (format: YYYYMMDDHHMMSSxxxxxx)
-  const parseSessionIdTime = (sessionId) => {
-    if (!sessionId || sessionId.length < 14 || !sessionId.substring(0, 14).match(/^\d{14}$/)) {
-      return null;
-    }
-    
-    try {
-      const year = sessionId.substring(0, 4);
-      const month = sessionId.substring(4, 6);
-      const day = sessionId.substring(6, 8);
-      const hour = sessionId.substring(8, 10);
-      const minute = sessionId.substring(10, 12);
-      const second = sessionId.substring(12, 14);
-      
-      // Create UTC date string and parse it
-      // Session IDs are now generated in UTC on the backend
-      // For backward compatibility: session IDs created before June 26, 2025 are in server local time
-      const sessionDate = parseInt(year + month + day);
-      const migrationDate = 20250626; // Date when we switched to UTC
-      
-      if (sessionDate < migrationDate) {
-        // Old session IDs - parse as local time (server was likely in UTC or US timezone)
-        // This is a best-effort approach since we don't know the exact server timezone
-        return new Date(year, month - 1, day, hour, minute, second);
-      } else {
-        // New session IDs - parse as UTC
-        const utcDateString = `${year}-${month}-${day}T${hour}:${minute}:${second}Z`;
-        return new Date(utcDateString);
-      }
-    } catch (error) {
-      return null;
-    }
-  };
 
   // Filter out 'pending' recordings from display if they have an associated 'saved' or 'failed' recording
   const processedRecordings = recordings.reduce((acc, current) => {
@@ -152,10 +120,13 @@ function Sidebar() {
   });
 
   const sortedRecordings = filteredRecordings.sort((a, b) => {
-    // Sort by session ID timestamp for accuracy
-    const timeA = parseSessionIdTime(a.id) || new Date(a.date || 0);
-    const timeB = parseSessionIdTime(b.id) || new Date(b.date || 0);
-    return timeB - timeA;
+    // Always use the date field from backend as primary sort
+    // The backend already handles dictation mode dates correctly
+    const dateA = new Date(a.date);
+    const dateB = new Date(b.date);
+    
+    // Sort by date descending (newest first)
+    return dateB - dateA;
   });
 
   // Group recordings by date
@@ -166,8 +137,14 @@ function Sidebar() {
     yesterday.setDate(yesterday.getDate() - 1);
     
     recordings.forEach(recording => {
-      // Use session ID timestamp for accurate grouping
-      const recordingDate = parseSessionIdTime(recording.id) || new Date(recording.date || 0);
+      // Simply use the date from backend - it now correctly handles dictation mode
+      const recordingDate = new Date(recording.date);
+      
+      // Debug logging
+      if (recording.isDictation) {
+        console.log(`[Sidebar] Dictation recording ${recording.id}: date=${recording.date}`);
+      }
+      
       if (!recordingDate || recordingDate.toString() === 'Invalid Date') return;
       
       const dateKey = recordingDate.toDateString();
@@ -207,23 +184,14 @@ function Sidebar() {
   const groupedRecordings = groupRecordingsByDate(sortedRecordings);
 
   const formatTime = (isoString, sessionId) => {
-    // First try to parse from session ID for accuracy
-    const sessionTime = parseSessionIdTime(sessionId);
-    if (sessionTime) {
-      return sessionTime.toLocaleString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZoneName: 'short'  // Shows timezone like "PST" or "EST"
-      });
-    }
-    
-    // Fallback to ISO string if available
+    // Always use the ISO string date from backend
+    // The backend handles dictation dates correctly
     if (!isoString) return '';
     try {
       return new Date(isoString).toLocaleString(undefined, {
         hour: '2-digit',
         minute: '2-digit',
-        timeZoneName: 'short'
+        timeZoneName: 'short'  // Shows timezone like "PST" or "EST"
       });
     } catch (error) {
       return 'Invalid time';

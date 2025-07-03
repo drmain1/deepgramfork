@@ -87,8 +87,8 @@ class TranscriptDocument(BaseModel):
     status: TranscriptStatus = TranscriptStatus.PROCESSING
     
     # Timestamps
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime
+    updated_at: datetime
     completed_at: Optional[datetime] = None
     
     # Recording details
@@ -166,8 +166,16 @@ def create_user_document(user_data: dict) -> dict:
 
 def create_transcript_document(transcript_data: dict) -> dict:
     """Create a transcript document from raw data"""
+    # Log the incoming data for debugging
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"[DICTATION DEBUG] create_transcript_document received created_at: {transcript_data.get('created_at')}, type: {type(transcript_data.get('created_at'))}")
+    
     transcript = TranscriptDocument(**transcript_data)
-    return transcript.dict()
+    result = transcript.dict()
+    
+    logger.info(f"[DICTATION DEBUG] TranscriptDocument created with created_at: {result.get('created_at')}")
+    return result
 
 def create_session_document(session_data: dict) -> dict:
     """Create a session document from raw data"""

@@ -8,6 +8,7 @@ import CloudSyncIcon from '@mui/icons-material/CloudSync';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useNavigate } from 'react-router-dom';
 import { useRecordings } from '../contexts/RecordingsContext'; // Import useRecordings
+import { parseSessionIdTime } from '../utils/dateUtils';
 
 // This wrapper will be the direct child of Tooltip
 // and will correctly forward refs and props.
@@ -42,7 +43,33 @@ function RecentRecordingItem({ recording, onDelete }) {
   const formatDate = (isoString) => {
     if (!isoString) return 'N/A';
     try {
-      return new Date(isoString).toLocaleString(undefined, { 
+      // Check if this is a dictation mode recording
+      const sessionIdDate = parseSessionIdTime(recording.id);
+      const backendDate = new Date(isoString);
+      const daysDifference = sessionIdDate && backendDate ? 
+        Math.abs(Math.floor((backendDate - sessionIdDate) / (1000 * 60 * 60 * 24))) : 0;
+      const isDictationMode = recording.isDictation || daysDifference > 1;
+      
+      // For dictation mode, use the backend date
+      if (isDictationMode) {
+        return backendDate.toLocaleString(undefined, { 
+          year: 'numeric', month: 'short', day: 'numeric', 
+          hour: '2-digit', minute: '2-digit',
+          timeZoneName: 'short'  // Shows timezone like "PST" or "EST"
+        });
+      }
+      
+      // For regular recordings, try to use session ID for more accurate timestamp
+      if (sessionIdDate) {
+        return sessionIdDate.toLocaleString(undefined, { 
+          year: 'numeric', month: 'short', day: 'numeric', 
+          hour: '2-digit', minute: '2-digit',
+          timeZoneName: 'short'  // Shows timezone like "PST" or "EST"
+        });
+      }
+      
+      // Fallback to the provided date
+      return backendDate.toLocaleString(undefined, { 
         year: 'numeric', month: 'short', day: 'numeric', 
         hour: '2-digit', minute: '2-digit',
         timeZoneName: 'short'  // Shows timezone like "PST" or "EST"

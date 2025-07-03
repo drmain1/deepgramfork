@@ -333,6 +333,12 @@ function RecordingView({
       
       const result = await saveSessionToBackend(payload, accessToken, API_BASE_URL);
       
+      console.log('[SAVE SUCCESS] Result from backend:', result);
+      console.log('[SAVE SUCCESS] Session saved with ID:', sessionId);
+      if (isDictationMode) {
+        console.log('[SAVE SUCCESS] Dictation mode save completed for date:', dateOfService);
+      }
+      
       setSaveStatusMessage('Notes generated and saved!');
       setIsSessionSaved(true);
       
@@ -359,6 +365,13 @@ function RecordingView({
         fetchUserRecordings();
       }
     } catch (error) {
+      console.error('[SAVE ERROR] Full error details:', error);
+      console.error('[SAVE ERROR] Error message:', error.message);
+      console.error('[SAVE ERROR] Session ID:', sessionId);
+      console.error('[SAVE ERROR] Transcript length:', combinedTranscript?.length || 0);
+      console.error('[SAVE ERROR] isDictationMode:', isDictationMode);
+      console.error('[SAVE ERROR] dateOfService:', dateOfService);
+      
       setSaveStatusMessage(`Error saving notes: ${error.message}`);
       updateRecording(sessionId, { 
         status: RECORDING_STATUS.FAILED, 

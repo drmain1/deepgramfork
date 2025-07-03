@@ -62,7 +62,7 @@ export function useRecordings() {
     const intervalId = setInterval(() => {
       console.log('Checking for completed recordings...');
       fetchUserRecordings(currentUser, getToken);
-    }, 3000); // Reduced to 3 seconds for better UX
+    }, 30000); // Temporarily increased to 30 seconds to reduce log spam
 
     return () => {
       console.log('Clearing periodic refresh interval');

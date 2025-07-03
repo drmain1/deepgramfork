@@ -69,6 +69,12 @@ async def get_user_recordings_firestore(
         transcripts = await firestore_client.get_recent_transcripts(user_id, days=365)
         
         recordings_info = []
+        
+        # Debug log first transcript to see available fields
+        if transcripts:
+            logger.info(f"[DICTATION DEBUG] First transcript fields: {list(transcripts[0].keys())}")
+            logger.info(f"[DICTATION DEBUG] First transcript is_dictation: {transcripts[0].get('is_dictation')}")
+        
         for transcript in transcripts:
             # Parse the date string - use created_at as primary timestamp (when recording was made)
             # Only fall back to updated_at if created_at is missing
@@ -77,6 +83,18 @@ async def get_user_recordings_firestore(
                 date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00')) if date_str else datetime.now(timezone.utc)
             except:
                 date_obj = datetime.now(timezone.utc)
+            
+            # For dictation mode recordings, use the date_of_service instead of created_at
+            if transcript.get('date_of_service'):
+                logger.info(f"[DICTATION DEBUG] Recording {transcript.get('session_id')} has date_of_service: {transcript.get('date_of_service')}, created_at: {date_str}")
+                try:
+                    # Parse date_of_service and use it as the recording date
+                    service_date_str = transcript.get('date_of_service')
+                    date_obj = datetime.fromisoformat(service_date_str.replace('Z', '+00:00')) if service_date_str else date_obj
+                    logger.info(f"[DICTATION DEBUG] Using date_of_service for date field: {date_obj}")
+                except Exception as e:
+                    logger.error(f"[DICTATION DEBUG] Failed to parse date_of_service: {e}")
+                    # Fall back to created_at if parsing fails
             
             # Convert Firestore document to RecordingInfo
             # Ensure we always get a string, never None
@@ -100,7 +118,9 @@ async def get_user_recordings_firestore(
                 patientId=transcript.get('patient_id'),
                 # Include transcript content directly
                 transcript=transcript_content,
-                polishedTranscript=polished_content
+                polishedTranscript=polished_content,
+                # Check for dictation mode - fallback to checking date_of_service if is_dictation not set
+                isDictation=transcript.get('is_dictation', bool(transcript.get('date_of_service')))
             )
             
             # Debug logging - transcript_content is now guaranteed to be a string
@@ -285,15 +305,20 @@ async def save_session_data_firestore(
         # Check if date_of_service is provided (dictation mode)
         date_of_service = request_data.get('date_of_service')
         original_date_of_service = date_of_service  # Preserve original value
-        logger.info(f"Date of service from request: {date_of_service}")
+        logger.info(f"[DICTATION DEBUG] Date of service from request: {date_of_service}")
+        logger.info(f"[DICTATION DEBUG] Full request data keys: {list(request_data.keys())}")
+        logger.info(f"[DICTATION DEBUG] Transcript field present: {'final_transcript_text' in request_data}")
+        logger.info(f"[DICTATION DEBUG] Transcript length: {len(request_data.get('final_transcript_text', ''))}")
         if date_of_service:
             try:
+                logger.info(f"[DICTATION DEBUG] Processing date_of_service: {date_of_service}")
                 # For dictation mode, use the provided service date as created_at
                 # The date_of_service is in the user's local date (YYYY-MM-DD)
                 # We need to treat it as a date in the user's timezone, not UTC
                 
                 # Parse the date string
                 service_date = datetime.strptime(date_of_service, "%Y-%m-%d")
+                logger.info(f"[DICTATION DEBUG] Parsed service_date: {service_date}")
                 
                 # Preserve the time portion from session_id if available
                 if len(session_id) >= 14 and session_id[8:14].isdigit():
@@ -314,6 +339,8 @@ async def save_session_data_firestore(
                 # This is a deliberate choice to handle the date_of_service correctly.
                 created_at = local_datetime.replace(tzinfo=timezone.utc)
                 
+                logger.info(f"[DICTATION DEBUG] Final created_at before saving: {created_at.isoformat()}")
+                logger.info(f"[DICTATION DEBUG] Created_at type: {type(created_at)}")
                 logger.info(f"Dictation mode: Using date_of_service {date_of_service}, created_at: {created_at.isoformat()} (stored as UTC but represents user's local time)")
             except ValueError as e:
                 logger.warning(f"Could not parse date_of_service: {date_of_service}, error: {e}")
@@ -365,34 +392,24 @@ async def save_session_data_firestore(
             'llm_template': request_data.get('llm_template'),
             'llm_template_id': request_data.get('llm_template_id'),
             'duration_seconds': request_data.get('duration'),
-            # Use parsed created_at from session_id or current time
-            'created_at': created_at.isoformat(),
-            'updated_at': datetime.now(timezone.utc).isoformat(),
-            'date_of_service': date_of_service,  # Store the original service date if provided
-            'is_dictation': bool(date_of_service),  # Flag to identify dictation mode transcripts
+            # Use parsed created_at from session_id or current time - pass as datetime object
+            'created_at': created_at,  # Pass as datetime object, not string
+            'updated_at': datetime.now(timezone.utc),  # Pass as datetime object, not string
+            'date_of_service': original_date_of_service,  # Store the original service date if provided
+            'is_dictation': bool(original_date_of_service),  # Flag to identify dictation mode transcripts
             'evaluation_type': evaluation_type,
             'initial_evaluation_id': initial_evaluation_id,
             'positive_findings': previous_findings
         }
         
+        logger.info(f"[DICTATION DEBUG] Saving transcript with created_at: {created_at.isoformat()}, is_dictation: {bool(original_date_of_service)}")
+        
         # Check if transcript already exists
         existing_transcript = await firestore_client.get_transcript(session_id)
         
         if existing_transcript:
-            # Update existing transcript, preserving created_at if we have a better one
-            existing_created_at = existing_transcript.get('created_at')
-            if existing_created_at:
-                try:
-                    existing_date = datetime.fromisoformat(existing_created_at.replace('Z', '+00:00'))
-                    # Only update created_at if our parsed date is earlier (more accurate)
-                    if created_at < existing_date:
-                        logger.info(f"Updating created_at from {existing_created_at} to {created_at.isoformat()}")
-                        await firestore_client.update_transcript(session_id, {'created_at': created_at.isoformat()})
-                except Exception as e:
-                    logger.warning(f"Error comparing dates: {e}")
-            
-            # Update other fields
-            await firestore_client.update_transcript(session_id, {
+            # Update existing transcript
+            update_data = {
                 'patient_name': transcript_data['patient_name'],
                 'patient_id': transcript_data.get('patient_id'),
                 'patient_context': transcript_data.get('patient_context'),
@@ -407,10 +424,31 @@ async def save_session_data_firestore(
                 'positive_findings': transcript_data.get('positive_findings'),
                 'date_of_service': transcript_data.get('date_of_service'),
                 'is_dictation': transcript_data.get('is_dictation'),
-                'updated_at': transcript_data['updated_at']
-            })
+                'updated_at': datetime.now(timezone.utc)  # Pass as datetime object
+            }
+            
+            # For dictation mode, always update created_at with the service date
+            if original_date_of_service:
+                update_data['created_at'] = created_at  # Pass as datetime object, not string
+                logger.info(f"Dictation mode: Updating created_at to {created_at.isoformat()} for session {session_id}")
+            else:
+                # For regular sessions, only update created_at if we have a better date
+                existing_created_at = existing_transcript.get('created_at')
+                if existing_created_at:
+                    try:
+                        existing_date = datetime.fromisoformat(existing_created_at.replace('Z', '+00:00'))
+                        # Only update created_at if our parsed date is earlier (more accurate)
+                        if created_at < existing_date:
+                            logger.info(f"Updating created_at from {existing_created_at} to {created_at.isoformat()}")
+                            update_data['created_at'] = created_at  # Pass as datetime object
+                    except Exception as e:
+                        logger.warning(f"Error comparing dates: {e}")
+            
+            # Update the transcript
+            await firestore_client.update_transcript(session_id, update_data)
         else:
             # Create new transcript
+            logger.info(f"[DICTATION DEBUG] Creating new transcript with created_at type: {type(transcript_data['created_at'])}, value: {transcript_data['created_at']}")
             await firestore_client.create_transcript(transcript_data)
         
         # Get transcript content (support both field names for compatibility)
@@ -422,6 +460,14 @@ async def save_session_data_firestore(
         
         logger.info(f"Transcript content length: {len(transcript_content)}")
         logger.info(f"First 100 chars: {transcript_content[:100] if transcript_content else 'Empty'}")
+        
+        # Validate that transcript has actual content before saving
+        if not transcript_content or not transcript_content.strip():
+            logger.warning(f"Attempting to save empty transcript for session {session_id}")
+            raise HTTPException(
+                status_code=400, 
+                detail="Cannot save empty transcript. Please ensure recording contains speech before saving."
+            )
         
         # Check if the problematic date is in the transcript
         if transcript_content and "2024-05-16" in transcript_content:
@@ -662,6 +708,17 @@ async def save_draft_firestore(
         raise HTTPException(status_code=403, detail="You can only save your own drafts")
     
     logger.info(f"Saving draft {session_id} for user {user_id}")
+    
+    # Get transcript content
+    transcript_content = request_data.get('transcript', '')
+    
+    # Validate that draft has actual content before saving
+    if not transcript_content or not transcript_content.strip():
+        logger.warning(f"Attempting to save empty draft for session {session_id}")
+        raise HTTPException(
+            status_code=400, 
+            detail="Cannot save empty draft. Please ensure recording contains speech before saving."
+        )
     
     try:
         # Check if transcript already exists

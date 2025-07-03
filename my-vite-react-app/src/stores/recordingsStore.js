@@ -128,8 +128,21 @@ const useRecordingsStore = create(
                 id: fetchedRecordings[0].id,
                 hasTranscript: !!fetchedRecordings[0].transcript,
                 transcriptLength: fetchedRecordings[0].transcript?.length || 0,
-                status: fetchedRecordings[0].status
+                status: fetchedRecordings[0].status,
+                isDictation: fetchedRecordings[0].isDictation,
+                date: fetchedRecordings[0].date
               });
+              
+              // Find any dictation mode recordings
+              const dictationRecordings = fetchedRecordings.filter(r => r.isDictation);
+              if (dictationRecordings.length > 0) {
+                console.log('[fetchUserRecordings] Dictation recordings found:', dictationRecordings.map(r => ({
+                  id: r.id,
+                  isDictation: r.isDictation,
+                  date: r.date,
+                  name: r.name
+                })));
+              }
             }
             
             // Merge with local state
@@ -219,8 +232,13 @@ const useRecordingsStore = create(
             };
           });
           
-          // Sort by date
-          merged.sort((a, b) => new Date(b.date) - new Date(a.date));
+          // Sort by date descending (newest first)
+          // Ensure valid dates before sorting
+          merged.sort((a, b) => {
+            const dateA = new Date(a.date || 0);
+            const dateB = new Date(b.date || 0);
+            return dateB - dateA;
+          });
           
           set({ 
             recordings: merged,
@@ -305,7 +323,11 @@ const useRecordingsStore = create(
         addRecording: (recording) => {
           set(state => ({
             recordings: [recording, ...state.recordings.filter(r => r.id !== recording.id)]
-              .sort((a, b) => new Date(b.date) - new Date(a.date)),
+              .sort((a, b) => {
+                const dateA = new Date(a.date || 0);
+                const dateB = new Date(b.date || 0);
+                return dateB - dateA;
+              }),
             recordingMetadata: {
               ...state.recordingMetadata,
               [recording.id]: {
