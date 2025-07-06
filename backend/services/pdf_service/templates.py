@@ -46,24 +46,23 @@ class MedicalDocumentTemplate:
         if not patient_data:
             return elements
         
-        # Patient summary table
-        summary_data = {}
+        # Format patient info in the old style (not as a table)
+        info_lines = []
         
         if name := patient_data.get('patient_name'):
-            summary_data['Patient Name'] = name
+            info_lines.append(f"Patient Name: {name}")
         if dob := patient_data.get('date_of_birth'):
-            summary_data['Date of Birth'] = dob
+            info_lines.append(f"Date of Birth: {dob}")
         if doa := patient_data.get('date_of_accident'):
-            summary_data['Date of Accident'] = doa
+            info_lines.append(f"Date of Accident: {doa}")
         if dot := patient_data.get('date_of_treatment'):
-            summary_data['Date of Treatment'] = dot
-        if provider := patient_data.get('provider'):
-            summary_data['Provider'] = provider
+            info_lines.append(f"Date of Treatment: {dot}")
         
-        if summary_data:
-            table = self.table_builder.create_summary_table(summary_data)
-            elements.append(table)
-            elements.append(Spacer(1, 0.2*inch))
+        # Create a single paragraph with line breaks
+        if info_lines:
+            patient_info_text = "<br/>".join(info_lines)
+            elements.append(Paragraph(patient_info_text, self.styles.styles['NormalText']))
+            elements.append(Spacer(1, 0.3*inch))
         
         return elements
     

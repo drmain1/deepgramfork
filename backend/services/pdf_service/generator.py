@@ -23,6 +23,10 @@ class MedicalPDFGenerator:
         page_width = letter[0]
         page_height = letter[1]
         
+        # Set page background color (from old workflow: #fcfcfa)
+        canvas.setFillColorRGB(0.988, 0.988, 0.980)  # #fcfcfa
+        canvas.rect(0, 0, page_width, page_height, fill=1, stroke=0)
+        
         # Footer text
         page_num = canvas.getPageNumber()
         footer_text = f"Page {page_num} of {self.page_info.get('total_pages', '?')}"
@@ -32,7 +36,7 @@ class MedicalPDFGenerator:
             footer_text += f" | {self.page_info['doctor_name']}"
         
         # Draw footer
-        canvas.setFont("Helvetica", self.styles.footerFontSize)  # 10px
+        canvas.setFont("Besley", self.styles.footerFontSize)  # 10px
         canvas.setFillColorRGB(0.2, 0.2, 0.2)  # #333333
         
         # Draw separator line

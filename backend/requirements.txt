@@ -30,7 +30,6 @@ python-jose[cryptography]
 gunicorn
 
 # PDF generation dependencies
-reportlab==4.0.7          # Core PDF generation
-pdfplumber==0.10.3        # PDF parsing/validation
-pillow==10.1.0           # Image handling for logos
+weasyprint==62.1         # HTML/CSS to PDF conversion
+pillow==10.1.0           # Image handling for logos/signatures
 python-multipart==0.0.6   # File upload support (may already be installed)

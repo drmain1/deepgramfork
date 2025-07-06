@@ -24,17 +24,42 @@ class PDFStyles:
         self._create_custom_styles()
     
     def _register_fonts(self):
-        """Register Besley font family - using Helvetica as fallback for now"""
-        # Note: In production, you would need to add Besley font files
-        # For now, we'll map to similar fonts and update font references
+        """Register Besley font family"""
+        import os
+        from pathlib import Path
+        
         try:
-            # This is where you'd register actual Besley fonts if available
-            # pdfmetrics.registerFont(TTFont('Besley', 'path/to/Besley-Regular.ttf'))
-            # pdfmetrics.registerFont(TTFont('Besley-Bold', 'path/to/Besley-Bold.ttf'))
-            # registerFontFamily('Besley', normal='Besley', bold='Besley-Bold')
-            pass
-        except:
-            pass
+            # Get the fonts directory path
+            current_dir = Path(__file__).parent.parent.parent  # Go up to backend dir
+            fonts_dir = current_dir / "fonts"
+            
+            # Register Besley font
+            besley_path = fonts_dir / "Besley-Regular.ttf"
+            if besley_path.exists():
+                # Register the variable font
+                from reportlab.pdfbase.ttfonts import TTFont
+                
+                # Register regular weight (400)
+                regular_font = TTFont('Besley', str(besley_path))
+                pdfmetrics.registerFont(regular_font)
+                
+                # For bold, we'll use the same font file but ReportLab doesn't directly support variable fonts
+                # So we register it as a separate font name
+                bold_font = TTFont('Besley-Bold', str(besley_path))
+                pdfmetrics.registerFont(bold_font)
+                
+                # Register the font family
+                registerFontFamily('Besley',
+                                 normal='Besley',
+                                 bold='Besley-Bold',
+                                 italic='Besley',
+                                 boldItalic='Besley-Bold')
+                
+                print(f"Besley font registered successfully from {besley_path}")
+            else:
+                print(f"Besley font not found at {besley_path}, using Helvetica fallback")
+        except Exception as e:
+            print(f"Could not register Besley font: {e}, using Helvetica fallback")
     
     def _create_custom_styles(self):
         # Main header style (for clinic name)
@@ -45,35 +70,43 @@ class PDFStyles:
             textColor=colors.HexColor(self.headerColor),  # #000000
             alignment=TA_CENTER,
             spaceAfter=12,
-            fontName='Helvetica-Bold',  # Will use Besley when available
+            fontName='Besley-Bold',
             leading=self.headerFontSize * self.lineHeight
         ))
         
-        # Section headers
+        # Section headers - matching old style
         self.styles.add(ParagraphStyle(
             name='SectionHeader',
             parent=self.styles['Heading2'],
-            fontSize=self.fontSize,  # 11px
+            fontSize=self.fontSize + 1,  # 12px for headers
             textColor=colors.HexColor(self.textColor),  # #000000
             alignment=TA_LEFT,
-            spaceAfter=10,
-            spaceBefore=10,
+            spaceAfter=8,
+            spaceBefore=15,
             fontName='Helvetica-Bold',  # Will use Besley-Bold when available
-            leading=self.fontSize * self.lineHeight
+            leading=(self.fontSize + 1) * 1.2,
+            keepWithNext=True
         ))
         
-        # Normal body text
+        # Normal body text - matching old style exactly
         self.styles.add(ParagraphStyle(
             name='NormalText',
             parent=self.styles['Normal'],
             fontSize=self.fontSize,  # 11px
-            alignment=TA_LEFT,  # Changed from JUSTIFY to match old style
-            spaceAfter=6,
+            alignment=TA_LEFT,  # Left aligned like old style
+            spaceAfter=8,  # Increased spacing
+            spaceBefore=2,
             textColor=colors.HexColor(self.textColor),  # #000000
-            fontName='Helvetica',  # Will use Besley when available
-            leading=self.fontSize * self.lineHeight,  # 1.4 line height
+            fontName='Besley',
+            leading=self.fontSize * self.lineHeight,  # 15.4px (11 * 1.4)
             wordWrap='LTR',
-            splitLongWords=True
+            splitLongWords=True,
+            leftIndent=0,
+            rightIndent=0,
+            firstLineIndent=0,
+            bulletFontName='Besley',
+            bulletFontSize=self.fontSize,
+            bulletIndent=0
         ))
         
         # Table header style
@@ -93,7 +126,7 @@ class PDFStyles:
             parent=self.styles['Normal'],
             fontSize=self.fontSize,  # 11px
             alignment=TA_CENTER,
-            fontName='Helvetica',  # Will use Besley when available
+            fontName='Besley',
             leading=self.fontSize * 1.2
         ))
         
@@ -104,7 +137,7 @@ class PDFStyles:
             fontSize=self.footerFontSize,  # 10px
             textColor=colors.HexColor(self.footerColor),  # #333333
             alignment=TA_CENTER,
-            fontName='Helvetica',  # Will use Besley when available
+            fontName='Besley',
             leading=self.footerFontSize * 1.2
         ))
     
@@ -116,13 +149,13 @@ class PDFStyles:
             ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Besley-Bold'),
             ('FONTSIZE', (0, 0), (-1, 0), self.fontSize),  # 11px
             ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
             ('TOPPADDING', (0, 0), (-1, 0), 8),
             
             # Data cells styling
-            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTNAME', (0, 1), (-1, -1), 'Besley'),
             ('FONTSIZE', (0, 1), (-1, -1), self.fontSize),  # 11px
             ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
             ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
@@ -152,11 +185,11 @@ class PDFStyles:
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#6c757d')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Besley-Bold'),
             ('FONTSIZE', (0, 0), (-1, 0), 10),
             
             # Data cells
-            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTNAME', (0, 1), (-1, -1), 'Besley'),
             ('FONTSIZE', (0, 1), (-1, -1), 10),
             ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
             

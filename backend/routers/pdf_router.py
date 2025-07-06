@@ -3,11 +3,12 @@ from typing import Dict, Any
 import json
 import logging
 from models import MedicalDocument, PDFGenerationRequest, PDFGenerationResponse
-from services.pdf_service import MedicalPDFGenerator
+from services.pdf_service.weasyprint_generator import WeasyPrintMedicalPDFGenerator
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-generator = MedicalPDFGenerator()
+# Use WeasyPrint as the primary PDF generator
+generator = WeasyPrintMedicalPDFGenerator()
 
 @router.post("/api/generate-pdf")
 async def generate_pdf(data: MedicalDocument):
@@ -16,7 +17,7 @@ async def generate_pdf(data: MedicalDocument):
         # Convert Pydantic model to dict
         data_dict = data.model_dump()
         
-        # Generate PDF
+        # Generate PDF with WeasyPrint
         pdf_bytes = generator.generate_pdf(data_dict)
         
         # Return PDF as response
@@ -29,7 +30,7 @@ async def generate_pdf(data: MedicalDocument):
             }
         )
     except Exception as e:
-        logger.error(f"PDF generation error: {str(e)}")
+        logger.error(f"WeasyPrint PDF generation error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/api/generate-pdf-from-transcript")
@@ -53,7 +54,7 @@ async def generate_pdf_from_transcript(request: PDFGenerationRequest):
             # Legacy markdown support
             data = generator._convert_markdown_to_structured(request.transcript)
         
-        # Generate PDF
+        # Generate PDF with WeasyPrint
         pdf_bytes = generator.generate_pdf(data)
         
         # Extract patient name for filename
@@ -69,7 +70,7 @@ async def generate_pdf_from_transcript(request: PDFGenerationRequest):
             }
         )
     except Exception as e:
-        logger.error(f"PDF generation from transcript error: {str(e)}")
+        logger.error(f"WeasyPrint PDF generation from transcript error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/api/generate-pdf-preview")
@@ -81,7 +82,7 @@ async def generate_pdf_preview(data: MedicalDocument):
         # Convert Pydantic model to dict
         data_dict = data.model_dump()
         
-        # Generate PDF
+        # Generate PDF with WeasyPrint
         pdf_bytes = generator.generate_pdf(data_dict)
         
         # Encode to base64
@@ -93,7 +94,7 @@ async def generate_pdf_preview(data: MedicalDocument):
             "filename": f"medical_record_{data.patient_info.patient_name.replace(' ', '_')}.pdf"
         }
     except Exception as e:
-        logger.error(f"PDF preview generation error: {str(e)}")
+        logger.error(f"WeasyPrint PDF preview generation error: {str(e)}")
         return {
             "success": False,
             "error": str(e)
@@ -119,12 +120,15 @@ async def pdf_service_health():
         
         return {
             "status": "healthy",
-            "service": "pdf_generator",
+            "service": "weasyprint_pdf_generator",
             "test_pdf_size": len(pdf_bytes)
         }
     except Exception as e:
         return {
             "status": "unhealthy",
-            "service": "pdf_generator",
+            "service": "weasyprint_pdf_generator",
             "error": str(e)
         }
+
+# Legacy endpoints for backward compatibility (now using WeasyPrint)
+# All main endpoints above now use WeasyPrint as the default PDF generator
