@@ -115,7 +115,7 @@ const parseTableToHtml = (tableLines) => {
     <table style="
       width: 100%;
       border-collapse: collapse;
-      margin: 20px 0;
+      margin: 10px 0;
       font-family: 'Besley', Georgia, serif;
       background: #fcfcfa;
       table-layout: fixed;
@@ -275,6 +275,24 @@ export const convertFormattedTextToHtml = (content, options = {}) => {
     }
 
     // Regular line processing
+    // Check for "FOLLOW-UP VISITS" header
+    if (line.trim() === 'FOLLOW-UP VISITS') {
+      htmlContent += `<p style="margin: 30px 0 15px 0; font-weight: 700; font-size: 16px; color: #000; text-align: left; text-transform: uppercase; letter-spacing: 0.05em;">FOLLOW-UP VISITS</p>`;
+      i++;
+      continue;
+    }
+    
+    // Check for visit headers (e.g., "June 2, 2025 - Visit #2")
+    // Only match if it's exactly in this format with the dash and Visit #
+    const visitHeaderPattern = /^([A-Za-z]+ \d{1,2}, \d{4})\s*-\s*(Visit #\d+)$/;
+    const visitMatch = line.match(visitHeaderPattern);
+    if (visitMatch) {
+      const [, date, visitNum] = visitMatch;
+      htmlContent += `<p style="margin: 10px 0 5px 0; font-weight: 700; font-size: 16px; color: #000; letter-spacing: -0.02em;">${date} - ${visitNum}</p>`;
+      i++;
+      continue;
+    }
+    
     // Check for markdown-style headers (**HEADER:**)
     const markdownHeaderPattern = /^\*\*([A-Z][A-Z\s&,()/-]*:)\*\*\s*(.*)/;
     // Check if line is a medical header (all caps ending with colon)
@@ -292,7 +310,7 @@ export const convertFormattedTextToHtml = (content, options = {}) => {
     if (markdownMatch || headerMatch) {
       const match = markdownMatch || headerMatch;
       const [, header, content] = match;
-      htmlContent += `<p style="margin: 12px 0 6px 0; font-weight: 700; font-size: 13px; color: #000; letter-spacing: -0.01em; text-transform: uppercase;"><strong style="font-weight: 700;">${header}</strong>`;
+      htmlContent += `<p style="margin: 8px 0 4px 0; font-weight: 700; font-size: 13px; color: #000; letter-spacing: -0.01em; text-transform: uppercase;"><strong style="font-weight: 700;">${header}</strong>`;
       if (content) {
         htmlContent += ` <span style="font-weight: 400; font-size: 12px;">${parseInlineFormatting(content)}</span>`;
       }
@@ -300,16 +318,16 @@ export const convertFormattedTextToHtml = (content, options = {}) => {
     } else if (numberedMatch) {
       const [, indent, number, content] = numberedMatch;
       const marginLeft = indent ? indent.length * 10 : 0;
-      htmlContent += `<p style="margin: 5px 0 5px ${marginLeft}px; font-size: 12px; font-weight: 400; color: #000000; line-height: 1.6;"><strong style="font-weight: 700;">${number}</strong>${parseInlineFormatting(content)}</p>`;
+      htmlContent += `<p style="margin: 3px 0 3px ${marginLeft}px; font-size: 12px; font-weight: 400; color: #000000; line-height: 1.4;"><strong style="font-weight: 700;">${number}</strong>${parseInlineFormatting(content)}</p>`;
     } else if (bulletMatch) {
       const [, indent, bullet, content] = bulletMatch;
       const marginLeft = indent ? indent.length * 10 : 0;
-      htmlContent += `<p style="margin: 5px 0 5px ${marginLeft}px; font-size: 12px; font-weight: 400; color: #000000; line-height: 1.6;"><strong style="font-weight: 700;">${bullet}</strong>${parseInlineFormatting(content)}</p>`;
+      htmlContent += `<p style="margin: 3px 0 3px ${marginLeft}px; font-size: 12px; font-weight: 400; color: #000000; line-height: 1.4;"><strong style="font-weight: 700;">${bullet}</strong>${parseInlineFormatting(content)}</p>`;
     } else if (line.trim() === '') {
       htmlContent += '<br>';
     } else {
       // Regular content line
-      htmlContent += `<p style="margin: 4px 0; font-weight: 400; font-size: 12px; color: #000000; line-height: 1.6;">${parseInlineFormatting(line)}</p>`;
+      htmlContent += `<p style="margin: 2px 0; font-weight: 400; font-size: 12px; color: #000000; line-height: 1.4;">${parseInlineFormatting(line)}</p>`;
     }
     
     i++;

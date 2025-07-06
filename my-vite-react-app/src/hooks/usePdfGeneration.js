@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import { auth } from '../firebaseConfig';
 import { generatePdfFromText } from '../components/pdfUtils';
-import { shouldShowClinicHeader } from '../utils/encounterTypeUtils';
+import { shouldShowClinicHeader, isInitialVisit, isFollowUpVisit } from '../utils/encounterTypeUtils';
 import { PDF_CONSTANTS, ERROR_MESSAGES } from '../constants/patientTranscriptConstants';
 
 export function usePdfGeneration(patient, userSettings) {
@@ -56,6 +56,16 @@ export function usePdfGeneration(patient, userSettings) {
       // Create combined transcript content
       let combinedContent = '';
       
+      // Count total follow-up visits first to get accurate numbering
+      let totalFollowUpsBefore = 0;
+      for (let j = 0; j < selectedTranscriptObjects.length; j++) {
+        if (isFollowUpVisit(selectedTranscriptObjects[j].encounterType)) {
+          totalFollowUpsBefore++;
+        }
+      }
+      
+      let followUpVisitCount = 0;
+      
       // Add each transcript
       for (let i = 0; i < selectedTranscriptObjects.length; i++) {
         const transcript = selectedTranscriptObjects[i];
@@ -63,6 +73,29 @@ export function usePdfGeneration(patient, userSettings) {
         let content = transcript.polishedTranscript || 
                      transcript.transcript || 
                      PDF_CONSTANTS.NO_CONTENT_MESSAGE;
+        
+        // Only add date headers to follow-up visits to avoid breaking table detection
+        // Initial visits will have their dates shown via clinic location headers
+        if (transcript.date && isFollowUpVisit(transcript.encounterType)) {
+          followUpVisitCount++;
+          
+          // Format the date from the transcript
+          const visitDate = new Date(transcript.date);
+          const formattedDate = visitDate.toLocaleDateString('en-US', { 
+            month: 'long', 
+            day: 'numeric', 
+            year: 'numeric' 
+          });
+          
+          // Check if content starts with "Follow up treatment date:" and remove it
+          const followUpDatePattern = /^Follow up treatment date:\s*\d{4}-\d{2}-\d{2}\.?\s*/i;
+          if (followUpDatePattern.test(content.trim())) {
+            content = content.trim().replace(followUpDatePattern, '');
+          }
+          
+          // Add visit header for follow-ups only
+          content = `${formattedDate} - Visit #${followUpVisitCount}\n\n${content.trim()}`;
+        }
         
         // Check if content already has a clinic location header
         const hasClinicLocationHeader = content.startsWith(PDF_CONSTANTS.CLINIC_LOCATION_PREFIX);
@@ -73,14 +106,34 @@ export function usePdfGeneration(patient, userSettings) {
             transcript.location && 
             transcript.location.trim() && 
             shouldShowClinicHeader(transcript.encounterType)) {
-          content = PDF_CONSTANTS.LOCATION_HEADER_TEMPLATE(transcript.location) + content;
+          // Add date to clinic header for initial visits
+          let clinicHeader = PDF_CONSTANTS.LOCATION_HEADER_TEMPLATE(transcript.location);
+          if (transcript.date && isInitialVisit(transcript.encounterType)) {
+            const visitDate = new Date(transcript.date);
+            const formattedDate = visitDate.toLocaleDateString('en-US', { 
+              month: 'long', 
+              day: 'numeric', 
+              year: 'numeric' 
+            });
+            clinicHeader = `CLINIC LOCATION:\n${transcript.location.trim()}\n${formattedDate}\n\n---\n\n`;
+          }
+          content = clinicHeader + content;
         }
         
         combinedContent += content;
         
-        // Add separator between transcripts if not the last one
+        // Add separator only between initial examination and first follow-up visit
         if (i < selectedTranscriptObjects.length - 1) {
-          combinedContent += `\n\n${PDF_CONSTANTS.SEPARATOR}\n\n`;
+          const currentIsInitial = isInitialVisit(transcript.encounterType);
+          const nextIsFollowUp = isFollowUpVisit(selectedTranscriptObjects[i + 1].encounterType);
+          
+          // Only add separator if current is initial and next is follow-up
+          if (currentIsInitial && nextIsFollowUp) {
+            combinedContent += `\n\n${PDF_CONSTANTS.SEPARATOR}\n\nFOLLOW-UP VISITS\n\n`;
+          } else {
+            // Just add some spacing between other visits
+            combinedContent += `\n\n`;
+          }
         }
       }
       

@@ -21,7 +21,7 @@ export const TIMING = {
 
 // PDF generation constants
 export const PDF_CONSTANTS = {
-  SEPARATOR: '='.repeat(80),
+  SEPARATOR: '─'.repeat(80),
   CLINIC_LOCATION_PREFIX: 'CLINIC LOCATION:',
   LOCATION_HEADER_TEMPLATE: (location) => 
     `CLINIC LOCATION:\n${location.trim()}\n\n---\n\n`,

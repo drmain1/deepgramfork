@@ -140,7 +140,7 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
     fontSize = 11,
     headerFontSize = 14,
     footerFontSize = 10,
-    lineHeight = 1.6,
+    lineHeight = 1.4,
     backgroundColor = '#fcfcfa',
     includePageNumbers = true,
     includeHeaderOnAllPages = true,
@@ -226,14 +226,14 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
       html += `
         <div style="
           margin-top: ${pageNum === 1 ? '5px' : includeHeaderOnAllPages ? '70px' : '20px'};
-          margin-bottom: 30px;
+          margin-bottom: 10px;
           font-size: ${fontSize}px;
           line-height: ${lineHeight};
           color: #000000;
           font-weight: 400;
           letter-spacing: 0;
           text-align: left;
-          min-height: calc(100vh - 150px);
+          min-height: auto;
           -webkit-font-smoothing: antialiased;
           -moz-osx-font-smoothing: grayscale;
         ">
@@ -246,14 +246,14 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
         html += `
           <div style="
             position: absolute;
-            bottom: 15px;
+            bottom: 10px;
             left: 20px;
             right: 20px;
             font-size: ${footerFontSize}px;
             color: #333333;
             text-align: center;
             border-top: 1px solid #e9ecef;
-            padding-top: 10px;
+            padding-top: 5px;
             font-weight: 400;
             letter-spacing: 0.01em;
             -webkit-font-smoothing: antialiased;
@@ -281,8 +281,9 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
       const line = lines[i];
       const trimmedLine = line.trim();
       
-      // Check if this line starts a table
-      if (!inTable && trimmedLine.includes('|') && i < lines.length - 1 && lines[i + 1].trim().includes('|')) {
+      // Check if this line starts a table (look for headers like "REFLEX    RIGHT    LEFT")
+      const isTableHeader = trimmedLine.match(/^[A-Z]+\s{2,}[A-Z]+(\s{2,}[A-Z]+)*$/);
+      if (!inTable && (isTableHeader || (trimmedLine.includes('|') && i < lines.length - 1 && lines[i + 1].trim().includes('|')))) {
         // Save current text element if it has content
         if (currentElement.content.trim()) {
           contentElements.push(currentElement);
@@ -292,8 +293,11 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
         inTable = true;
         tableStartIndex = i;
       } else if (inTable) {
-        // Continue table if line contains |
-        if (trimmedLine.includes('|') || trimmedLine === '') {
+        // Continue table if line looks like table data (multiple columns of data)
+        const isTableRow = trimmedLine.match(/^\S+\s{2,}\S+/) || trimmedLine.includes('|') || trimmedLine === '';
+        const isSectionHeader = trimmedLine.match(/^[A-Z][A-Z\s]*:$/);
+        
+        if (isTableRow && !isSectionHeader) {
           currentElement.content += line + '\n';
         } else {
           // End of table
@@ -326,7 +330,7 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
     const contentPerPage = [];
     let currentPageElements = [];
     let currentPageHeight = 0;
-    const maxPageHeight = 38; // Approximate lines per page
+    const maxPageHeight = 60; // Approximate lines per page
     
     for (const element of contentElements) {
       const elementHeight = element.content.split('\n').length;
