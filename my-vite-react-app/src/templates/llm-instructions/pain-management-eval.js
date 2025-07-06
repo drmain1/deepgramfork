@@ -7,6 +7,17 @@ On the top of the note should include, patient name, date of birth, date of acci
 
 Everything in the transcription needs to be put somewhere don't leave anything out, if you don't know where something goes, make your best guess, the doctor will review, only put each item from the transcript in one location
 
+CRITICAL: When generating tables (especially for Motor Examination and Deep Tendon Reflexes):
+- Each table MUST be complete and continuous with NO interruptions
+- Do NOT place any text, data, or formatting between table rows
+- Each table should start with the header row and continue uninterrupted until the last data row
+- Example of CORRECT format:
+  | MUSCLE GROUP | RIGHT | LEFT |
+  |--------------|-------|------|
+  | **DELTOID** | 5/5 | 5/5 |
+  | **BICEPS** | 5/5 | 5/5 |
+  ... (continue with ALL rows without any breaks)
+
 
 
 **CHIEF COMPLAINT**: [please list complaints of the spine and joints patients symptoms and severity, each symptom gets numbered with it's own line, if a pain radiates group it with the spinal complaint neck pain radiates down arm low back pain radiates down leg, additional complaints such as insomnia, fatigue, depression or other non spine or joint complaints don't belong here] 
@@ -50,10 +61,12 @@ Tendon names: patellar, Achilles, bicipital, rotator cuff] (Only include if expl
 Primary Instruction:
 When processing medical dictation that mentions motor strength, muscle testing, motor examination, or strength testing, generate the following markdown table format. Only include this section if motor strength is explicitly mentioned in the transcript, context, or clinical note.
 
-**Motor Examination:**
-*Motor Strength Scale: 0/5 = No contraction, 1/5 = Trace contraction, 2/5 = Active movement without gravity, 3/5 = Active movement against gravity, 4/5 = Active movement against some resistance, 4+/5 perform a full range of motion against gravity and moderate resistance but with slight weakness 5/5 = Normal strength*
 **NEUROLOGIC ASSESSMENT: MOTOR EXAMINATION**
+
+*Motor Strength Scale: 0/5 = No contraction, 1/5 = Trace contraction, 2/5 = Active movement without gravity, 3/5 = Active movement against gravity, 4/5 = Active movement against some resistance, 4+/5 = Active movement against gravity and moderate resistance but with slight weakness, 5/5 = Normal strength*
+
 *Upper Extremity*
+
 | MUSCLE GROUP | RIGHT | LEFT |
 |--------------|-------|------|
 | **DELTOID** | 5/5 | 5/5 |
@@ -76,6 +89,12 @@ When processing medical dictation that mentions motor strength, muscle testing, 
 | **ANTERIOR TIBIALIS** | 5/5 | 5/5 |
 | **EXT HALLUCIS LONGUS** | 5/5 | 5/5 |
 Processing Rules:
+
+CRITICAL TABLE FORMATTING RULES:
+1. **ALWAYS generate complete tables without interruption** - Do not split tables or place text between table rows
+2. **Each table must be a single continuous markdown table** - No breaks or text between the header and the last row
+3. **Include ALL muscle groups in ONE table per section** - Upper Extremity table must contain all 8 muscle groups, Lower Extremity table must contain all 6 muscle groups
+4. **Do not place any text or data between table rows** - The entire table from header to last row must be continuous
 
 Default Values: Use "5/5" for all muscle groups if not specified (indicates normal strength)
 Strength Scale: Always use X/5 format (0/5, 1/5, 2/5, 3/5, 4/5, 5/5)
@@ -106,10 +125,9 @@ Grip strength/Hand grip = Hand Intrinsics
 
 When processing medical dictation that mentions deep tendon reflexes, neurological reflexes, or DTRs, generate the following markdown table format. Only include this section if reflexes are explicitly mentioned in the transcript, context, or clinical note.
 
-**Deep Tendon Reflexes**
+**NEUROLOGIC ASSESSMENT: DEEP TENDON REFLEXES**
 
 *Reflex Scale: 0 = Absent, 1+ = Hypoactive, 2+ = Normal, 3+ = Hyperactive, 4+ = Hyperactive with clonus*
-**NEUROLOGIC ASSESSMENT: DEEP TENDON REFLEXES**
 
 | REFLEX | RIGHT | LEFT |
 |--------|-------|------|
@@ -123,9 +141,17 @@ When processing medical dictation that mentions deep tendon reflexes, neurologic
 
 | REFLEX | RIGHT | LEFT |
 |--------|-------|------|
+| **HOFFMAN** | Negative | Negative |
 | **BABINSKI** | Negative | Negative |
 | **CLONUS (ANKLE)** | Negative | Negative |
+
 Processing Rules:
+
+CRITICAL TABLE FORMATTING RULES:
+1. **ALWAYS generate complete tables without interruption** - Do not split tables or place text between table rows
+2. **Deep Tendon Reflexes table must contain ALL 5 reflexes** - Always include BICEPS, TRICEPS, BRACHIORADIALIS, PATELLAR, and ACHILLES in one continuous table
+3. **Pathological Reflexes must be in a separate complete table** - Do not mix with DTR table
+4. **Do not place any text or data between table rows** - Each table must be continuous from header to last row
 
 Default Values: Use "2+" for all standard DTRs if not specified (indicates normal)
 Reflex Scale: Always use 0, 1+, 2+, 3+, 4+ or Negative/Positive for pathological reflexes

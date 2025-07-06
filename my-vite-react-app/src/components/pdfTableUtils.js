@@ -68,7 +68,7 @@ const detectTable = (lines, startIndex) => {
     // Check if it's a data row with consistent spacing (not just a bullet list)
     const parts = firstLine.split(/\s{2,}/).filter(part => part.trim());
     // Only consider it a table if it has multiple meaningful columns
-    if (parts.length >= 2 && !parts.some(part => bulletListPattern.test(part))) {
+    if (parts.length >= 2 && !parts.some(part => listPatterns.bullet.test(part))) {
       tableType = 'space';
     } else {
       return null;
@@ -87,16 +87,36 @@ const detectTable = (lines, startIndex) => {
       continue;
     }
     
-    // Check for end of table
+    // Check for end of table - be more lenient with empty lines
     if (line === '' && tableLines.length > 0) {
-      // Check if next line continues the table
-      const nextLine = lines[currentIndex + 1]?.trim() || '';
-      const nextIsTable = (
-        (tableType === 'pipe' && patterns.pipe.test(nextLine)) ||
-        (tableType === 'space' && patterns.multiSpace.test(nextLine))
-      );
+      // Look ahead up to 3 lines to see if table continues
+      let foundContinuation = false;
+      let emptyLineCount = 0;
       
-      if (!nextIsTable) {
+      for (let j = currentIndex; j < Math.min(currentIndex + 3, lines.length); j++) {
+        const checkLine = lines[j]?.trim() || '';
+        if (checkLine === '') {
+          emptyLineCount++;
+          continue;
+        }
+        
+        // Check if this line continues the table
+        if (tableType === 'pipe' && patterns.pipe.test(checkLine)) {
+          foundContinuation = true;
+          break;
+        } else if (tableType === 'space') {
+          const parts = checkLine.split(/\s{2,}/).filter(p => p.trim());
+          // More lenient check for space tables - even single column can continue table
+          if (parts.length >= 1 && !checkLine.match(/^[A-Z][A-Z\s]*:$/)) {
+            foundContinuation = true;
+            break;
+          }
+        }
+        break; // Stop at first non-empty line
+      }
+      
+      // Only break if we found 2+ consecutive empty lines with no continuation
+      if (!foundContinuation && emptyLineCount >= 2) {
         break;
       }
     }
@@ -110,14 +130,31 @@ const detectTable = (lines, startIndex) => {
     } else if (tableType === 'space') {
       // For space-aligned tables, be more inclusive after headers
       if (tableLines.length > 0) {
-        // We're already in a table - check if this line could be part of it
-        const spaceParts = line.split(/\s{2,}/).filter(part => part.trim());
+        // We're already in a table - be more lenient with what we include
         const hasContent = line.trim() !== '';
-        const looksLikeTableRow = spaceParts.length >= 2 || 
-                                  (hasContent && tableLines.length < 3); // Include first few lines after header
         const notSectionHeader = !line.match(/^[A-Z][A-Z\s]*:$/);
+        const notList = !Object.values(listPatterns).some(pattern => pattern.test(line));
         
-        isTableLine = looksLikeTableRow && notSectionHeader;
+        // Check different patterns for table rows
+        const spaceParts = line.split(/\s{2,}/).filter(part => part.trim());
+        const singleSpaceParts = line.trim().split(/\s+/);
+        
+        // Special patterns for medical tables
+        const isMuscleRow = line.match(/^[A-Z\s]+\s+\d+\/\d+\s+\d+\/\d+$/); // e.g., "EXT HALLUCIS LONGUS 5/5 5/5"
+        const isReflexRow = line.match(/^[A-Z\s]+\s+\d\+?\s+\d\+?$/); // e.g., "HOFFMAN 2+ 2+"
+        const isPathologicalRow = line.match(/^[A-Z\s()]+\s+(Negative|Positive)\s+(Negative|Positive)$/i);
+        
+        // Include the line if it:
+        // 1. Has multiple double-space separated parts
+        // 2. Matches specific medical table patterns
+        // 3. Is within the first 15 lines of the table (more lenient for longer tables)
+        // 4. Has content and is not a section header or list
+        isTableLine = (spaceParts.length >= 2) ||
+                      isMuscleRow ||
+                      isReflexRow ||
+                      isPathologicalRow ||
+                      (hasContent && notSectionHeader && notList && tableLines.length < 15) ||
+                      (singleSpaceParts.length >= 3 && singleSpaceParts.some(p => p.match(/^\d+\/\d+$|^\d\+?$/)));
       } else {
         // First line - strict check
         const spaceParts = line.split(/\s{2,}/).filter(part => part.trim());
@@ -226,23 +263,35 @@ const parseTableToHtml = (tableLines, tableType = 'pipe') => {
         // If we only got one cell, try splitting by single spaces for short values
         if (cells.length === 1 && headerRow && headerRow.length > 1) {
           const parts = line.trim().split(/\s+/);
-          // Check if we have the right number of parts for the columns
-          if (parts.length === headerRow.length || 
-              (parts.length >= 2 && parts.length <= headerRow.length + 1)) {
-            // Reconstruct cells based on expected column count
-            cells = [];
-            if (parts.length === headerRow.length) {
-              // Perfect match
-              cells = parts;
-            } else {
-              // First column might have spaces, rest are single words
-              cells.push(parts[0]); // First column
+          
+          // Special handling for medical table formats
+          if (headerRow.length === 3) {
+            // For 3-column tables (MUSCLE GROUP | RIGHT | LEFT)
+            // Check if last two parts look like values (e.g., 5/5, 2+, Negative)
+            if (parts.length >= 3) {
+              const lastTwo = parts.slice(-2);
+              const valuePattern = /^\d+\/\d+$|^\d\+?$|^(Negative|Positive)$/i;
               
-              // Try to match remaining columns
-              for (let i = 1; i < headerRow.length; i++) {
-                cells.push(parts[parts.length - headerRow.length + i] || '');
+              if (lastTwo.every(part => valuePattern.test(part))) {
+                // Last two are values, everything else is the first column
+                const muscleGroup = parts.slice(0, -2).join(' ');
+                cells = [muscleGroup, lastTwo[0], lastTwo[1]];
+              } else if (parts.length === headerRow.length) {
+                // Perfect match
+                cells = parts;
               }
+            } else if (parts.length === 2) {
+              // Might be missing one value
+              cells = [parts[0], parts[1], ''];
             }
+          } else if (headerRow.length === 2 && parts.length >= 2) {
+            // For 2-column tables
+            const lastValue = parts[parts.length - 1];
+            const firstPart = parts.slice(0, -1).join(' ');
+            cells = [firstPart, lastValue];
+          } else if (parts.length === headerRow.length) {
+            // Perfect match for any column count
+            cells = parts;
           }
         }
       }
