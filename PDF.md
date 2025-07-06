@@ -9,10 +9,17 @@ This document describes the PDF generation system for the medical transcription 
 ### File Structure
 
 ```
-src/components/
-├── pdfUtils.js (498 lines)              # Core PDF generation logic
-├── pdfTableUtils.js (309 lines)         # Table parsing and HTML conversion
-└── PdfPreviewModal.jsx                  # PDF preview component with its own helpers
+src/
+├── components/
+│   ├── pdfUtils.js                      # Core PDF generation logic
+│   ├── pdfTableUtils.js                 # Table parsing and HTML conversion
+│   └── PdfPreviewModal.jsx              # PDF preview component
+├── hooks/
+│   └── usePdfGeneration.js              # Hook for PDF generation from transcripts
+├── utils/
+│   └── encounterTypeUtils.js            # Encounter type classification
+└── constants/
+    └── patientTranscriptConstants.js    # PDF-related constants
 ```
 
 ### Key Functions
@@ -20,28 +27,29 @@ src/components/
 #### pdfUtils.js (Core PDF Generation)
 
 1. **`generatePdfFromText()`** - Main entry point
-   - Router function that directs to appropriate PDF generator
-   - Handles preview mode
+   - Handles both string and structured content
+   - Routes to preview or download mode
    - Always uses `generatePagedMedicalPdf()` for consistency
 
 2. **`generatePagedMedicalPdf()`** - Primary PDF generator
-   - Creates professional medical PDFs with paging support
-   - Handles clinic headers, logos, patient information
-   - Supports doctor signatures
+   - Accepts structured content or string content
+   - Implements smart page breaking and table handling
+   - Creates multi-page PDFs with consistent formatting
    - Uses html2canvas and jsPDF libraries
 
-3. **`extractLocationFromContent()`** - Internal helper
+3. **`convertStructuredToString()`** - Internal helper
+   - Converts structured visit data to formatted string
+   - Adds location headers, date headers, and section breaks
+   - Maintains proper spacing and formatting
+
+4. **`splitTable()`** - Internal helper
+   - Intelligently splits tables across pages
+   - Preserves table headers on continuation pages
+   - Adds continuation indicators
+
+5. **`extractLocationFromContent()`** - Internal helper
    - Extracts embedded location data from transcript content
    - Looks for `CLINIC LOCATION:` header pattern
-
-4. **`parseTranscriptSections()`** - Internal helper
-   - Parses medical transcripts into structured sections
-   - Recognizes standard medical headers (CHIEF COMPLAINT, HPI, etc.)
-   - Returns sections array and unstructured content
-
-5. **`generatePdfPreview()`** - Internal helper
-   - Simple wrapper that enables preview mode
-   - Opens PDF in new tab instead of downloading
 
 #### pdfTableUtils.js (Table and HTML Conversion)
 
@@ -51,17 +59,38 @@ src/components/
    - Processes clinic logos and location headers
 
 2. **`detectTable()`** - Internal helper
-   - Detects markdown-style tables (using | delimiters)
-   - Returns table lines and end index
+   - Enhanced detection for pipe-delimited and space-aligned tables
+   - Excludes numbered/bullet lists from table detection
+   - Includes lookahead logic for better accuracy
 
 3. **`parseTableToHtml()`** - Internal helper
-   - Converts table lines to HTML table
-   - Handles column width calculations
-   - Applies professional styling
+   - Handles both pipe and space-aligned table formats
+   - Smart column parsing for tables with single-word values
+   - Applies professional styling with proper column widths
 
 4. **`parseInlineFormatting()`** - Internal helper
    - Converts markdown formatting to HTML
    - Handles bold (**text**) and italic (*text*)
+
+#### usePdfGeneration.js (Multi-transcript Hook)
+
+1. **`generateTranscriptsPDF()`** - Main function
+   - Sorts transcripts by date
+   - Creates structured content model
+   - Handles follow-up visit numbering
+   - Manages loading states for preview/download
+
+2. **`convertStructuredToString()`** - Helper
+   - Builds formatted content with proper headers
+   - Inserts "FOLLOW-UP VISITS" section divider
+   - Maintains visit numbering
+
+#### encounterTypeUtils.js (Classification Utilities)
+
+1. **`isInitialVisit()`** - Checks if encounter is initial
+2. **`isFollowUpVisit()`** - Checks if encounter is follow-up
+3. **`shouldShowClinicHeader()`** - Determines header display
+4. **`classifyEncounterType()`** - Returns visit classification
 
 #### PdfPreviewModal.jsx (Preview Component)
 
@@ -74,14 +103,57 @@ These are specific to the preview modal functionality and kept separate to maint
 
 ## PDF Generation Flow
 
+### Complete Data Flow
+
+1. **User Initiates PDF Generation**
+   - From PatientTranscriptList: User selects transcripts and clicks "View Selected"
+   - From individual transcript: User clicks print/preview button
+
+2. **usePdfGeneration Hook Processing**
+   ```javascript
+   // Creates structured content object
+   {
+     visits: [
+       {
+         type: 'visit',
+         visitType: 'initial|follow-up|other',
+         visitNumber: 1,
+         date: 'June 1, 2025',
+         location: 'Clinic Name',
+         showLocationHeader: true,
+         content: '...'
+       },
+       {
+         type: 'section-header',
+         content: 'FOLLOW-UP VISITS'
+       }
+     ]
+   }
+   ```
+
+3. **pdfUtils.js Processing**
+   - Converts structured content to formatted string via `convertStructuredToString()`
+   - Extracts location from content if needed
+   - Parses content into elements (text blocks and tables)
+   - Distributes elements across pages with smart table handling
+   - Generates HTML for each page
+   - Uses html2canvas to render pages
+   - Creates PDF with jsPDF
+
+4. **pdfTableUtils.js Processing**
+   - Detects tables (pipe-delimited or space-aligned)
+   - Parses table structure (headers and rows)
+   - Converts to styled HTML tables
+   - Handles markdown formatting
+
 ### 1. Entry Points
 
 ```javascript
-// From transcript pages
-generatePdfFromText(content, fileName, location, options)
+// From patient transcript list (with structured content)
+generatePdfFromText(structuredContent, fileName, location, options)
 
-// From patient transcript list (multiple transcripts)
-generatePdfFromText(combinedContent, fileName, location, options)
+// From transcript pages (with string content)
+generatePdfFromText(content, fileName, location, options)
 
 // From preview modal
 generatePdfFromText(content, fileName, location, metadata)
@@ -333,14 +405,80 @@ All PDFs should include:
 - Multiple PDF generator functions - consolidated to `generatePagedMedicalPdf()`
 - Patient-specific options in PDF generation - use clinic format only
 
+## Recent Bug Fix: Table Cutoff and Missing Dates
+
+### Problem Description
+1. **Table Cutoff**: Tables in PDF output were being cut off at page boundaries
+2. **Missing Dates**: Not all visits showed their dates in the PDF output
+3. **Visit Counting**: Follow-up visits weren't being numbered correctly
+4. **Missing Content**: Some tables (like PATHOLOGICAL REFLEXES) had missing rows
+
+### Root Causes Identified
+1. **Date Headers Interfering with Tables**: Prepending dates to content that started with tables broke table detection
+2. **Line-Based Height Calculation**: Using line count instead of actual rendered height
+3. **Aggressive Table Splitting**: Tables were split without preserving headers
+4. **Inconsistent Table Detection**: Not all table formats were properly detected
+
+### Solutions Implemented
+
+#### 1. Structured Content Model (usePdfGeneration.js)
+- Separated metadata (dates, visit info) from content
+- Created structured visit objects instead of string concatenation
+- Prevented date headers from interfering with table detection
+
+#### 2. Enhanced Table Detection (pdfTableUtils.js)
+- Added support for both pipe-delimited and space-aligned tables
+- Improved detection of numbered/bullet lists to prevent false positives
+- Added lookahead logic for pipe tables
+- Better handling of tables with single-word values
+
+#### 3. Smart Table Splitting (pdfUtils.js)
+- Implemented table continuation with repeated headers
+- Added "Table continued..." indicators
+- Small tables (≤10 lines) kept together
+- Dynamic height calculation based on available space
+
+#### 4. Improved Page Management
+- Adjusted maxPageHeight from 45 to 52 lines
+- Better calculation of remaining space
+- Conservative splitting for tables near page boundaries
+
+### What Didn't Work
+
+1. **Simple Line Counting**: Counting lines without considering actual height failed because different content types have different heights
+
+2. **Aggressive Table Detection**: Initially, any content with multiple spaces was detected as a table, causing numbered lists to be rendered as tables
+
+3. **Fixed Table Splitting**: Trying to split tables at arbitrary line numbers without considering table structure led to broken tables
+
+4. **Inline Date Headers**: Adding dates directly to content string caused parsing issues and inconsistent formatting
+
+5. **Too High maxPageHeight**: Setting it to 55+ lines caused content to overflow the visible area
+
+### Current Status
+The PDF generation now correctly:
+- ✅ Displays all visit dates consistently
+- ✅ Keeps small tables together
+- ✅ Splits large tables with proper continuation
+- ✅ Distinguishes between tables and lists
+- ✅ Numbers follow-up visits correctly
+
+### Known Limitations
+- Very large tables may still need manual review
+- Complex nested tables are not supported
+- Table column alignment relies on consistent formatting in source content
+
 ## Maintenance Notes
 
 - When adding new features, consider which module they belong in:
   - PDF generation logic → `pdfUtils.js`
   - HTML/table formatting → `pdfTableUtils.js`
   - Preview-specific features → `PdfPreviewModal.jsx`
+  - Multi-transcript handling → `usePdfGeneration.js`
   
 - Keep files under 500 lines for optimal AI assistance
 - Document any deviations from the single PDF generator pattern
 - Test PDF generation from all entry points when making changes
 - Ensure clinic location headers are preserved in all workflows
+- Test with various table sizes and formats
+- Verify numbered/bullet lists aren't converted to tables

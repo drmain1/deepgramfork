@@ -2,6 +2,49 @@ import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { convertFormattedTextToHtml } from './pdfTableUtils';
 
+/**
+ * Converts structured content to formatted string
+ * @param {object} structuredContent - Structured content with visits array
+ * @returns {string} - Formatted text content
+ */
+const convertStructuredToString = (structuredContent) => {
+  let result = '';
+  
+  for (let i = 0; i < structuredContent.visits.length; i++) {
+    const item = structuredContent.visits[i];
+    
+    if (item.type === 'section-header') {
+      // Add section headers with proper spacing
+      result += `\n\n${'─'.repeat(80)}\n\n${item.content}\n\n`;
+    } else if (item.type === 'visit') {
+      // Add location header if needed
+      if (item.showLocationHeader && item.location) {
+        result += `CLINIC LOCATION:\n${item.location.trim()}\n\n---\n\n`;
+      }
+      
+      // Add visit date header
+      if (item.date) {
+        let dateHeader = item.date;
+        if (item.visitType === 'initial') {
+          dateHeader += ' - Initial Examination';
+        } else if (item.visitType === 'follow-up' && item.visitNumber) {
+          dateHeader += ` - Visit #${item.visitNumber}`;
+        }
+        result += `${dateHeader}\n\n`;
+      }
+      
+      // Add the actual content
+      result += item.content;
+      
+      // Add spacing between visits
+      if (i < structuredContent.visits.length - 1) {
+        result += '\n\n';
+      }
+    }
+  }
+  
+  return result;
+};
 
 /**
  * Extracts location data from transcript content if it was embedded as a header
@@ -104,24 +147,34 @@ const parseTranscriptSections = (content) => {
 
 /**
  * Generates professional medical PDF with page-by-page rendering
- * @param {string} textContent - The medical document content
+ * @param {string|object} textContent - The medical document content (string or structured object)
  * @param {string} fileName - Output filename
  * @param {string} location - Practice location/header
  * @param {object} options - Configuration options
  */
 export const generatePagedMedicalPdf = async (textContent, fileName = "medical-document.pdf", location = "", options = {}) => {
-  if (!textContent || typeof textContent !== 'string') {
-    console.error("PDF Generation: No text content provided or content is not a string.");
-    alert("Cannot generate PDF: No text content available.");
+  // Handle both string and structured content
+  let processedContent = '';
+  let isStructured = false;
+  
+  if (typeof textContent === 'object' && textContent.visits) {
+    // Handle structured content
+    isStructured = true;
+    processedContent = convertStructuredToString(textContent);
+  } else if (typeof textContent === 'string') {
+    processedContent = textContent;
+  } else {
+    console.error("PDF Generation: Invalid content provided.");
+    alert("Cannot generate PDF: Invalid content format.");
     return;
   }
 
   // Extract location from content if needed
   let finalLocation = location;
-  let finalContent = textContent;
+  let finalContent = processedContent;
   
   if (!location || location.trim() === '') {
-    const extracted = extractLocationFromContent(textContent);
+    const extracted = extractLocationFromContent(finalContent);
     finalLocation = extracted.location;
     finalContent = extracted.cleanedContent;
   }
@@ -269,54 +322,106 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
       return container;
     };
 
-    // Parse content to identify sections and tables
+    // Parse content to identify sections and tables with improved detection
     const contentElements = [];
     const lines = finalContent.split('\n');
     let currentElement = { type: 'text', content: '' };
     let inTable = false;
-    let tableStartIndex = -1;
+    let tableHeaders = null;
     
-    // Identify content blocks (paragraphs, sections, tables)
+    // Enhanced table detection patterns
+    const tablePatterns = {
+      // Pipe-delimited tables
+      pipeTable: /\|/,
+      // Space-aligned tables (e.g., "MUSCLE GROUP    RIGHT    LEFT")
+      spaceTable: /^[A-Z\s]+\s{2,}[A-Z]+(\s{2,}[A-Z]+)*$/,
+      // Tab-delimited tables
+      tabTable: /\t/,
+      // Tables with multiple spaces between columns
+      multiSpaceTable: /\S+\s{2,}\S+/
+    };
+    
+    // Identify content blocks with better table detection
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       const trimmedLine = line.trim();
+      const nextLine = i < lines.length - 1 ? lines[i + 1].trim() : '';
       
-      // Check if this line starts a table (look for headers like "REFLEX    RIGHT    LEFT")
-      const isTableHeader = trimmedLine.match(/^[A-Z]+\s{2,}[A-Z]+(\s{2,}[A-Z]+)*$/);
-      if (!inTable && (isTableHeader || (trimmedLine.includes('|') && i < lines.length - 1 && lines[i + 1].trim().includes('|')))) {
+      // Enhanced table header detection
+      const looksLikeTableHeader = (
+        tablePatterns.pipeTable.test(trimmedLine) ||
+        tablePatterns.spaceTable.test(trimmedLine) ||
+        (tablePatterns.multiSpaceTable.test(trimmedLine) && 
+         trimmedLine.split(/\s{2,}/).every(part => part.length < 20)) // Short column names
+      );
+      
+      const nextLineLooksLikeTable = (
+        tablePatterns.pipeTable.test(nextLine) ||
+        tablePatterns.multiSpaceTable.test(nextLine) ||
+        /^[\s\-|]+$/.test(nextLine) // Separator line
+      );
+      
+      if (!inTable && looksLikeTableHeader && (nextLineLooksLikeTable || i === lines.length - 1)) {
         // Save current text element if it has content
         if (currentElement.content.trim()) {
           contentElements.push(currentElement);
         }
-        // Start new table element
-        currentElement = { type: 'table', content: line + '\n' };
-        inTable = true;
-        tableStartIndex = i;
-      } else if (inTable) {
-        // Continue table if line looks like table data (multiple columns of data)
-        const isTableRow = trimmedLine.match(/^\S+\s{2,}\S+/) || trimmedLine.includes('|') || trimmedLine === '';
-        const isSectionHeader = trimmedLine.match(/^[A-Z][A-Z\s]*:$/);
         
-        if (isTableRow && !isSectionHeader) {
+        // Extract table headers for later use
+        if (trimmedLine.includes('|')) {
+          tableHeaders = trimmedLine.split('|').map(h => h.trim()).filter(h => h);
+        } else if (trimmedLine.match(/\s{2,}/)) {
+          tableHeaders = trimmedLine.split(/\s{2,}/).filter(h => h);
+        }
+        
+        // Start new table element
+        currentElement = { 
+          type: 'table', 
+          content: line + '\n',
+          headers: tableHeaders
+        };
+        inTable = true;
+      } else if (inTable) {
+        // Check if we're still in the table
+        const isTableRow = (
+          trimmedLine === '' || // Empty lines can be within tables
+          tablePatterns.pipeTable.test(trimmedLine) ||
+          tablePatterns.multiSpaceTable.test(trimmedLine) ||
+          /^[\s\-|]+$/.test(trimmedLine) // Separator lines
+        );
+        
+        const isSectionHeader = /^[A-Z][A-Z\s]*:$/.test(trimmedLine);
+        const isEndOfTable = (
+          (trimmedLine === '' && !tablePatterns.multiSpaceTable.test(nextLine)) ||
+          isSectionHeader ||
+          (i > 0 && trimmedLine !== '' && !isTableRow)
+        );
+        
+        if (!isEndOfTable) {
           currentElement.content += line + '\n';
         } else {
-          // End of table
+          // End of table - clean up empty lines at the end
+          currentElement.content = currentElement.content.replace(/\n+$/, '\n');
           contentElements.push(currentElement);
-          currentElement = { type: 'text', content: line + '\n' };
+          
+          // Start new element with current line
+          currentElement = { type: 'text', content: trimmedLine ? line + '\n' : '' };
           inTable = false;
+          tableHeaders = null;
         }
       } else {
         // Regular text content
         currentElement.content += line + '\n';
         
-        // Check if this is a section header or natural break point
-        if (trimmedLine.endsWith(':') && trimmedLine.match(/^[A-Z\s]+:$/) || 
-            trimmedLine === '' && i < lines.length - 1) {
-          // This might be a good break point
-          if (currentElement.content.trim()) {
-            contentElements.push(currentElement);
-            currentElement = { type: 'text', content: '' };
-          }
+        // Check for natural break points
+        const isNaturalBreak = (
+          (trimmedLine.endsWith(':') && /^[A-Z\s]+:$/.test(trimmedLine)) ||
+          (trimmedLine === '' && currentElement.content.trim() && i < lines.length - 1)
+        );
+        
+        if (isNaturalBreak) {
+          contentElements.push(currentElement);
+          currentElement = { type: 'text', content: '' };
         }
       }
     }
@@ -326,45 +431,179 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
       contentElements.push(currentElement);
     }
     
-    // Now distribute elements across pages
+    // Now distribute elements across pages with improved table handling
     const contentPerPage = [];
     let currentPageElements = [];
     let currentPageHeight = 0;
-    const maxPageHeight = 60; // Approximate lines per page
+    const maxPageHeight = 52; // Balanced for content and margins
     
-    for (const element of contentElements) {
-      const elementHeight = element.content.split('\n').length;
+    // Helper function to split tables intelligently
+    const splitTable = (tableElement, availableHeight) => {
+      const lines = tableElement.content.split('\n');
+      const headers = tableElement.headers;
+      let headerLines = [];
+      let dataLines = [];
+      let inHeaders = true;
       
-      // Never split tables across pages
-      if (element.type === 'table') {
-        if (currentPageHeight + elementHeight > maxPageHeight && currentPageElements.length > 0) {
-          // Start new page for this table
-          contentPerPage.push(currentPageElements.map(el => el.content).join(''));
-          currentPageElements = [element];
-          currentPageHeight = elementHeight;
+      // Separate headers from data - improved detection
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        
+        // First pass - identify clear headers
+        if (inHeaders) {
+          if (line.includes('|') || line.match(/^[A-Z\s]+\s{2,}[A-Z]+/)) {
+            headerLines.push(lines[i]);
+            // Check if next line is a separator
+            if (i < lines.length - 1 && /^[\s\-|]+$/.test(lines[i + 1].trim())) {
+              headerLines.push(lines[i + 1]);
+              i++;
+            }
+            inHeaders = false;
+          } else if (/^[\s\-|]+$/.test(line)) {
+            // Separator line without header - still part of header
+            headerLines.push(lines[i]);
+            inHeaders = false;
+          } else {
+            // Data starts here
+            dataLines.push(lines[i]);
+            inHeaders = false;
+          }
         } else {
-          // Add table to current page
-          currentPageElements.push(element);
-          currentPageHeight += elementHeight;
+          dataLines.push(lines[i]);
         }
+      }
+      
+      // Calculate how many data rows fit on current page
+      const headerHeight = headerLines.length;
+      const continuationNoteHeight = 2; // Space for "(Table continued...)" text
+      const marginHeight = 1; // Extra margin
+      const availableForData = Math.max(5, availableHeight - headerHeight - continuationNoteHeight - marginHeight);
+      
+      // Count actual non-empty data lines
+      const nonEmptyDataLines = dataLines.filter(line => line.trim() !== '');
+      
+      if (nonEmptyDataLines.length <= availableForData) {
+        // Table fits on current page
+        return [tableElement.content, null];
+      }
+      
+      // Need to split the table - use actual count of rows that fit
+      const rowsToInclude = Math.min(availableForData, dataLines.length);
+      const firstPartData = dataLines.slice(0, rowsToInclude);
+      const remainingData = dataLines.slice(rowsToInclude);
+      
+      // Only add continuation note if there's actually remaining data
+      const firstPartElements = [
+        ...headerLines,
+        ...firstPartData
+      ];
+      
+      if (remainingData.length > 0 && remainingData.some(line => line.trim() !== '')) {
+        firstPartElements.push(''); // Empty line
+        firstPartElements.push('(Table continued on next page...)');
+      }
+      
+      const firstPart = firstPartElements.join('\n');
+      
+      // Build continuation only if there's remaining data
+      if (remainingData.length > 0 && remainingData.some(line => line.trim() !== '')) {
+        const continuationPart = [
+          '(Table continued from previous page)',
+          '',
+          ...headerLines,
+          ...remainingData
+        ].join('\n');
+        
+        return [firstPart, { 
+          type: 'table', 
+          content: continuationPart,
+          headers: headers,
+          isContinuation: true
+        }];
       } else {
-        // For text, we can be more flexible
-        if (currentPageHeight + elementHeight > maxPageHeight) {
-          // Check if we should start a new page
-          if (currentPageElements.length > 0) {
+        return [firstPart, null];
+      }
+    };
+    
+    let elementIndex = 0;
+    while (elementIndex < contentElements.length) {
+      const element = contentElements[elementIndex];
+      const elementLines = element.content.split('\n').filter(line => line !== undefined);
+      const elementHeight = elementLines.length;
+      
+      // Special handling for tables
+      if (element.type === 'table') {
+        const remainingHeight = maxPageHeight - currentPageHeight;
+        
+        // If table is too tall for remaining space and we have content on page
+        if (elementHeight > remainingHeight && currentPageElements.length > 0) {
+          // Check if this is a small table that should stay together
+          const tableLines = element.content.split('\n');
+          const nonEmptyLines = tableLines.filter(line => line.trim() !== '');
+          const isSmallTable = nonEmptyLines.length <= 10; // Small tables should stay together
+          
+          if (isSmallTable || remainingHeight < 10) {
+            // Small table or not enough space - move entire table to next page
             contentPerPage.push(currentPageElements.map(el => el.content).join(''));
             currentPageElements = [element];
             currentPageHeight = elementHeight;
           } else {
-            // Single element too large, we'll have to split it (rare case)
-            currentPageElements.push(element);
-            currentPageHeight += elementHeight;
+            // Large table - try to split it
+            const [firstPart, continuation] = splitTable(element, remainingHeight - 2); // Leave margin
+            
+            // Add first part to current page
+            currentPageElements.push({ type: 'table', content: firstPart });
+            contentPerPage.push(currentPageElements.map(el => el.content).join(''));
+            
+            // Start new page with continuation
+            if (continuation) {
+              currentPageElements = [continuation];
+              currentPageHeight = continuation.content.split('\n').length;
+            } else {
+              currentPageElements = [];
+              currentPageHeight = 0;
+            }
           }
+        } else if (elementHeight > maxPageHeight) {
+          // Table is too large for any single page
+          if (currentPageElements.length > 0) {
+            contentPerPage.push(currentPageElements.map(el => el.content).join(''));
+            currentPageElements = [];
+            currentPageHeight = 0;
+          }
+          
+          // Split large table across multiple pages
+          let remainingTable = element;
+          while (remainingTable && remainingTable.content.split('\n').length > maxPageHeight) {
+            const [pagePart, continuation] = splitTable(remainingTable, maxPageHeight - 5);
+            contentPerPage.push(pagePart);
+            remainingTable = continuation;
+          }
+          
+          // Add final part
+          if (remainingTable) {
+            currentPageElements = [remainingTable];
+            currentPageHeight = remainingTable.content.split('\n').length;
+          }
+        } else {
+          // Table fits in current page
+          currentPageElements.push(element);
+          currentPageHeight += elementHeight;
+        }
+      } else {
+        // Regular text handling
+        if (currentPageHeight + elementHeight > maxPageHeight && currentPageElements.length > 0) {
+          // Start new page
+          contentPerPage.push(currentPageElements.map(el => el.content).join(''));
+          currentPageElements = [element];
+          currentPageHeight = elementHeight;
         } else {
           currentPageElements.push(element);
           currentPageHeight += elementHeight;
         }
       }
+      
+      elementIndex++;
     }
     
     // Add remaining content

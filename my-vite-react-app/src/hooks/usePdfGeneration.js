@@ -53,87 +53,82 @@ export function usePdfGeneration(patient, userSettings) {
         }
       }
       
-      // Create combined transcript content
-      let combinedContent = '';
-      
-      // Count total follow-up visits first to get accurate numbering
-      let totalFollowUpsBefore = 0;
-      for (let j = 0; j < selectedTranscriptObjects.length; j++) {
-        if (isFollowUpVisit(selectedTranscriptObjects[j].encounterType)) {
-          totalFollowUpsBefore++;
-        }
-      }
+      // Create structured content for better PDF generation
+      const structuredContent = {
+        visits: [],
+        hasFollowUpSection: false
+      };
       
       let followUpVisitCount = 0;
+      let lastWasInitial = false;
       
-      // Add each transcript
+      // Process each transcript into structured format
       for (let i = 0; i < selectedTranscriptObjects.length; i++) {
         const transcript = selectedTranscriptObjects[i];
+        
         // Get transcript content (prefer polished over original)
         let content = transcript.polishedTranscript || 
                      transcript.transcript || 
                      PDF_CONSTANTS.NO_CONTENT_MESSAGE;
         
-        // Only add date headers to follow-up visits to avoid breaking table detection
-        // Initial visits will have their dates shown via clinic location headers
-        if (transcript.date && isFollowUpVisit(transcript.encounterType)) {
+        // Clean up any existing date headers in the content
+        const followUpDatePattern = /^Follow up treatment date:\s*\d{4}-\d{2}-\d{2}\.?\s*/i;
+        if (followUpDatePattern.test(content.trim())) {
+          content = content.trim().replace(followUpDatePattern, '');
+        }
+        
+        // Determine visit type and number
+        let visitType = '';
+        let visitNumber = null;
+        
+        if (isFollowUpVisit(transcript.encounterType)) {
           followUpVisitCount++;
-          
-          // Format the date from the transcript
+          visitType = 'follow-up';
+          visitNumber = followUpVisitCount;
+        } else if (isInitialVisit(transcript.encounterType)) {
+          visitType = 'initial';
+          lastWasInitial = true;
+        } else {
+          visitType = 'other';
+        }
+        
+        // Check if we need to add follow-up section header
+        if (visitType === 'follow-up' && lastWasInitial && !structuredContent.hasFollowUpSection) {
+          structuredContent.hasFollowUpSection = true;
+          structuredContent.visits.push({
+            type: 'section-header',
+            content: 'FOLLOW-UP VISITS'
+          });
+        }
+        
+        // Format the date
+        let formattedDate = '';
+        if (transcript.date) {
           const visitDate = new Date(transcript.date);
-          const formattedDate = visitDate.toLocaleDateString('en-US', { 
+          formattedDate = visitDate.toLocaleDateString('en-US', { 
             month: 'long', 
             day: 'numeric', 
             year: 'numeric' 
           });
-          
-          // Check if content starts with "Follow up treatment date:" and remove it
-          const followUpDatePattern = /^Follow up treatment date:\s*\d{4}-\d{2}-\d{2}\.?\s*/i;
-          if (followUpDatePattern.test(content.trim())) {
-            content = content.trim().replace(followUpDatePattern, '');
-          }
-          
-          // Add visit header for follow-ups only
-          content = `${formattedDate} - Visit #${followUpVisitCount}\n\n${content.trim()}`;
         }
         
-        // Check if content already has a clinic location header
-        const hasClinicLocationHeader = content.startsWith(PDF_CONSTANTS.CLINIC_LOCATION_PREFIX);
+        // Create structured visit object
+        const visitData = {
+          type: 'visit',
+          visitType: visitType,
+          visitNumber: visitNumber,
+          date: formattedDate,
+          location: transcript.location || '',
+          showLocationHeader: shouldShowClinicHeader(transcript.encounterType) && 
+                             transcript.location && 
+                             transcript.location.trim(),
+          content: content.trim()
+        };
         
-        // Use utility function to determine if we should add a clinic header
-        // Only add if: content doesn't already have it, location exists, and encounter type warrants it
-        if (!hasClinicLocationHeader && 
-            transcript.location && 
-            transcript.location.trim() && 
-            shouldShowClinicHeader(transcript.encounterType)) {
-          // Add date to clinic header for initial visits
-          let clinicHeader = PDF_CONSTANTS.LOCATION_HEADER_TEMPLATE(transcript.location);
-          if (transcript.date && isInitialVisit(transcript.encounterType)) {
-            const visitDate = new Date(transcript.date);
-            const formattedDate = visitDate.toLocaleDateString('en-US', { 
-              month: 'long', 
-              day: 'numeric', 
-              year: 'numeric' 
-            });
-            clinicHeader = `CLINIC LOCATION:\n${transcript.location.trim()}\n${formattedDate}\n\n---\n\n`;
-          }
-          content = clinicHeader + content;
-        }
+        structuredContent.visits.push(visitData);
         
-        combinedContent += content;
-        
-        // Add separator only between initial examination and first follow-up visit
-        if (i < selectedTranscriptObjects.length - 1) {
-          const currentIsInitial = isInitialVisit(transcript.encounterType);
-          const nextIsFollowUp = isFollowUpVisit(selectedTranscriptObjects[i + 1].encounterType);
-          
-          // Only add separator if current is initial and next is follow-up
-          if (currentIsInitial && nextIsFollowUp) {
-            combinedContent += `\n\n${PDF_CONSTANTS.SEPARATOR}\n\nFOLLOW-UP VISITS\n\n`;
-          } else {
-            // Just add some spacing between other visits
-            combinedContent += `\n\n`;
-          }
+        if (visitType !== 'initial') {
+          lastWasInitial = false;
         }
       }
       
@@ -150,7 +145,7 @@ export function usePdfGeneration(patient, userSettings) {
       };
       
       await generatePdfFromText(
-        combinedContent,
+        structuredContent,
         `${patient.last_name}_${patient.first_name}_transcripts`,
         '', // location will be extracted from content
         pdfOptions

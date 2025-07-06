@@ -49,7 +49,8 @@ export function isFollowUpVisit(encounterType) {
     'progress',
     'treatment session',
     'routine',
-    'maintenance'
+    'maintenance',
+    'multiple visits'
   ];
   
   // Special handling for generic "visit" - only consider it follow-up

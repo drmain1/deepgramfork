@@ -27,8 +27,57 @@ const parseInlineFormatting = (text) => {
 const detectTable = (lines, startIndex) => {
   const tableLines = [];
   let currentIndex = startIndex;
+  let tableType = null; // 'pipe' or 'space'
   
-  // Look for lines that contain | characters (potential table rows)
+  // Enhanced patterns for table detection
+  const patterns = {
+    pipe: /\|/,
+    multiSpace: /\S+\s{2,}\S+/,
+    spaceAligned: /^[A-Z\s]+\s{2,}[A-Z]+(\s{2,}[A-Z]+)*$/,
+    separator: /^[\s\-|]+$/
+  };
+  
+  // List patterns to exclude from table detection
+  const listPatterns = {
+    bullet: /^[\*\-•]\s+/,
+    numbered: /^\d+\.\s+/,
+    lettered: /^[a-zA-Z]\.\s+/
+  };
+  
+  // Determine table type from first line
+  const firstLine = lines[startIndex]?.trim() || '';
+  
+  if (listPatterns.bullet.test(firstLine) || 
+      listPatterns.numbered.test(firstLine) || 
+      listPatterns.lettered.test(firstLine)) {
+    return null; // This is a list, not a table
+  }
+  
+  // Check for actual table patterns
+  if (patterns.pipe.test(firstLine)) {
+    tableType = 'pipe';
+  } else if (patterns.spaceAligned.test(firstLine)) {
+    // Make sure it's actually a table header with multiple columns
+    const columns = firstLine.split(/\s{2,}/).filter(col => col.trim());
+    if (columns.length >= 2) {
+      tableType = 'space';
+    } else {
+      return null;
+    }
+  } else if (patterns.multiSpace.test(firstLine)) {
+    // Check if it's a data row with consistent spacing (not just a bullet list)
+    const parts = firstLine.split(/\s{2,}/).filter(part => part.trim());
+    // Only consider it a table if it has multiple meaningful columns
+    if (parts.length >= 2 && !parts.some(part => bulletListPattern.test(part))) {
+      tableType = 'space';
+    } else {
+      return null;
+    }
+  } else {
+    return null;
+  }
+  
+  // Collect table lines based on type
   while (currentIndex < lines.length) {
     const line = lines[currentIndex].trim();
     
@@ -38,54 +87,166 @@ const detectTable = (lines, startIndex) => {
       continue;
     }
     
-    // If we hit an empty line after finding table content, end the table
+    // Check for end of table
     if (line === '' && tableLines.length > 0) {
-      break;
+      // Check if next line continues the table
+      const nextLine = lines[currentIndex + 1]?.trim() || '';
+      const nextIsTable = (
+        (tableType === 'pipe' && patterns.pipe.test(nextLine)) ||
+        (tableType === 'space' && patterns.multiSpace.test(nextLine))
+      );
+      
+      if (!nextIsTable) {
+        break;
+      }
     }
     
-    // Check if line looks like a table row (contains |)
-    if (line.includes('|')) {
+    // Check if line belongs to table
+    let isTableLine = false;
+    if (tableType === 'pipe') {
+      // For pipe tables, include any line with pipes or separator lines
+      isTableLine = patterns.pipe.test(line) || patterns.separator.test(line) || 
+                   (line === '' && tableLines.length > 0); // Empty lines within table
+    } else if (tableType === 'space') {
+      // For space-aligned tables, be more inclusive after headers
+      if (tableLines.length > 0) {
+        // We're already in a table - check if this line could be part of it
+        const spaceParts = line.split(/\s{2,}/).filter(part => part.trim());
+        const hasContent = line.trim() !== '';
+        const looksLikeTableRow = spaceParts.length >= 2 || 
+                                  (hasContent && tableLines.length < 3); // Include first few lines after header
+        const notSectionHeader = !line.match(/^[A-Z][A-Z\s]*:$/);
+        
+        isTableLine = looksLikeTableRow && notSectionHeader;
+      } else {
+        // First line - strict check
+        const spaceParts = line.split(/\s{2,}/).filter(part => part.trim());
+        const hasMultipleColumns = spaceParts.length >= 2;
+        const notList = !listPatterns.bullet.test(line) && 
+                       !listPatterns.numbered.test(line) && 
+                       !listPatterns.lettered.test(line);
+        
+        isTableLine = (
+          (patterns.multiSpace.test(line) && hasMultipleColumns && notList) ||
+          patterns.spaceAligned.test(line) ||
+          patterns.separator.test(line)
+        );
+      }
+    }
+    
+    if (isTableLine || (line === '' && tableLines.length > 0)) {
       tableLines.push(line);
       currentIndex++;
     } else {
-      // If we have table content and hit a non-table line, end the table
+      // For pipe tables, check more carefully for continuation
+      if (tableType === 'pipe' && tableLines.length > 0) {
+        // Check next few lines to see if table continues
+        let lookahead = 0;
+        while (lookahead < 3 && (currentIndex + lookahead) < lines.length) {
+          const nextLine = lines[currentIndex + lookahead]?.trim() || '';
+          if (patterns.pipe.test(nextLine)) {
+            // Found another pipe line - continue table
+            for (let i = 0; i <= lookahead; i++) {
+              if (currentIndex < lines.length) {
+                tableLines.push(lines[currentIndex]);
+                currentIndex++;
+              }
+            }
+            continue;
+          }
+          lookahead++;
+        }
+      }
+      
+      // End of table
       if (tableLines.length > 0) {
         break;
       } else {
-        // Not a table, return null
         return null;
       }
     }
   }
   
-  // Need at least 2 lines to make a table (header + data or separator + data)
-  if (tableLines.length < 2) {
+  // Clean up trailing empty lines
+  while (tableLines.length > 0 && tableLines[tableLines.length - 1] === '') {
+    tableLines.pop();
+  }
+  
+  // Need at least 2 non-empty lines to make a table
+  const nonEmptyLines = tableLines.filter(line => line !== '');
+  if (nonEmptyLines.length < 2) {
     return null;
   }
   
   return {
     lines: tableLines,
-    endIndex: currentIndex - 1
+    endIndex: currentIndex - 1,
+    type: tableType
   };
 };
 
 /**
  * Parses table lines into HTML
  * @param {string[]} tableLines - Array of table row strings
+ * @param {string} tableType - Type of table ('pipe' or 'space')
  * @returns {string} - HTML table string
  */
-const parseTableToHtml = (tableLines) => {
+const parseTableToHtml = (tableLines, tableType = 'pipe') => {
   let headerRow = null;
   const rows = [];
   
+  // Process lines based on table type
   tableLines.forEach((line, index) => {
-    // Skip separator lines (lines with mostly dashes and |)
-    if (/^[\s\-|]+$/.test(line)) {
+    // Skip empty lines and separator lines
+    if (!line.trim() || /^[\s\-|]+$/.test(line)) {
       return;
     }
     
-    // Split by | and clean up cells
-    const cells = line.split('|').map(cell => cell.trim()).filter(cell => cell !== '');
+    let cells = [];
+    
+    if (tableType === 'pipe') {
+      // Split by | and clean up cells - handle markdown bold syntax
+      cells = line.split('|')
+        .map(cell => cell.trim())
+        .filter(cell => cell !== '')
+        .map(cell => cell.replace(/\*\*/g, '')); // Remove ** for bold text
+    } else {
+      // For space-aligned tables, split by multiple spaces
+      // First check if it's a header-style line
+      if (line.match(/^[A-Z\s]+\s{2,}[A-Z]+/)) {
+        // Split carefully to preserve column alignment
+        cells = line.split(/\s{2,}/).map(cell => cell.trim());
+      } else {
+        // For data rows, be more flexible
+        cells = line.split(/\s{2,}/).map(cell => cell.trim());
+        
+        // Filter out cells that are just bullet points or list markers
+        cells = cells.filter(cell => !cell.match(/^[\*\-•]\s*$/));
+        
+        // If we only got one cell, try splitting by single spaces for short values
+        if (cells.length === 1 && headerRow && headerRow.length > 1) {
+          const parts = line.trim().split(/\s+/);
+          // Check if we have the right number of parts for the columns
+          if (parts.length === headerRow.length || 
+              (parts.length >= 2 && parts.length <= headerRow.length + 1)) {
+            // Reconstruct cells based on expected column count
+            cells = [];
+            if (parts.length === headerRow.length) {
+              // Perfect match
+              cells = parts;
+            } else {
+              // First column might have spaces, rest are single words
+              cells.push(parts[0]); // First column
+              
+              // Try to match remaining columns
+              for (let i = 1; i < headerRow.length; i++) {
+                cells.push(parts[parts.length - headerRow.length + i] || '');
+              }
+            }
+          }
+        }
+      }
+    }
     
     if (cells.length > 0) {
       if (headerRow === null && index < tableLines.length / 2) {
@@ -269,7 +430,7 @@ export const convertFormattedTextToHtml = (content, options = {}) => {
     // Check for table at current position
     const tableResult = detectTable(lines, i);
     if (tableResult) {
-      htmlContent += parseTableToHtml(tableResult.lines);
+      htmlContent += parseTableToHtml(tableResult.lines, tableResult.type);
       i = tableResult.endIndex + 1;
       continue;
     }
@@ -282,13 +443,16 @@ export const convertFormattedTextToHtml = (content, options = {}) => {
       continue;
     }
     
-    // Check for visit headers (e.g., "June 2, 2025 - Visit #2")
-    // Only match if it's exactly in this format with the dash and Visit #
-    const visitHeaderPattern = /^([A-Za-z]+ \d{1,2}, \d{4})\s*-\s*(Visit #\d+)$/;
+    // Check for visit headers (e.g., "June 2, 2025 - Visit #2" or "June 1, 2025 - Initial Examination" or just "June 4, 2025")
+    const visitHeaderPattern = /^([A-Za-z]+ \d{1,2}, \d{4})\s*(-\s*(.+))?$/;
     const visitMatch = line.match(visitHeaderPattern);
     if (visitMatch) {
-      const [, date, visitNum] = visitMatch;
-      htmlContent += `<p style="margin: 10px 0 5px 0; font-weight: 700; font-size: 16px; color: #000; letter-spacing: -0.02em;">${date} - ${visitNum}</p>`;
+      const [, date, , visitType] = visitMatch;
+      if (visitType) {
+        htmlContent += `<p style="margin: 10px 0 5px 0; font-weight: 700; font-size: 16px; color: #000; letter-spacing: -0.02em;">${date} - ${visitType}</p>`;
+      } else {
+        htmlContent += `<p style="margin: 10px 0 5px 0; font-weight: 700; font-size: 16px; color: #000; letter-spacing: -0.02em;">${date}</p>`;
+      }
       i++;
       continue;
     }
