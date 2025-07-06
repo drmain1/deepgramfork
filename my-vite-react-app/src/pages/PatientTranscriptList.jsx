@@ -282,7 +282,12 @@ function PatientTranscriptList() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {transcripts.map((transcript) => (
+              {[...transcripts].sort((a, b) => {
+                // Sort by date in descending order (newest first, oldest at bottom)
+                const dateA = new Date(a.date);
+                const dateB = new Date(b.date);
+                return dateB - dateA;
+              }).map((transcript) => (
                 <TableRow
                   key={transcript.id}
                   hover

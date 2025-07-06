@@ -137,11 +137,11 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
     phoneNumber = "",
     clinicLogo = "",
     includeLogoOnPdf = false,
-    fontSize = 12,
-    headerFontSize = 11,
+    fontSize = 11,
+    headerFontSize = 14,
     footerFontSize = 10,
-    lineHeight = 1.2,
-    backgroundColor = '#faf9f5',
+    lineHeight = 1.6,
+    backgroundColor = '#fcfcfa',
     includePageNumbers = true,
     includeHeaderOnAllPages = true,
     previewMode = false
@@ -181,15 +181,25 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
         position: absolute;
         top: -9999px;
         left: -9999px;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+        font-family: 'Besley', Georgia, serif;
         font-weight: 400;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
         box-sizing: border-box;
         padding: ${topPadding}px 20px 20px ${leftPadding}px;
       `;
 
-      let html = '';
+      let html = `
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Besley:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+        <style>
+          * {
+            font-family: 'Besley', Georgia, serif !important;
+          }
+        </style>
+      `;
 
       // Header - only show location header on subsequent pages
       if (pageNum > 1 && includeHeaderOnAllPages) {
@@ -200,11 +210,12 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
             left: 20px;
             right: 20px;
             font-size: ${headerFontSize}px;
-            color: #000;
-            font-weight: 700;
-            border-bottom: 2px solid #333;
-            padding-bottom: 8px;
+            color: #000000;
+            font-weight: 600;
+            border-bottom: 1px solid #e0e0e0;
+            padding-bottom: 12px;
             text-align: center;
+            letter-spacing: -0.02em;
           ">
             ${finalLocation ? finalLocation.split('\n').filter(line => line.trim())[0] : ''}
           </div>
@@ -218,7 +229,7 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
           margin-bottom: 30px;
           font-size: ${fontSize}px;
           line-height: ${lineHeight};
-          color: #1a1a1a;
+          color: #000000;
           font-weight: 400;
           letter-spacing: 0;
           text-align: left;
@@ -239,11 +250,12 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
             left: 20px;
             right: 20px;
             font-size: ${footerFontSize}px;
-            color: #333;
+            color: #333333;
             text-align: center;
-            border-top: 1px solid #ddd;
-            padding-top: 5px;
-            font-weight: 500;
+            border-top: 1px solid #e9ecef;
+            padding-top: 10px;
+            font-weight: 400;
+            letter-spacing: 0.01em;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
           ">
@@ -408,8 +420,8 @@ export const generatePagedMedicalPdf = async (textContent, fileName = "medical-d
       
       document.body.appendChild(pageContainer);
 
-      // Wait for render
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Wait for render and font loading
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       // Generate canvas for this page
       const canvas = await html2canvas(pageContainer, {

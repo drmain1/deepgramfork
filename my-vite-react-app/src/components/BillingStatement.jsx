@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Paper,
@@ -16,7 +16,15 @@ import {
   Card,
   CardContent,
   Tab,
-  Tabs
+  Tabs,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Autocomplete,
+  Alert
 } from '@mui/material';
 import {
   Print as PrintIcon,
@@ -25,7 +33,9 @@ import {
   MedicalServices as MedicalIcon,
   Receipt as ReceiptIcon,
   Code as CodeIcon,
-  Description as DescriptionIcon
+  Description as DescriptionIcon,
+  Delete as DeleteIcon,
+  Add as AddIcon
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { generatePdfFromText } from './pdfUtils';
@@ -36,9 +46,18 @@ import {
   formatBillingDataAsText,
   formatBillingDataAsHtml 
 } from '../utils/billingFormatter';
+import MedicalBillingPDF from './billingPdfGenerator';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 function BillingStatement({ billingData, patientInfo, doctorInfo, onClose }) {
   const [activeTab, setActiveTab] = useState(0);
+  const [editableBillingLedger, setEditableBillingLedger] = useState([]);
+  const [addCptDialog, setAddCptDialog] = useState({ open: false, serviceIndex: -1 });
+  const [addIcdDialog, setAddIcdDialog] = useState({ open: false, serviceIndex: -1 });
+  const [newCptCode, setNewCptCode] = useState('');
+  const [newIcdCode, setNewIcdCode] = useState({ code: '', description: '' });
+  const [error, setError] = useState('');
   
   // Extract JSON from the billing data string
   let parsedJson = null;
@@ -66,7 +85,13 @@ function BillingStatement({ billingData, patientInfo, doctorInfo, onClose }) {
     parsedJson = billingData;
   }
   
-  const billingLedger = parsedJson?.billing_data_ledger || [];
+  // Initialize editable state
+  useEffect(() => {
+    const initialLedger = parsedJson?.billing_data_ledger || [];
+    setEditableBillingLedger(JSON.parse(JSON.stringify(initialLedger))); // Deep copy
+  }, [billingData]);
+  
+  const billingLedger = editableBillingLedger;
 
   // Calculate totals using user-specific fees if available
   const calculateServiceTotal = (cptCodes) => {
@@ -79,6 +104,52 @@ function BillingStatement({ billingData, patientInfo, doctorInfo, onClose }) {
     return total + calculateServiceTotal(service.cpt_codes);
   }, 0);
 
+  // Handler functions for editing codes
+  const removeCptCode = (serviceIndex, codeIndex) => {
+    const updatedLedger = [...editableBillingLedger];
+    updatedLedger[serviceIndex].cpt_codes.splice(codeIndex, 1);
+    setEditableBillingLedger(updatedLedger);
+  };
+
+  const removeIcdCode = (serviceIndex, codeIndex) => {
+    const updatedLedger = [...editableBillingLedger];
+    updatedLedger[serviceIndex].icd10_codes.splice(codeIndex, 1);
+    setEditableBillingLedger(updatedLedger);
+  };
+
+  const addCptCode = () => {
+    if (!newCptCode || !CPT_DESCRIPTIONS[newCptCode]) {
+      setError('Please select a valid CPT code');
+      return;
+    }
+    
+    const updatedLedger = [...editableBillingLedger];
+    updatedLedger[addCptDialog.serviceIndex].cpt_codes.push(newCptCode);
+    setEditableBillingLedger(updatedLedger);
+    
+    setAddCptDialog({ open: false, serviceIndex: -1 });
+    setNewCptCode('');
+    setError('');
+  };
+
+  const addIcdCode = () => {
+    if (!newIcdCode.code || !newIcdCode.description) {
+      setError('Please enter both ICD-10 code and description');
+      return;
+    }
+    
+    const updatedLedger = [...editableBillingLedger];
+    updatedLedger[addIcdDialog.serviceIndex].icd10_codes.push({
+      code: newIcdCode.code,
+      description: newIcdCode.description
+    });
+    setEditableBillingLedger(updatedLedger);
+    
+    setAddIcdDialog({ open: false, serviceIndex: -1 });
+    setNewIcdCode({ code: '', description: '' });
+    setError('');
+  };
+
   // Format date for display
   const formatServiceDate = (dateString) => {
     try {
@@ -88,32 +159,22 @@ function BillingStatement({ billingData, patientInfo, doctorInfo, onClose }) {
     }
   };
 
-  // Handle print/download
+  // Handle print/download with new professional billing PDF
   const handleDownloadPDF = async () => {
-    const billingText = formatBillingDataAsText(billingLedger, patientInfo, doctorInfo, doctorInfo?.cptFees);
-    const fileName = `billing_${patientInfo?.last_name || 'patient'}_${patientInfo?.first_name || ''}_${new Date().toISOString().split('T')[0]}`;
-    
-    // Add clinic location header for consistency with your PDF system
-    const locationHeader = doctorInfo?.clinicLocation 
-      ? `CLINIC LOCATION:\n${doctorInfo.clinicLocation}\n\n---\n\n`
-      : '';
-    
-    const fullContent = locationHeader + billingText;
-    
-    // Use existing PDF generation system
-    await generatePdfFromText(
-      fullContent,
-      fileName,
-      '', // Location already in content
-      {
-        doctorName: doctorInfo?.doctorName,
-        doctorSignature: doctorInfo?.doctorSignature,
-        clinicLogo: doctorInfo?.clinicLogo,
-        includeLogoOnPdf: doctorInfo?.includeLogoOnPdf,
-        useProfessionalFormat: true,
-        usePagedFormat: true
-      }
-    );
+    try {
+      const billingPdfGenerator = new MedicalBillingPDF();
+      await billingPdfGenerator.generateBillingPDF(
+        editableBillingLedger,
+        patientInfo,
+        doctorInfo,
+        {
+          fileName: `billing_${patientInfo?.last_name || 'patient'}_${patientInfo?.first_name || ''}_${new Date().toISOString().split('T')[0]}.pdf`
+        }
+      );
+    } catch (error) {
+      console.error('Error generating billing PDF:', error);
+      alert('Error generating PDF. Please try again.');
+    }
   };
 
   return (
@@ -123,7 +184,6 @@ function BillingStatement({ billingData, patientInfo, doctorInfo, onClose }) {
         <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
           <Tab icon={<ReceiptIcon />} label="Billing Statement" />
           <Tab icon={<DescriptionIcon />} label="Compliance Report" />
-          <Tab icon={<CodeIcon />} label="Raw Data" />
         </Tabs>
       </Box>
 
@@ -150,9 +210,6 @@ function BillingStatement({ billingData, patientInfo, doctorInfo, onClose }) {
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   DOB: {patientInfo?.date_of_birth ? formatServiceDate(patientInfo.date_of_birth) : 'N/A'}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Patient ID: {patientInfo?.id || 'N/A'}
                 </Typography>
               </Grid>
             </Grid>
@@ -185,6 +242,7 @@ function BillingStatement({ billingData, patientInfo, doctorInfo, onClose }) {
                       <TableRow>
                         <TableCell>ICD-10 Code</TableCell>
                         <TableCell>Description</TableCell>
+                        <TableCell align="center">Actions</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -199,8 +257,29 @@ function BillingStatement({ billingData, patientInfo, doctorInfo, onClose }) {
                             />
                           </TableCell>
                           <TableCell>{diagnosis.description}</TableCell>
+                          <TableCell align="center">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => removeIcdCode(index, idx)}
+                              title="Remove diagnosis"
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </TableCell>
                         </TableRow>
                       ))}
+                      <TableRow>
+                        <TableCell colSpan={3} align="center">
+                          <Button
+                            size="small"
+                            startIcon={<AddIcon />}
+                            onClick={() => setAddIcdDialog({ open: true, serviceIndex: index })}
+                          >
+                            Add Diagnosis
+                          </Button>
+                        </TableCell>
+                      </TableRow>
                     </TableBody>
                   </Table>
                 </TableContainer>
@@ -221,6 +300,7 @@ function BillingStatement({ billingData, patientInfo, doctorInfo, onClose }) {
                         <TableCell>CPT Code</TableCell>
                         <TableCell>Description</TableCell>
                         <TableCell align="right">Fee</TableCell>
+                        <TableCell align="center">Actions</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -239,10 +319,31 @@ function BillingStatement({ billingData, patientInfo, doctorInfo, onClose }) {
                           <TableCell align="right">
                             ${getCptFee(code, doctorInfo?.cptFees).toFixed(2)}
                           </TableCell>
+                          <TableCell align="center">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => removeCptCode(index, idx)}
+                              title="Remove service"
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </TableCell>
                         </TableRow>
                       ))}
                       <TableRow>
-                        <TableCell colSpan={2} align="right">
+                        <TableCell colSpan={4} align="center">
+                          <Button
+                            size="small"
+                            startIcon={<AddIcon />}
+                            onClick={() => setAddCptDialog({ open: true, serviceIndex: index })}
+                          >
+                            Add Service
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell colSpan={3} align="right">
                           <Typography fontWeight="bold">
                             Date Total:
                           </Typography>
@@ -307,33 +408,97 @@ function BillingStatement({ billingData, patientInfo, doctorInfo, onClose }) {
         </Box>
       )}
 
-      {/* Tab 2: Raw Data */}
-      {activeTab === 2 && (
-        <Box>
-          <Paper elevation={1} sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Raw Billing Data
-            </Typography>
-            <Box sx={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.9rem' }}>
-              {typeof billingData === 'string' ? billingData : JSON.stringify(billingData, null, 2)}
-            </Box>
-            <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
-              <Button
-                variant="outlined"
-                startIcon={<DownloadIcon />}
-                onClick={() => {
-                  if (billingData) {
-                    navigator.clipboard.writeText(typeof billingData === 'string' ? billingData : JSON.stringify(billingData, null, 2));
-                    alert('Billing data copied to clipboard!');
-                  }
-                }}
-              >
-                Copy to Clipboard
-              </Button>
-            </Box>
-          </Paper>
-        </Box>
-      )}
+      {/* Dialog for adding CPT codes */}
+      <Dialog 
+        open={addCptDialog.open} 
+        onClose={() => {
+          setAddCptDialog({ open: false, serviceIndex: -1 });
+          setNewCptCode('');
+          setError('');
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Add CPT Code</DialogTitle>
+        <DialogContent>
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+          <Autocomplete
+            options={Object.keys(CPT_DESCRIPTIONS)}
+            getOptionLabel={(option) => `${option} - ${CPT_DESCRIPTIONS[option]}`}
+            value={newCptCode}
+            onChange={(event, newValue) => setNewCptCode(newValue || '')}
+            renderInput={(params) => (
+              <TextField {...params} label="Select CPT Code" variant="outlined" fullWidth />
+            )}
+            sx={{ mt: 2 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setAddCptDialog({ open: false, serviceIndex: -1 });
+            setNewCptCode('');
+            setError('');
+          }}>
+            Cancel
+          </Button>
+          <Button onClick={addCptCode} variant="contained">
+            Add Code
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog for adding ICD-10 codes */}
+      <Dialog 
+        open={addIcdDialog.open} 
+        onClose={() => {
+          setAddIcdDialog({ open: false, serviceIndex: -1 });
+          setNewIcdCode({ code: '', description: '' });
+          setError('');
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Add ICD-10 Code</DialogTitle>
+        <DialogContent>
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+          <TextField
+            label="ICD-10 Code"
+            value={newIcdCode.code}
+            onChange={(e) => setNewIcdCode({ ...newIcdCode, code: e.target.value })}
+            fullWidth
+            sx={{ mt: 2, mb: 2 }}
+          />
+          <TextField
+            label="Description"
+            value={newIcdCode.description}
+            onChange={(e) => setNewIcdCode({ ...newIcdCode, description: e.target.value })}
+            fullWidth
+            multiline
+            rows={2}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setAddIcdDialog({ open: false, serviceIndex: -1 });
+            setNewIcdCode({ code: '', description: '' });
+            setError('');
+          }}>
+            Cancel
+          </Button>
+          <Button onClick={addIcdCode} variant="contained">
+            Add Diagnosis
+          </Button>
+        </DialogActions>
+      </Dialog>
+
     </Box>
   );
 }

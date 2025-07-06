@@ -12,7 +12,7 @@
  */
 const parseInlineFormatting = (text) => {
   // Convert **text** to <strong>text</strong> for bold
-  let formatted = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  let formatted = text.replace(/\*\*(.*?)\*\*/g, '<strong style="font-weight: 700;">$1</strong>');
   // Convert *text* to <em>text</em> for italic (but not if it's part of **)
   formatted = formatted.replace(/(?<!\*)\*(?!\*)([^*]+)\*(?!\*)/g, '<em>$1</em>');
   return formatted;
@@ -116,8 +116,8 @@ const parseTableToHtml = (tableLines) => {
       width: 100%;
       border-collapse: collapse;
       margin: 20px 0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
-      background: #faf9f5;
+      font-family: 'Besley', Georgia, serif;
+      background: #fcfcfa;
       table-layout: fixed;
     ">
   `;
@@ -130,10 +130,10 @@ const parseTableToHtml = (tableLines) => {
       const cleanCell = cell.replace(/\*\*/g, '');
       tableHtml += `
         <th style="
-          border: 1px solid #d4d2cd;
+          border: 1px solid #e0e0e0;
           padding: 10px 12px;
-          background-color: #f0ede6;
-          font-weight: bold;
+          background-color: #f5f5f3;
+          font-weight: 700;
           text-align: ${cellIndex === 0 ? 'left' : 'center'};
           font-size: 12px;
           color: #000;
@@ -150,7 +150,7 @@ const parseTableToHtml = (tableLines) => {
   tableHtml += '<tbody>';
   rows.forEach((row, rowIndex) => {
     // Subtle alternating rows
-    const backgroundColor = rowIndex % 2 === 0 ? '#faf9f5' : '#f7f5f0';
+    const backgroundColor = rowIndex % 2 === 0 ? '#fcfcfa' : '#f9f9f7';
     tableHtml += `<tr style="background-color: ${backgroundColor};">`;
     
     row.forEach((cell, cellIndex) => {
@@ -162,13 +162,13 @@ const parseTableToHtml = (tableLines) => {
       
       tableHtml += `
         <td style="
-          border: 1px solid #d4d2cd;
+          border: 1px solid #e0e0e0;
           padding: 8px 12px;
           font-size: 11px;
           font-weight: ${fontWeight};
           vertical-align: middle;
           text-align: ${textAlign};
-          color: #1a1a1a;
+          color: #000000;
           text-transform: ${cellIndex === 0 ? 'uppercase' : 'none'};
         ">${cleanCell}</td>
       `;
@@ -226,10 +226,10 @@ export const convertFormattedTextToHtml = (content, options = {}) => {
             if (lines[i].trim()) {
               if (lineIndex === 0) {
                 // First line (office name) - bold and larger
-                locationHTML += `<div style="font-size: 14px; font-weight: bold; color: #000; margin-bottom: 2px;">${lines[i].trim()}</div>`;
+                locationHTML += `<div style="font-size: 13px; font-weight: 600; color: #000; margin-bottom: 2px;">${lines[i].trim()}</div>`;
               } else {
                 // Address lines
-                locationHTML += `<div style="font-size: 11px; color: #2c3e50;">${lines[i].trim()}</div>`;
+                locationHTML += `<div style="font-size: 11px; color: #333333; font-weight: 400;">${lines[i].trim()}</div>`;
               }
               lineIndex++;
             }
@@ -252,7 +252,7 @@ export const convertFormattedTextToHtml = (content, options = {}) => {
             </td>
           </tr>
         </table>
-        <div style="border-bottom: 2px solid #2c3e50; margin-bottom: 20px; margin-left: -10px; margin-right: -10px; margin-top: 10px;"></div>
+        <div style="border-bottom: 1px solid #e0e0e0; margin-bottom: 20px; margin-left: -10px; margin-right: -10px; margin-top: 10px;"></div>
       `;
       
       htmlContent += headerHTML;
@@ -292,24 +292,24 @@ export const convertFormattedTextToHtml = (content, options = {}) => {
     if (markdownMatch || headerMatch) {
       const match = markdownMatch || headerMatch;
       const [, header, content] = match;
-      htmlContent += `<p style="margin: 12px 0 6px 0; font-weight: 900; font-size: 14px; color: #000; letter-spacing: -0.02em;"><strong style="font-weight: 900;">${header}</strong>`;
+      htmlContent += `<p style="margin: 12px 0 6px 0; font-weight: 700; font-size: 13px; color: #000; letter-spacing: -0.01em; text-transform: uppercase;"><strong style="font-weight: 700;">${header}</strong>`;
       if (content) {
-        htmlContent += ` <span style="font-weight: 400; font-size: 13px;">${parseInlineFormatting(content)}</span>`;
+        htmlContent += ` <span style="font-weight: 400; font-size: 12px;">${parseInlineFormatting(content)}</span>`;
       }
       htmlContent += '</p>';
     } else if (numberedMatch) {
       const [, indent, number, content] = numberedMatch;
       const marginLeft = indent ? indent.length * 10 : 0;
-      htmlContent += `<p style="margin: 5px 0 5px ${marginLeft}px;"><strong>${number}</strong>${parseInlineFormatting(content)}</p>`;
+      htmlContent += `<p style="margin: 5px 0 5px ${marginLeft}px; font-size: 12px; font-weight: 400; color: #000000; line-height: 1.6;"><strong style="font-weight: 700;">${number}</strong>${parseInlineFormatting(content)}</p>`;
     } else if (bulletMatch) {
       const [, indent, bullet, content] = bulletMatch;
       const marginLeft = indent ? indent.length * 10 : 0;
-      htmlContent += `<p style="margin: 5px 0 5px ${marginLeft}px;"><strong>${bullet}</strong>${parseInlineFormatting(content)}</p>`;
+      htmlContent += `<p style="margin: 5px 0 5px ${marginLeft}px; font-size: 12px; font-weight: 400; color: #000000; line-height: 1.6;"><strong style="font-weight: 700;">${bullet}</strong>${parseInlineFormatting(content)}</p>`;
     } else if (line.trim() === '') {
       htmlContent += '<br>';
     } else {
       // Regular content line
-      htmlContent += `<p style="margin: 4px 0; font-weight: 400; font-size: 13px; color: #1a1a1a; line-height: 1.5;">${parseInlineFormatting(line)}</p>`;
+      htmlContent += `<p style="margin: 4px 0; font-weight: 400; font-size: 12px; color: #000000; line-height: 1.6;">${parseInlineFormatting(line)}</p>`;
     }
     
     i++;
