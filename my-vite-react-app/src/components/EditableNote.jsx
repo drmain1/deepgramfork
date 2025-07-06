@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { TextField, Button, Box, IconButton, Tooltip, Snackbar, Alert, CircularProgress } from '@mui/material';
 import { ContentCopy, Check, Edit as EditIcon, Save as SaveIcon } from '@mui/icons-material';
-import { generatePdfFromText } from './pdfUtils';
+import { useServerPdfGeneration } from '../hooks/useServerPdfGeneration';
 import FormattedMedicalText from './FormattedMedicalText';
 import { useUserSettings } from '../contexts/UserSettingsContext';
 
@@ -91,22 +91,33 @@ function EditableNote({
     setEditableContent(e.target.value);
   };
 
-  const handleQuickPdf = () => {
-    const pdfOptions = {
-      doctorName,
-      doctorSignature,
-      isSigned,
-      clinicLogo: userSettings.clinicLogo,
-      includeLogoOnPdf: userSettings.includeLogoOnPdf,
-      useProfessionalFormat: true, // Use professional format for better layout
-      usePagedFormat: true // Use paged format for best results
-    };
-    generatePdfFromText(
-      editableContent, 
-      `polished-note-${recordingId || 'current'}.pdf`, 
-      location,
-      pdfOptions
-    );
+  // Use server-side PDF generation hook
+  const { downloadPDF, loading: pdfLoading, error: pdfError } = useServerPdfGeneration();
+
+  const handleQuickPdf = async () => {
+    try {
+      // Parse the content to check if it's structured JSON or markdown
+      let pdfData;
+      try {
+        const parsed = JSON.parse(editableContent);
+        if (parsed.patient_info) {
+          // It's already structured data
+          pdfData = parsed;
+        } else {
+          // Not structured, use as transcript
+          pdfData = editableContent;
+        }
+      } catch (e) {
+        // Not JSON, use as transcript
+        pdfData = editableContent;
+      }
+
+      const filename = `polished-note-${recordingId || 'current'}.pdf`;
+      await downloadPDF(pdfData, filename);
+    } catch (error) {
+      console.error('PDF generation failed:', error);
+      setSaveError('Failed to generate PDF. Please try again.');
+    }
   };
 
   const handleCopyToClipboard = async () => {

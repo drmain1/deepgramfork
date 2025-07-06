@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper } from '@mui/material';
+import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Divider } from '@mui/material';
 
 const FormattedMedicalText = ({ content, sx = {}, ...props }) => {
   if (!content) {
@@ -10,18 +10,230 @@ const FormattedMedicalText = ({ content, sx = {}, ...props }) => {
     );
   }
 
-  // Ensure content is a string
+  // Check if content is structured JSON
+  let structuredData = null;
   let textContent = content;
-  if (typeof content !== 'string') {
-    console.warn('FormattedMedicalText received non-string content:', content);
-    // Try to convert to string
-    if (typeof content === 'object') {
-      textContent = JSON.stringify(content, null, 2);
-    } else {
-      textContent = String(content);
+  
+  if (typeof content === 'string') {
+    // Try to parse as JSON
+    try {
+      const parsed = JSON.parse(content);
+      if (parsed.patient_info && parsed.sections) {
+        structuredData = parsed;
+      }
+    } catch (e) {
+      // Not JSON, treat as regular text
     }
+  } else if (typeof content === 'object' && content.patient_info && content.sections) {
+    // Already parsed JSON
+    structuredData = content;
   }
 
+  // If we have structured data, render it nicely
+  if (structuredData) {
+    return (
+      <Box sx={{ ...sx, fontFamily: 'Arial, sans-serif' }} {...props} data-formatted-medical-text>
+        {/* Header with patient info */}
+        {structuredData.clinic_info && (
+          <Box sx={{ mb: 3, textAlign: 'center' }}>
+            <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+              {structuredData.clinic_info.name}
+            </Typography>
+            {structuredData.clinic_info.address && (
+              <Typography variant="body2">{structuredData.clinic_info.address}</Typography>
+            )}
+            {(structuredData.clinic_info.phone || structuredData.clinic_info.fax) && (
+              <Typography variant="body2">
+                {structuredData.clinic_info.phone && `Tel: ${structuredData.clinic_info.phone}`}
+                {structuredData.clinic_info.phone && structuredData.clinic_info.fax && ' | '}
+                {structuredData.clinic_info.fax && `Fax: ${structuredData.clinic_info.fax}`}
+              </Typography>
+            )}
+          </Box>
+        )}
+
+        <Divider sx={{ my: 2 }} />
+
+        {/* Patient Information */}
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>
+            COMPREHENSIVE PAIN MANAGEMENT EVALUATION
+          </Typography>
+          <Typography>Patient Name: {structuredData.patient_info.patient_name}</Typography>
+          {structuredData.patient_info.date_of_birth && (
+            <Typography>Date of Birth: {structuredData.patient_info.date_of_birth}</Typography>
+          )}
+          {structuredData.patient_info.date_of_accident && (
+            <Typography>Date of Accident: {structuredData.patient_info.date_of_accident}</Typography>
+          )}
+          {structuredData.patient_info.date_of_treatment && (
+            <Typography>Date of Consultation: {structuredData.patient_info.date_of_treatment}</Typography>
+          )}
+        </Box>
+
+        <Divider sx={{ my: 2 }} />
+
+        {/* Render sections */}
+        {Object.entries(structuredData.sections).map(([key, value]) => {
+          if (!value || value === 'null') return null;
+          
+          const sectionTitle = key
+            .split('_')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+          
+          return (
+            <Box key={key} sx={{ mb: 2 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                {sectionTitle.toUpperCase()}:
+              </Typography>
+              <Typography sx={{ whiteSpace: 'pre-wrap', pl: 2 }}>
+                {value}
+              </Typography>
+            </Box>
+          );
+        })}
+
+        {/* Motor Examination Table */}
+        {structuredData.motor_exam && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
+              NEUROLOGIC ASSESSMENT: MOTOR EXAMINATION
+            </Typography>
+            
+            {structuredData.motor_exam.upper_extremity && (
+              <>
+                <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                  Upper Extremity
+                </Typography>
+                <TableContainer component={Paper} sx={{ mb: 2 }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>MUSCLE GROUP</TableCell>
+                        <TableCell align="center">RIGHT</TableCell>
+                        <TableCell align="center">LEFT</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {structuredData.motor_exam.upper_extremity.map((exam, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell>{exam.muscle}</TableCell>
+                          <TableCell align="center">{exam.right}</TableCell>
+                          <TableCell align="center">{exam.left}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </>
+            )}
+
+            {structuredData.motor_exam.lower_extremity && (
+              <>
+                <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                  Lower Extremity
+                </Typography>
+                <TableContainer component={Paper} sx={{ mb: 2 }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>MUSCLE GROUP</TableCell>
+                        <TableCell align="center">RIGHT</TableCell>
+                        <TableCell align="center">LEFT</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {structuredData.motor_exam.lower_extremity.map((exam, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell>{exam.muscle}</TableCell>
+                          <TableCell align="center">{exam.right}</TableCell>
+                          <TableCell align="center">{exam.left}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </>
+            )}
+          </Box>
+        )}
+
+        {/* Reflexes Table */}
+        {structuredData.reflexes && (
+          <Box sx={{ mb: 3 }}>
+            {structuredData.reflexes.deep_tendon && (
+              <>
+                <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                  Deep Tendon Reflexes:
+                </Typography>
+                <TableContainer component={Paper} sx={{ mb: 2 }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>REFLEX</TableCell>
+                        <TableCell align="center">RIGHT</TableCell>
+                        <TableCell align="center">LEFT</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {structuredData.reflexes.deep_tendon.map((reflex, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell>{reflex.reflex}</TableCell>
+                          <TableCell align="center">{reflex.right}</TableCell>
+                          <TableCell align="center">{reflex.left}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </>
+            )}
+
+            {structuredData.reflexes.pathological && (
+              <>
+                <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                  Pathological Reflexes:
+                </Typography>
+                <TableContainer component={Paper} sx={{ mb: 2 }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>REFLEX</TableCell>
+                        <TableCell align="center">RIGHT</TableCell>
+                        <TableCell align="center">LEFT</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {structuredData.reflexes.pathological.map((reflex, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell>{reflex.reflex}</TableCell>
+                          <TableCell align="center">{reflex.right}</TableCell>
+                          <TableCell align="center">{reflex.left}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </>
+            )}
+          </Box>
+        )}
+
+        {/* Provider signature if available */}
+        {structuredData.patient_info.provider && (
+          <Box sx={{ mt: 4 }}>
+            <Typography>Electronically signed by:</Typography>
+            <Typography sx={{ fontWeight: 'bold' }}>
+              {structuredData.patient_info.provider}
+            </Typography>
+          </Box>
+        )}
+      </Box>
+    );
+  }
+
+  // Original markdown formatting code for non-structured content
   const formatMedicalText = (text) => {
     // Split text into lines
     const lines = text.split('\n');
@@ -100,277 +312,113 @@ const FormattedMedicalText = ({ content, sx = {}, ...props }) => {
       return { header: headerRow, rows };
     };
 
-    // Function to render a table
-    const renderTable = (tableData, index) => {
-      const { header, rows } = tableData;
-      
-      return (
-        <TableContainer component={Paper} key={`table-${index}`} sx={{ my: 2, maxWidth: '100%' }}>
-          <Table size="small" sx={{ minWidth: 300 }}>
-            {header && (
-              <TableHead>
-                <TableRow>
-                  {header.map((cell, cellIndex) => (
-                    <TableCell 
-                      key={cellIndex}
-                      sx={{ 
-                        fontWeight: 'bold',
-                        backgroundColor: 'grey.100',
-                        fontFamily: 'monospace',
-                        fontSize: '0.9rem'
-                      }}
-                    >
-                      {cell}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              </TableHead>
-            )}
-            <TableBody>
-              {rows.map((row, rowIndex) => (
-                <TableRow key={rowIndex}>
-                  {row.map((cell, cellIndex) => (
-                    <TableCell 
-                      key={cellIndex}
-                      sx={{ 
-                        fontFamily: 'monospace',
-                        fontSize: '0.9rem',
-                        padding: '8px 12px'
-                      }}
-                    >
-                      {cell}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      );
-    };
-
-    // Function to parse inline markdown formatting
-    const parseInlineFormatting = (text) => {
-      const parts = [];
-      let lastIndex = 0;
-      const boldPattern = /\*\*(.*?)\*\*/g;
-      let match;
-
-      while ((match = boldPattern.exec(text)) !== null) {
-        // Add text before the bold part
-        if (match.index > lastIndex) {
-          parts.push(
-            <Typography
-              component="span"
-              key={`text-${lastIndex}`}
-              sx={{ 
-                fontFamily: 'monospace',
-                fontSize: '1.1rem',
-                lineHeight: 1.6,
-                color: 'text.primary'
-              }}
-            >
-              {text.slice(lastIndex, match.index)}
-            </Typography>
-          );
-        }
-
-        // Add the bold part
-        parts.push(
-          <Typography
-            component="span"
-            key={`bold-${match.index}`}
-            sx={{ 
-              fontWeight: 'bold',
-              fontFamily: 'monospace',
-              fontSize: '1.1rem',
-              lineHeight: 1.6,
-              color: 'text.primary'
-            }}
-          >
-            {match[1]}
-          </Typography>
-        );
-
-        lastIndex = match.index + match[0].length;
-      }
-
-      // Add remaining text
-      if (lastIndex < text.length) {
-        parts.push(
-          <Typography
-            component="span"
-            key={`text-${lastIndex}`}
-            sx={{ 
-              fontFamily: 'monospace',
-              fontSize: '1.1rem',
-              lineHeight: 1.6,
-              color: 'text.primary'
-            }}
-          >
-            {text.slice(lastIndex)}
-          </Typography>
-        );
-      }
-
-      return parts.length > 0 ? parts : [
-        <Typography
-          component="span"
-          key="text-full"
-          sx={{ 
-            fontFamily: 'monospace',
-            fontSize: '1.1rem',
-            lineHeight: 1.6,
-            color: 'text.primary'
-          }}
-        >
-          {text}
-        </Typography>
-      ];
-    };
-
     let i = 0;
     while (i < lines.length) {
       const line = lines[i];
-      
-      // Check for table at current position
-      const tableResult = detectTable(i);
-      if (tableResult) {
-        const tableData = parseTable(tableResult.lines);
-        if (tableData.header || tableData.rows.length > 0) {
-          formattedElements.push(renderTable(tableData, i));
-          i = tableResult.endIndex + 1;
-          continue;
+      const trimmedLine = line.trim();
+
+      // Check if this starts a table
+      const tableData = detectTable(i);
+      if (tableData) {
+        const { header, rows } = parseTable(tableData.lines);
+        
+        if (header && rows.length > 0) {
+          formattedElements.push(
+            <TableContainer key={`table-${i}`} component={Paper} sx={{ my: 2 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    {header.map((cell, cellIndex) => (
+                      <TableCell key={cellIndex} align={cellIndex > 0 ? 'center' : 'left'}>
+                        {cell}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {rows.map((row, rowIndex) => (
+                    <TableRow key={rowIndex}>
+                      {row.map((cell, cellIndex) => (
+                        <TableCell key={cellIndex} align={cellIndex > 0 ? 'center' : 'left'}>
+                          {cell}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          );
         }
+        
+        i = tableData.endIndex + 1;
+        continue;
       }
 
-      // Regular line processing
-      // Check for markdown-style headers (**HEADER:**)
-      const markdownHeaderPattern = /^\*\*([A-Z][A-Z\s&,()/-]*:)\*\*\s*(.*)/;
-      // Check if line is a medical header (all caps ending with colon, or common medical headers)
-      const headerPattern = /^([A-Z][A-Z\s&,()/-]*:)\s*(.*)/;
-      // Check for numbered lists (1., 2., etc.)
-      const numberedListPattern = /^(\s*)(\d+\.\s+)(.*)/;
-      // Check for bullet points (-, •, *, etc.)
-      const bulletPattern = /^(\s*)([-•*]\s+)(.*)/;
-      // Check for common medical section headers (may not be all caps)
-      const sectionHeaderPattern = /^(Chief Complaint|History of Present Illness|Past Medical History|Current Medications|Past Surgical History|Family History|Social History|Allergies|Review of Systems|Physical Examination|Assessment|Plan|Impression|Recommendations):\s*(.*)/i;
-      
-      const markdownMatch = line.match(markdownHeaderPattern);
-      const headerMatch = line.match(headerPattern);
-      const sectionMatch = line.match(sectionHeaderPattern);
-      const numberedMatch = line.match(numberedListPattern);
-      const bulletMatch = line.match(bulletPattern);
-
-      if (markdownMatch || headerMatch || sectionMatch) {
-        const match = markdownMatch || headerMatch || sectionMatch;
-        const [, header, content] = match;
+      // Check for headers (lines that are all caps or end with ':')
+      if ((trimmedLine.match(/^[A-Z\s]+:?$/) && trimmedLine.length > 3) || 
+          (trimmedLine.endsWith(':') && !trimmedLine.startsWith('  '))) {
         formattedElements.push(
-          <React.Fragment key={i}>
-            <Typography
-              component="span"
-              sx={{ 
-                fontWeight: 'bold', 
-                fontFamily: 'monospace',
-                fontSize: '1.1rem',
-                lineHeight: 1.6,
-                color: 'text.primary'
-              }}
-            >
-              {header}{(headerMatch && !markdownMatch) ? '' : ''}
-            </Typography>
-            {content && (
-              <Typography
-                component="span"
-                sx={{ 
-                  fontFamily: 'monospace',
-                  fontSize: '1.1rem',
-                  lineHeight: 1.6,
-                  color: 'text.primary',
-                  marginLeft: '0.5ch'
-                }}
-              >
-                {content}
-              </Typography>
-            )}
-            <br />
-          </React.Fragment>
+          <Typography key={`header-${i}`} variant="subtitle1" sx={{ fontWeight: 'bold', mt: 2, mb: 1 }}>
+            {trimmedLine}
+          </Typography>
         );
-      } else if (numberedMatch) {
-        const [, indent, number, content] = numberedMatch;
+      }
+      // Check for bulleted lists
+      else if (trimmedLine.match(/^[•\-\*]\s+/)) {
+        const bulletPoints = [];
+        while (i < lines.length && lines[i].trim().match(/^[•\-\*]\s+/)) {
+          bulletPoints.push(
+            <Typography key={`bullet-${i}`} sx={{ pl: 2, mb: 0.5 }}>
+              {lines[i].trim()}
+            </Typography>
+          );
+          i++;
+        }
         formattedElements.push(
-          <React.Fragment key={i}>
-            <Typography
-              component="span"
-              sx={{ 
-                fontFamily: 'monospace',
-                fontSize: '1.1rem',
-                lineHeight: 1.6,
-                color: 'text.primary',
-                marginLeft: indent ? `${indent.length * 0.5}ch` : 0
-              }}
-            >
-              {indent}
-            </Typography>
-            <Typography
-              component="span"
-              sx={{ 
-                fontWeight: 'bold',
-                fontFamily: 'monospace',
-                fontSize: '1.1rem',
-                lineHeight: 1.6,
-                color: 'text.primary'
-              }}
-            >
-              {number}
-            </Typography>
-            {parseInlineFormatting(content)}
-            <br />
-          </React.Fragment>
+          <Box key={`list-${i}`} sx={{ mb: 1 }}>
+            {bulletPoints}
+          </Box>
         );
-      } else if (bulletMatch) {
-        const [, indent, bullet, content] = bulletMatch;
+        continue;
+      }
+      // Check for numbered lists
+      else if (trimmedLine.match(/^\d+\.\s+/)) {
+        const numberedPoints = [];
+        while (i < lines.length && lines[i].trim().match(/^\d+\.\s+/)) {
+          numberedPoints.push(
+            <Typography key={`number-${i}`} sx={{ pl: 2, mb: 0.5 }}>
+              {lines[i].trim()}
+            </Typography>
+          );
+          i++;
+        }
         formattedElements.push(
-          <React.Fragment key={i}>
-            <Typography
-              component="span"
-              sx={{ 
-                fontFamily: 'monospace',
-                fontSize: '1.1rem',
-                lineHeight: 1.6,
-                color: 'text.primary',
-                marginLeft: indent ? `${indent.length * 0.5}ch` : 0
-              }}
-            >
-              {indent}
-            </Typography>
-            <Typography
-              component="span"
-              sx={{ 
-                fontWeight: 'bold',
-                fontFamily: 'monospace',
-                fontSize: '1.1rem',
-                lineHeight: 1.6,
-                color: 'text.primary'
-              }}
-            >
-              {bullet}
-            </Typography>
-            {parseInlineFormatting(content)}
-            <br />
-          </React.Fragment>
+          <Box key={`numlist-${i}`} sx={{ mb: 1 }}>
+            {numberedPoints}
+          </Box>
         );
-      } else if (line.trim() === '') {
-        // Empty line - add spacing
-        formattedElements.push(<br key={i} />);
-      } else {
-        // Regular content line - parse for inline formatting
-        formattedElements.push(
-          <React.Fragment key={i}>
-            {parseInlineFormatting(line)}
-            <br />
-          </React.Fragment>
-        );
+        continue;
+      }
+      // Regular paragraph
+      else if (trimmedLine.length > 0) {
+        // Collect consecutive non-empty lines as a paragraph
+        const paragraphLines = [];
+        while (i < lines.length && lines[i].trim().length > 0 && 
+               !lines[i].trim().match(/^[A-Z\s]+:?$/) &&
+               !lines[i].trim().match(/^[•\-\*\d]\s+/)) {
+          paragraphLines.push(lines[i]);
+          i++;
+        }
+        
+        if (paragraphLines.length > 0) {
+          formattedElements.push(
+            <Typography key={`para-${i}`} sx={{ mb: 1.5, lineHeight: 1.6 }}>
+              {paragraphLines.join(' ')}
+            </Typography>
+          );
+        }
+        continue;
       }
       
       i++;
@@ -380,17 +428,10 @@ const FormattedMedicalText = ({ content, sx = {}, ...props }) => {
   };
 
   return (
-    <Box
-      sx={{
-        whiteSpace: 'pre-wrap',
-        wordBreak: 'break-word',
-        ...sx
-      }}
-      {...props}
-    >
+    <Box sx={{ ...sx, fontFamily: 'Arial, sans-serif' }} {...props} data-formatted-medical-text>
       {formatMedicalText(textContent)}
     </Box>
   );
 };
 
-export default FormattedMedicalText; 
+export default FormattedMedicalText;

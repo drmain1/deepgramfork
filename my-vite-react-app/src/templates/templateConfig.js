@@ -1,4 +1,4 @@
-import { painManagementEvalInstructions } from './llm-instructions/pain-management-eval.js';
+import { painManagementEvalStructuredInstructions } from './llm-instructions/pain-management-eval-structured.js';
 import { orthoSpineConsultInstructions } from './llm-instructions/ortho-spine-consult.js';
 import { chiropracticInitialInstructions } from './llm-instructions/chiropractic-initial.js';
 import { chiropracticFollowupInstructions } from './llm-instructions/chiropractic-followup.js';
@@ -88,7 +88,7 @@ PLAN:
     { 
       id: 'pm_eval', 
       name: 'New Patient Evaluation', 
-      llmInstructions: painManagementEvalInstructions, 
+      llmInstructions: painManagementEvalStructuredInstructions, 
       sampleNarrative: `MEDLEGALDOC PAIN MANAGEMENT CLINIC
 634 West E Street, Suite 200
 Painville, CA 90210

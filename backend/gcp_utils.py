@@ -135,6 +135,36 @@ def polish_transcript_with_gemini(
         # Extract the polished text
         polished_text = response.text
         
+        # Clean up the response in case it's wrapped in markdown or quotes
+        # Remove markdown code blocks if present
+        if polished_text.strip().startswith('```json'):
+            polished_text = polished_text.strip()[7:]  # Remove ```json
+            if polished_text.endswith('```'):
+                polished_text = polished_text[:-3]  # Remove closing ```
+        elif polished_text.strip().startswith('```'):
+            polished_text = polished_text.strip()[3:]  # Remove ```
+            if polished_text.endswith('```'):
+                polished_text = polished_text[:-3]  # Remove closing ```
+        
+        # Remove any leading/trailing whitespace
+        polished_text = polished_text.strip()
+        
+        # Remove outer quotes if the entire response is quoted
+        if polished_text.startswith('"') and polished_text.endswith('"'):
+            try:
+                # Try to parse as a JSON string
+                import json
+                polished_text = json.loads(polished_text)
+                if isinstance(polished_text, str):
+                    # It was a quoted string, use the unquoted version
+                    pass
+                else:
+                    # It wasn't a simple quoted string, revert
+                    polished_text = response.text.strip()
+            except:
+                # If parsing fails, keep the original
+                pass
+        
         # Log success
         logger.info(f"Successfully polished transcript with Gemini Pro")
         

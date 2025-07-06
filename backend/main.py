@@ -49,7 +49,7 @@ from models import (
 from deepgram_utils import handle_deepgram_websocket
 
 # Import routers
-from routers import image_router
+from routers import image_router, pdf_router
 
 # Import the new Speechmatics handler for multilingual support
 from speechmatics_utils import handle_speechmatics_websocket
@@ -175,6 +175,7 @@ logger.info("Rate limiting middleware enabled")
 
 # Include routers
 app.include_router(image_router.router)
+app.include_router(pdf_router.router)
 
 # Import audit logger for HIPAA compliance
 from audit_logger import AuditLogger

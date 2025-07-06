@@ -110,3 +110,63 @@ DEFAULT_USER_SETTINGS = UserSettingsData(
     customBillingRules='',
     cptFees={}
 ).model_dump()
+
+
+# PDF Generation Models
+class MuscleStrength(BaseModel):
+    muscle: str
+    right: str
+    left: str
+
+
+class ReflexResult(BaseModel):
+    reflex: str
+    right: str
+    left: str
+
+
+class MotorExamination(BaseModel):
+    upper_extremity: List[MuscleStrength]
+    lower_extremity: List[MuscleStrength]
+
+
+class ReflexExamination(BaseModel):
+    deep_tendon: List[ReflexResult]
+    pathological: List[ReflexResult]
+
+
+class PatientInfo(BaseModel):
+    patient_name: str
+    date_of_birth: Optional[str] = None
+    date_of_accident: Optional[str] = None
+    date_of_treatment: Optional[str] = None
+    provider: Optional[str] = None
+
+
+class ClinicInfo(BaseModel):
+    name: Optional[str] = None
+    address: Optional[str] = None
+    phone: Optional[str] = None
+    fax: Optional[str] = None
+
+
+class MedicalDocument(BaseModel):
+    patient_info: PatientInfo
+    clinic_info: Optional[ClinicInfo] = None
+    sections: Dict[str, Optional[str]]
+    motor_exam: Optional[MotorExamination] = None
+    reflexes: Optional[ReflexExamination] = None
+    provider_info: Optional[Dict[str, str]] = None
+
+
+class PDFGenerationRequest(BaseModel):
+    transcript: str
+    format_type: str = "structured"  # "structured" or "markdown"
+    include_watermark: bool = False
+    include_signature: bool = True
+
+
+class PDFGenerationResponse(BaseModel):
+    success: bool
+    pdf_url: Optional[str] = None
+    error: Optional[str] = None
