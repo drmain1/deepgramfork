@@ -170,3 +170,10 @@ class PDFGenerationResponse(BaseModel):
     success: bool
     pdf_url: Optional[str] = None
     error: Optional[str] = None
+
+
+class MultiVisitPDFRequest(BaseModel):
+    visits: List[MedicalDocument]
+    patient_name: str
+    include_watermark: bool = False
+    include_signature: bool = True

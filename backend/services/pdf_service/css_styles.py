@@ -35,6 +35,68 @@ def get_medical_document_css(besley_font_path: str = None) -> str:
     }
 }
 
+/* Multi-visit specific styles */
+.patient-header h1 {
+    font-family: 'Besley', 'Times New Roman', Times, serif;
+    font-size: 18pt;
+    font-weight: bold;
+    text-align: center;
+    margin-bottom: 20pt;
+    color: #000000;
+}
+
+.follow-up-header {
+    margin-top: 30pt;
+    margin-bottom: 20pt;
+    border-top: 2px solid #000000;
+    padding-top: 20pt;
+}
+
+.follow-up-header h2 {
+    font-family: 'Besley', 'Times New Roman', Times, serif;
+    font-size: 14pt;
+    font-weight: bold;
+    text-align: center;
+    margin-bottom: 20pt;
+    color: #000000;
+}
+
+.visit-container {
+    margin-bottom: 20pt;
+}
+
+/* Reduce spacing for follow-up visits */
+.visit-container:has(.follow-up-header) ~ .visit-container {
+    margin-bottom: 15pt;
+}
+
+.visit-date-header h3 {
+    font-family: 'Besley', 'Times New Roman', Times, serif;
+    font-size: 12pt;
+    font-weight: bold;
+    margin-bottom: 15pt;
+    color: #000000;
+    border-bottom: 1px solid #cccccc;
+    padding-bottom: 5pt;
+}
+
+.page-break {
+    page-break-before: always;
+}
+
+/* Narrative section styles for follow-up visits */
+.narrative-section {
+    margin-bottom: 15pt;
+}
+
+.narrative-content {
+    font-family: 'Besley', 'Times New Roman', Times, serif;
+    font-size: 11pt;
+    line-height: 1.4;
+    margin-bottom: 10pt;
+    text-align: justify;
+}
+
 /* Reset and base styles */
 * {
     margin: 0;

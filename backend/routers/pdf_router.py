@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Response
 from typing import Dict, Any
 import json
 import logging
-from models import MedicalDocument, PDFGenerationRequest, PDFGenerationResponse
+from models import MedicalDocument, PDFGenerationRequest, PDFGenerationResponse, MultiVisitPDFRequest
 from services.pdf_service.weasyprint_generator import WeasyPrintMedicalPDFGenerator
 
 logger = logging.getLogger(__name__)
@@ -129,6 +129,35 @@ async def pdf_service_health():
             "service": "weasyprint_pdf_generator",
             "error": str(e)
         }
+
+@router.post("/api/generate-multi-visit-pdf")
+async def generate_multi_visit_pdf(request: MultiVisitPDFRequest):
+    """Generate PDF from multiple medical visits"""
+    try:
+        if not request.visits:
+            raise ValueError("No visits provided")
+        
+        # Convert visits to dict format
+        visits_data = [visit.model_dump() for visit in request.visits]
+        
+        # Generate PDF with WeasyPrint
+        pdf_bytes = generator.generate_multi_visit_pdf(visits_data, request.patient_name)
+        
+        # Create safe filename
+        safe_name = request.patient_name.replace(' ', '_').replace('/', '_').replace(',', '_')
+        filename = f"medical_records_{safe_name}_multi_visit.pdf"
+        
+        # Return PDF as response
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"'
+            }
+        )
+    except Exception as e:
+        logger.error(f"WeasyPrint multi-visit PDF generation error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Legacy endpoints for backward compatibility (now using WeasyPrint)
 # All main endpoints above now use WeasyPrint as the default PDF generator

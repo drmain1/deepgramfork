@@ -194,11 +194,27 @@ export const useServerPdfGeneration = () => {
     const sections = {};
     const sectionRegex = /\*\*([A-Z\s/]+)\*\*:?\s*([^*]+(?:\n(?!\*\*)[^*]*)*)/g;
     let match;
+    let hasStructuredSections = false;
     
     while ((match = sectionRegex.exec(transcript)) !== null) {
       const sectionName = match[1].trim().toLowerCase().replace(/\s+/g, '_').replace(/\//g, '_');
       const sectionContent = match[2].trim();
       sections[sectionName] = sectionContent;
+      hasStructuredSections = true;
+    }
+    
+    // If no structured sections found, treat as narrative follow-up visit
+    if (!hasStructuredSections && transcript.trim()) {
+      // Check if this looks like a follow-up visit (starts with "Follow up treatment date:")
+      if (transcript.trim().toLowerCase().startsWith('follow up') || 
+          transcript.includes('follow up treatment date') ||
+          transcript.includes('returns for') ||
+          transcript.includes('follow-up')) {
+        sections['follow_up_visit'] = transcript.trim();
+      } else {
+        // For other narrative content, put it in a general section
+        sections['clinical_notes'] = transcript.trim();
+      }
     }
 
     // Extract patient info from transcript if not provided
@@ -252,11 +268,126 @@ export const useServerPdfGeneration = () => {
     return null; // Let the backend handle table extraction for now
   };
 
+  const generateMultiVisitPDF = async (visits, patientName, options = {}) => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Get auth token
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+      
+      const token = await user.getIdToken();
+      
+      // Prepare request body
+      const requestBody = {
+        visits: visits,
+        patient_name: patientName,
+        include_watermark: options.includeWatermark || false,
+        include_signature: options.includeSignature !== false
+      };
+      
+      // Send to backend
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/generate-multi-visit-pdf`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/pdf'
+        },
+        body: JSON.stringify(requestBody),
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Multi-visit PDF generation failed: ${errorText}`);
+      }
+      
+      // Check if response is actually a PDF
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/pdf')) {
+        throw new Error(`Expected PDF response but got: ${contentType}`);
+      }
+      
+      // Get PDF blob
+      const blob = await response.blob();
+      
+      // Create download URL
+      const url = URL.createObjectURL(blob);
+      
+      // Extract filename from response headers or use default
+      const contentDisposition = response.headers.get('content-disposition');
+      let filename = `${patientName}_multi_visit.pdf`;
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+      
+      // Return URL and filename for flexible usage
+      return { url, filename, blob };
+      
+    } catch (error) {
+      console.error('Multi-visit PDF generation error:', error);
+      setError(error.message);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const downloadMultiVisitPDF = async (visits, patientName, filename) => {
+    try {
+      const { url, filename: responseFilename } = await generateMultiVisitPDF(visits, patientName);
+      
+      // Create download link
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = responseFilename || filename || `${patientName}_multi_visit.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      
+      // Cleanup
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 100);
+      
+    } catch (error) {
+      console.error('Multi-visit PDF download error:', error);
+      throw error;
+    }
+  };
+
+  const openMultiVisitPDFInNewTab = async (visits, patientName) => {
+    try {
+      const { url } = await generateMultiVisitPDF(visits, patientName);
+      
+      // Open in new tab
+      window.open(url, '_blank');
+      
+      // Cleanup after a delay
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 60000); // Clean up after 1 minute
+      
+    } catch (error) {
+      console.error('Multi-visit PDF open error:', error);
+      throw error;
+    }
+  };
+
   return {
     generatePDF,
     generatePDFPreview,
     downloadPDF,
     openPDFInNewTab,
+    generateMultiVisitPDF,
+    downloadMultiVisitPDF,
+    openMultiVisitPDFInNewTab,
     convertTranscriptToStructured,
     loading,
     error

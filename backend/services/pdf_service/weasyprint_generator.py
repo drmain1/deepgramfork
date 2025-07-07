@@ -139,3 +139,33 @@ class WeasyPrintMedicalPDFGenerator:
             data['sections'][current_section] = '\n'.join(section_content)
         
         return data
+    
+    def generate_multi_visit_pdf(self, visits_data: list, patient_name: str) -> bytes:
+        """Generate PDF from multiple medical visits using WeasyPrint"""
+        if not visits_data:
+            raise ValueError("No visits data provided")
+        
+        logger.info(f"WeasyPrint multi-visit PDF generation started for {len(visits_data)} visits")
+        
+        # Generate combined HTML content for all visits
+        combined_html_content = self.html_template.generate_multi_visit_html(visits_data, patient_name)
+        
+        # Get font path for CSS
+        besley_font_path = self._get_besley_font_path()
+        
+        # Get CSS styles with font path
+        css_content = get_medical_document_css(besley_font_path)
+        
+        # Create PDF in memory
+        buffer = io.BytesIO()
+        
+        # Generate PDF with WeasyPrint
+        html = HTML(string=combined_html_content)
+        css = CSS(string=css_content, font_config=self.font_config)
+        
+        # Write PDF to buffer
+        html.write_pdf(buffer, stylesheets=[css], font_config=self.font_config)
+        
+        # Return PDF bytes
+        buffer.seek(0)
+        return buffer.read()

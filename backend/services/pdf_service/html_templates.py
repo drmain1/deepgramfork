@@ -48,6 +48,149 @@ class MedicalDocumentHTMLTemplate:
         
         return ''.join(html_parts)
     
+    def generate_multi_visit_html(self, visits_data: list, patient_name: str) -> str:
+        """Generate HTML for multiple medical visits combined into one document"""
+        # Sort visits by date (oldest first)
+        sorted_visits = self._sort_visits_by_date(visits_data)
+        
+        html_parts = []
+        
+        # HTML document start
+        html_parts.append(self._get_html_header())
+        
+        # Patient header for multi-visit document
+        html_parts.append(f'<div class="patient-header"><h1>Medical Records for {html.escape(patient_name)}</h1></div>\n')
+        
+        follow_up_count = 0
+        follow_up_section_added = False
+        
+        for i, visit_data in enumerate(sorted_visits):
+            data = visit_data.model_dump() if hasattr(visit_data, 'model_dump') else visit_data
+            
+            # Extract visit date and type information
+            visit_date = self._extract_visit_date(data)
+            visit_type = self._determine_visit_type(data)
+            
+            # Add follow-up section header if this is the first follow-up visit
+            if visit_type == 'follow-up' and not follow_up_section_added:
+                html_parts.append('<div class="follow-up-header"><h2>FOLLOW-UP VISITS</h2></div>')
+                follow_up_section_added = True
+            
+            # Count follow-up visits
+            if visit_type == 'follow-up':
+                follow_up_count += 1
+            
+            # Start visit container
+            html_parts.append('<div class="visit-container">')
+            
+            # Visit date header with proper formatting
+            if visit_date:
+                date_header = self._format_visit_date(visit_date, visit_type, follow_up_count)
+                html_parts.append(f'<div class="visit-date-header"><h3>{date_header}</h3></div>')
+            
+            # Only show clinic header and patient info for initial visits
+            if visit_type != 'follow-up':
+                # Clinic header for this visit
+                if clinic_info := data.get('clinic_info'):
+                    html_parts.append(self._create_clinic_header(clinic_info))
+                
+                # Patient information for this visit
+                if patient_info := data.get('patient_info'):
+                    html_parts.append(self._create_patient_info(patient_info))
+            
+            # Document sections for this visit
+            if sections := data.get('sections'):
+                for section_key, section_content in sections.items():
+                    if isinstance(section_content, str) and section_content.strip():
+                        html_parts.append(self._create_section(section_key, section_content))
+            
+            # Motor examination for this visit
+            if motor_exam := data.get('motor_exam'):
+                html_parts.append(self._create_motor_exam_section(motor_exam))
+            
+            # Reflex examination for this visit
+            if reflexes := data.get('reflexes'):
+                html_parts.append(self._create_reflex_section(reflexes))
+            
+            # End visit container
+            html_parts.append('</div>')
+            
+            # Add page break only between initial visits and before follow-up section
+            # Follow-up visits should flow together without page breaks
+            if i < len(sorted_visits) - 1:
+                next_visit_data = sorted_visits[i + 1]
+                next_data = next_visit_data.model_dump() if hasattr(next_visit_data, 'model_dump') else next_visit_data
+                next_visit_type = self._determine_visit_type(next_data)
+                
+                # Only add page break if current is initial and next is initial
+                # (Don't break between initial and follow-up, or between follow-ups)
+                if visit_type == 'initial' and next_visit_type == 'initial':
+                    html_parts.append('<div class="page-break"></div>')
+        
+        # Signature section (only at the end)
+        if sorted_visits and (provider_info := sorted_visits[-1].get('provider_info')):
+            html_parts.append(self._create_signature_section(provider_info))
+        
+        # HTML document end
+        html_parts.append(self._get_html_footer())
+        
+        return ''.join(html_parts)
+    
+    def _extract_visit_date(self, data: dict) -> str:
+        """Extract visit date from medical data"""
+        if patient_info := data.get('patient_info'):
+            return patient_info.get('date_of_treatment') or patient_info.get('date_of_service')
+        return None
+    
+    def _determine_visit_type(self, data: dict) -> str:
+        """Determine if this is an initial visit or follow-up"""
+        # Look for follow-up indicators in the content
+        sections = data.get('sections', {})
+        for section_content in sections.values():
+            if isinstance(section_content, str):
+                content_lower = section_content.lower()
+                if 'follow' in content_lower and 'up' in content_lower:
+                    return 'follow-up'
+        return 'initial'
+    
+    def _format_visit_date(self, date_str: str, visit_type: str, follow_up_count: int) -> str:
+        """Format visit date with visit number"""
+        if visit_type == 'follow-up':
+            return f"{date_str} - Visit #{follow_up_count}"
+        elif visit_type == 'initial':
+            return f"{date_str} - Initial Examination"
+        else:
+            return date_str
+    
+    def _sort_visits_by_date(self, visits_data: list) -> list:
+        """Sort visits by date (oldest first)"""
+        def get_visit_date(visit_data):
+            # Convert to dict if needed
+            data = visit_data.model_dump() if hasattr(visit_data, 'model_dump') else visit_data
+            
+            # Try to extract date from patient_info
+            if patient_info := data.get('patient_info'):
+                date_str = patient_info.get('date_of_treatment') or patient_info.get('date_of_service')
+                if date_str:
+                    try:
+                        # Try different date formats
+                        from datetime import datetime
+                        # Try common formats
+                        for fmt in ['%B %d, %Y', '%m/%d/%Y', '%Y-%m-%d', '%d/%m/%Y']:
+                            try:
+                                return datetime.strptime(date_str, fmt)
+                            except ValueError:
+                                continue
+                    except:
+                        pass
+            
+            # Fallback: return a very old date to put at beginning
+            from datetime import datetime
+            return datetime(1900, 1, 1)
+        
+        # Sort by date (oldest first)
+        return sorted(visits_data, key=get_visit_date)
+    
     def _get_html_header(self) -> str:
         """Return HTML document header with meta tags"""
         return '''<!DOCTYPE html>
@@ -111,7 +254,18 @@ class MedicalDocumentHTMLTemplate:
     
     def _create_section(self, section_key: str, content: str) -> str:
         """Create a document section with proper formatting"""
-        # Format section title
+        # Special handling for follow-up visits - no section header needed
+        if section_key in ['follow_up_visit', 'clinical_notes']:
+            section_html = f'<div class="narrative-section">\n'
+            # Format as paragraphs without a header
+            paragraphs = content.split('\n\n')
+            for para in paragraphs:
+                if para.strip():
+                    section_html += f'<p class="narrative-content">{html.escape(para.strip())}</p>\n'
+            section_html += '</div>\n'
+            return section_html
+        
+        # Standard section formatting for structured content
         display_title = section_key.replace('_', ' ').upper()
         
         section_html = f'<div class="section">\n'
