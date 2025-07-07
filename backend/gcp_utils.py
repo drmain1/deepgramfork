@@ -113,10 +113,10 @@ def polish_transcript_with_gemini(
         
         # Configure generation parameters for medical accuracy
         generation_config = GenerationConfig(
-            temperature=0.1,  # Low temperature for consistency
+            temperature=0.4,  # Low temperature for consistency
             top_p=0.95,
             top_k=40,
-            max_output_tokens=8192,
+            max_output_tokens=12000,
         )
         
         # Generate response

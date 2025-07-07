@@ -1,33 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { useAuth } from '../contexts/FirebaseAuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useRecordings } from '../contexts/RecordingsContext';
 import { useUserSettings } from '../contexts/UserSettingsContext';
+import useTranscriptionSessionStore from '../stores/transcriptionSessionStore';
 import TranscriptViewer from '../components/TranscriptViewer';
 import SetupView from '../components/SetupView';
 import RecordingView from '../components/RecordingView';
 
 function TranscriptionPage() {
-  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { selectedRecordingId, recordings, selectRecording } = useRecordings();
   const { userSettings, settingsLoading } = useUserSettings();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [currentView, setCurrentView] = useState('setup');
-  const [error, setError] = useState(null);
-  const [patientDetails, setPatientDetails] = useState('');
-  const [patientContext, setPatientContext] = useState('');
-  const [selectedLocation, setSelectedLocation] = useState('');
-  const [selectedProfileId, setSelectedProfileId] = useState('');
-  const [isMultilingual, setIsMultilingual] = useState(false);
-  const [targetLanguage, setTargetLanguage] = useState('');
-  const [selectedPatient, setSelectedPatient] = useState(null);
-  const [isDictationMode, setIsDictationMode] = useState(false);
-  const [dateOfService, setDateOfService] = useState('');
-  const [evaluationType, setEvaluationType] = useState('');
-  const [initialEvaluationId, setInitialEvaluationId] = useState(null);
-  const [previousFindings, setPreviousFindings] = useState(null);
+  // Use Zustand store for all state management
+  const {
+    currentView,
+    setCurrentView,
+    error,
+    setError,
+    patientDetails,
+    clearPatientSelection,
+    initializeSettings
+  } = useTranscriptionSessionStore();
 
   // Clear patient selection and related state when component mounts
   // This ensures a fresh start when navigating back to the transcription page
@@ -35,16 +32,9 @@ function TranscriptionPage() {
   useEffect(() => {
     // Clear all patient-related state on mount to avoid bugs
     // where patient selection persists but clinical context is lost
-    setSelectedPatient(null);
-    setPatientDetails('');
-    setPatientContext('');
-    setIsDictationMode(false);
-    setDateOfService('');
-    setEvaluationType('');
-    setInitialEvaluationId(null);
-    setPreviousFindings(null);
+    clearPatientSelection();
     setError(null);
-  }, []); // Empty dependency array means this runs only on mount
+  }, [clearPatientSelection, setError]); // Include dependencies
 
   // Initialize component view state based on URL
   useEffect(() => {
@@ -57,50 +47,14 @@ function TranscriptionPage() {
     } else {
       setCurrentView('setup');
     }
-  }, [location]);
+  }, [location, setCurrentView]);
 
   // Handle settings initialization
   useEffect(() => {
-    console.log("TranscriptionPage - userSettings.officeInformation:", userSettings.officeInformation);
-    console.log("TranscriptionPage - selectedLocation current state:", selectedLocation);
-    console.log("=== PROFILE SELECTION DEBUG ===");
-    console.log("settingsLoading:", settingsLoading);
-    console.log("userSettings.transcriptionProfiles:", userSettings.transcriptionProfiles);
-    console.log("selectedProfileId current state:", selectedProfileId);
-    
-    if (!settingsLoading && userSettings.transcriptionProfiles) {
-      const filteredProfiles = userSettings.transcriptionProfiles.filter(
-        profile => profile.name !== 'Default/General summary'
-      );
-      console.log("filteredProfiles:", filteredProfiles);
-
-      if (filteredProfiles.length > 0) {
-        const currentProfileStillExistsInFiltered = filteredProfiles.some(p => p.id === selectedProfileId);
-        console.log("currentProfileStillExistsInFiltered:", currentProfileStillExistsInFiltered);
-        if (!selectedProfileId || !currentProfileStillExistsInFiltered) {
-          const defaultProfile = filteredProfiles.find(p => p.isDefault) || filteredProfiles[0];
-          console.log("Setting defaultProfile:", defaultProfile);
-          if (defaultProfile) {
-            setSelectedProfileId(defaultProfile.id);
-            console.log("Set selectedProfileId to:", defaultProfile.id);
-          }
-        }
-      } else {
-        console.log("No filtered profiles found, clearing selectedProfileId");
-        setSelectedProfileId('');
-      }
+    if (!settingsLoading && userSettings) {
+      initializeSettings(userSettings);
     }
-    console.log("================================");
-
-    if (!settingsLoading && userSettings.officeInformation && userSettings.officeInformation.length > 0) {
-      if (selectedLocation === '' && !userSettings.officeInformation.includes(selectedLocation) && userSettings.officeInformation[0]) {
-        console.log("TranscriptionPage - Setting selectedLocation to:", userSettings.officeInformation[0]);
-        setSelectedLocation(userSettings.officeInformation[0]);
-      }
-    } else if (!settingsLoading && (!userSettings.officeInformation || userSettings.officeInformation.length === 0)){
-      setSelectedLocation('');
-    }
-  }, [userSettings, settingsLoading]);
+  }, [userSettings, settingsLoading, initializeSettings]);
 
   const handleStartEncounter = () => {
     setCurrentView('recording');
@@ -113,15 +67,8 @@ function TranscriptionPage() {
     setCurrentView('setup');
     // Navigate back to clean transcription URL
     navigate('/transcription', { replace: true });
-    // Reset session state manually since we're not using the Zustand store here
-    setSelectedPatient(null);
-    setPatientDetails('');
-    setPatientContext('');
-    setIsDictationMode(false);
-    setDateOfService('');
-    setEvaluationType('');
-    setInitialEvaluationId(null);
-    setPreviousFindings(null);
+    // Clear patient selection and related state using Zustand store
+    clearPatientSelection();
     setError(null);
     // Clear selected recording if it was a draft
     if (selectedRecordingId) {
@@ -213,52 +160,16 @@ function TranscriptionPage() {
   if (currentView === 'setup') {
     return (
       <SetupView
-        patientDetails={patientDetails}
-        setPatientDetails={setPatientDetails}
-        patientContext={patientContext}
-        setPatientContext={setPatientContext}
-        selectedLocation={selectedLocation}
-        setSelectedLocation={setSelectedLocation}
-        selectedProfileId={selectedProfileId}
-        setSelectedProfileId={setSelectedProfileId}
-        isMultilingual={isMultilingual}
-        setIsMultilingual={setIsMultilingual}
-        targetLanguage={targetLanguage}
-        setTargetLanguage={setTargetLanguage}
         userSettings={userSettings}
         settingsLoading={settingsLoading}
         error={error}
         onStartEncounter={handleStartEncounter}
-        selectedPatient={selectedPatient}
-        setSelectedPatient={setSelectedPatient}
-        isDictationMode={isDictationMode}
-        setIsDictationMode={setIsDictationMode}
-        dateOfService={dateOfService}
-        setDateOfService={setDateOfService}
-        evaluationType={evaluationType}
-        setEvaluationType={setEvaluationType}
-        initialEvaluationId={initialEvaluationId}
-        setInitialEvaluationId={setInitialEvaluationId}
-        previousFindings={previousFindings}
-        setPreviousFindings={setPreviousFindings}
       />
     );
   } else if (currentView === 'recording') {
     return (
       <RecordingView
-        patientDetails={patientDetails}
-        patientContext={patientContext}
-        selectedLocation={selectedLocation}
-        selectedProfileId={selectedProfileId}
-        isMultilingual={isMultilingual}
-        targetLanguage={targetLanguage}
         userSettings={userSettings}
-        selectedPatient={selectedPatient}
-        isDictationMode={isDictationMode}
-        dateOfService={dateOfService}
-        evaluationType={evaluationType}
-        initialEvaluationId={initialEvaluationId}
-        previousFindings={previousFindings}
         onClose={handleCloseRecording}
       />
     );

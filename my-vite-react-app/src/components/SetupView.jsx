@@ -8,11 +8,10 @@ import LastTranscriptModal from './LastTranscriptModal';
 import MultilingualSettings from './MultilingualSettings';
 import { useAuth } from '../contexts/FirebaseAuthContext';
 import useTranscriptionSessionStore from '../stores/transcriptionSessionStore';
-import { useUserSettings } from '../contexts/UserSettingsContext';
 import { useMicrophoneMonitor } from '../hooks/useMicrophoneMonitor';
 import { formatDateForDisplay } from '../utils/dateUtils';
 
-function SetupView({ onStartEncounter }) {
+function SetupView({ userSettings, settingsLoading, error, onStartEncounter }) {
   // Get all state and actions from Zustand store
   const {
     patientDetails,
@@ -27,7 +26,6 @@ function SetupView({ onStartEncounter }) {
     setIsMultilingual,
     targetLanguage,
     setTargetLanguage,
-    error,
     selectedPatient,
     updatePatientFromSelector,
     clearPatientSelection,
@@ -43,9 +41,6 @@ function SetupView({ onStartEncounter }) {
     setPreviousFindings,
     initializeSettings
   } = useTranscriptionSessionStore();
-  
-  // Get user settings from context
-  const { userSettings, settingsLoading } = useUserSettings();
 
       const [showPatientSelector, setShowPatientSelector] = useState(false);
   const [showLastTranscript, setShowLastTranscript] = useState(false);

@@ -1,9 +1,38 @@
 from typing import Dict, List, Any
 import html
+from datetime import datetime
 
 class MedicalDocumentHTMLTemplate:
     def __init__(self):
         pass
+    
+    def _format_date(self, date_str: str) -> str:
+        """Format date string to consistent MM/DD/YYYY format"""
+        if not date_str or not date_str.strip():
+            return date_str
+        
+        # Try different date formats and convert to MM/DD/YYYY
+        date_formats = [
+            '%Y-%m-%d',      # 2025-05-02
+            '%m/%d/%Y',      # 08/01/2024
+            '%m/%d/%y',      # 08/01/24
+            '%d/%m/%Y',      # 02/05/2025
+            '%B %d, %Y',     # May 2, 2025
+            '%b %d, %Y',     # May 2, 2025
+            '%Y%m%d',        # 20250502
+            '%m-%d-%Y',      # 05-02-2025
+            '%d-%m-%Y',      # 02-05-2025
+        ]
+        
+        for fmt in date_formats:
+            try:
+                parsed_date = datetime.strptime(date_str.strip(), fmt)
+                return parsed_date.strftime('%m/%d/%Y')
+            except ValueError:
+                continue
+        
+        # If no format matches, return original
+        return date_str
     
     def generate_html(self, data: Dict[str, Any]) -> str:
         """Generate complete HTML document from medical data"""
@@ -346,13 +375,16 @@ class MedicalDocumentHTMLTemplate:
             info_html += f'<p><strong>Patient Name:</strong> {html.escape(name)}</p>\n'
         
         if dob := patient_info.get('date_of_birth'):
-            info_html += f'<p><strong>Date of Birth:</strong> {html.escape(dob)}</p>\n'
+            formatted_dob = self._format_date(dob)
+            info_html += f'<p><strong>Date of Birth:</strong> {html.escape(formatted_dob)}</p>\n'
         
         if doa := patient_info.get('date_of_accident'):
-            info_html += f'<p><strong>Date of Accident:</strong> {html.escape(doa)}</p>\n'
+            formatted_doa = self._format_date(doa)
+            info_html += f'<p><strong>Date of Accident:</strong> {html.escape(formatted_doa)}</p>\n'
         
         if dot := patient_info.get('date_of_treatment'):
-            info_html += f'<p><strong>Date of Treatment:</strong> {html.escape(dot)}</p>\n'
+            formatted_dot = self._format_date(dot)
+            info_html += f'<p><strong>Date of Treatment:</strong> {html.escape(formatted_dot)}</p>\n'
         
         info_html += '</div>\n'
         return info_html
@@ -379,6 +411,8 @@ class MedicalDocumentHTMLTemplate:
         # Check if content contains numbered list items
         if self._contains_numbered_list(content):
             section_html += self._format_numbered_list(content)
+        elif self._contains_bulleted_list(content):
+            section_html += self._format_bulleted_list(content)
         else:
             # Format as paragraphs
             paragraphs = content.split('\n\n')
@@ -394,6 +428,15 @@ class MedicalDocumentHTMLTemplate:
         lines = content.strip().split('\n')
         for line in lines:
             if line.strip() and line.strip()[0].isdigit() and '.' in line[:3]:
+                return True
+        return False
+    
+    def _contains_bulleted_list(self, content: str) -> bool:
+        """Check if content contains bulleted list items (dashes or bullets)"""
+        lines = content.strip().split('\n')
+        for line in lines:
+            stripped = line.strip()
+            if stripped and (stripped.startswith('- ') or stripped.startswith('• ') or stripped.startswith('* ')):
                 return True
         return False
     
@@ -422,6 +465,33 @@ class MedicalDocumentHTMLTemplate:
             list_html += f'<li>{html.escape(" ".join(current_item))}</li>\n'
         
         list_html += '</ol>\n'
+        return list_html
+    
+    def _format_bulleted_list(self, content: str) -> str:
+        """Format content as bulleted list"""
+        lines = content.strip().split('\n')
+        list_html = '<ul class="bulleted-list">\n'
+        
+        current_item = []
+        for line in lines:
+            line = line.strip()
+            if line and (line.startswith('- ') or line.startswith('• ') or line.startswith('* ')):
+                # Start of new list item
+                if current_item:
+                    list_html += f'<li>{html.escape(" ".join(current_item))}</li>\n'
+                    current_item = []
+                # Remove the bullet marker
+                item_text = line[2:].strip() if line.startswith('- ') or line.startswith('• ') or line.startswith('* ') else line
+                current_item.append(item_text)
+            elif line and current_item:
+                # Continuation of current item
+                current_item.append(line)
+        
+        # Add last item
+        if current_item:
+            list_html += f'<li>{html.escape(" ".join(current_item))}</li>\n'
+        
+        list_html += '</ul>\n'
         return list_html
     
     def _create_motor_exam_section(self, motor_data: Dict[str, List]) -> str:

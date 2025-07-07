@@ -532,6 +532,10 @@ async def save_session_data_firestore(
                     custom_instructions = f"Patient Name: {patient_name}\nPatient Context: {patient_context}\nEncounter Type: {encounter_type}"
                     if original_date_of_service:
                         custom_instructions += f"\nDate of Service: {original_date_of_service}"
+                    else:
+                        from datetime import datetime
+                        current_date = datetime.now().strftime('%m/%d/%Y')
+                        custom_instructions += f"\nDate of Service: {current_date}"
                     custom_instructions += f"\nTemplate: {llm_template}"
                     
                     # Add previous findings context for re-evaluations (also in fallback path)
@@ -549,7 +553,10 @@ async def save_session_data_firestore(
                         custom_instructions += f"\nDate of Service: {original_date_of_service}"
                         logger.info(f"Added date of service to instructions: {original_date_of_service}")
                     else:
-                        logger.info("No date of service to add to instructions")
+                        from datetime import datetime
+                        current_date = datetime.now().strftime('%m/%d/%Y')
+                        custom_instructions += f"\nDate of Service: {current_date}"
+                        logger.info(f"Added current date as date of service: {current_date}")
                     
                     # Add previous findings context for re-evaluations
                     if evaluation_type == 're_evaluation' and previous_findings:

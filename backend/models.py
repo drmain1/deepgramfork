@@ -126,13 +126,13 @@ class ReflexResult(BaseModel):
 
 
 class MotorExamination(BaseModel):
-    upper_extremity: List[MuscleStrength]
-    lower_extremity: List[MuscleStrength]
+    upper_extremity: Optional[List[MuscleStrength]] = None
+    lower_extremity: Optional[List[MuscleStrength]] = None
 
 
 class ReflexExamination(BaseModel):
-    deep_tendon: List[ReflexResult]
-    pathological: List[ReflexResult]
+    deep_tendon: Optional[List[ReflexResult]] = None
+    pathological: Optional[List[ReflexResult]] = None
 
 
 class PatientInfo(BaseModel):

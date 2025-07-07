@@ -193,6 +193,20 @@ body {
     text-align: left;
 }
 
+/* Bulleted list styles */
+.bulleted-list {
+    margin-left: 20pt;
+    margin-bottom: 10pt;
+    list-style-type: disc;
+}
+
+.bulleted-list li {
+    font-size: 11pt;
+    line-height: 1.6;
+    margin-bottom: 6pt;
+    text-align: left;
+}
+
 /* Table styles */
 table {
     width: 100%;
