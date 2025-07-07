@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Backend Connection Test</title>
+</head>
+<body>
+    <h1>Backend Connection Test</h1>
+    <button onclick="testDirectConnection()">Test Direct Connection (port 8000)</button>
+    <button onclick="testProxyConnection()">Test Proxy Connection (port 5173)</button>
+    <div id="result"></div>
+
+    <script>
+        async function testDirectConnection() {
+            const resultDiv = document.getElementById('result');
+            try {
+                resultDiv.innerHTML = 'Testing direct connection to http://localhost:8000/api/v1/test...';
+                const response = await fetch('http://localhost:8000/api/v1/test');
+                const data = await response.json();
+                resultDiv.innerHTML = `<pre>Direct connection SUCCESS: ${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (error) {
+                resultDiv.innerHTML = `<pre>Direct connection FAILED: ${error.message}</pre>`;
+            }
+        }
+
+        async function testProxyConnection() {
+            const resultDiv = document.getElementById('result');
+            try {
+                resultDiv.innerHTML = 'Testing proxy connection through http://localhost:5173/api/v1/test...';
+                const response = await fetch('http://localhost:5173/api/v1/test');
+                const data = await response.json();
+                resultDiv.innerHTML = `<pre>Proxy connection SUCCESS: ${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (error) {
+                resultDiv.innerHTML = `<pre>Proxy connection FAILED: ${error.message}</pre>`;
+            }
+        }
+    </script>
+</body>
+</html>

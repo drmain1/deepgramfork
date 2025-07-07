@@ -2,12 +2,6 @@ export const painManagementEvalStructuredInstructions = `You are an expert medic
 
 CRITICAL DIRECTIVE: Your output MUST be a single, raw JSON object and nothing else. Do not include any explanatory text, markdown, or any characters outside of the final {...} JSON structure.
 
-DO NOT wrap the JSON in markdown code blocks (no \`\`\`json).
-DO NOT add any text before or after the JSON.
-DO NOT include quotes around the entire JSON.
-START your response with { and END with }
-The response must be valid, parseable JSON.
-
 Target JSON Schema:
 {
   "patient_info": {
@@ -115,22 +109,22 @@ B. Section-Specific Instructions:
    
    - duties_under_duress: Document any noted complicating factors from employment or biologic processes.
    
-   - vitals: Document height, weight, BP, temp, etc. If not mentioned, use null.
+   - vitals: Document height, weight, BP, temp, etc. If not mentioned, use null, display height in inches 
+  
+   - Outcome assessments: include any of the following outcome assessments in this section including but not limited to as Spinal Stenosis Treatment Outcome Questionnaire,
+    Back Bournemouth Questionnaire, Neck Bournemouth Questionnaire, Quadruple Visual Analogue Scale, Oswestry Low Back Pain Disability Questionnaire, Neck Disability Index Questionnaire, Neck Disability Index (NDI), Roland-Morris Disability Questionnaire, Disabilities of the Arm, Shoulder, and Hand (DASH) If not mentioned, use null,
    
    - physical_examination: General findings like appearance, level of distress, and cooperation. Do NOT include vitals here.
    
-   - cervico_thoracic: Neck and mid-back findings. Include relevant tests like Spurling's, Lhermitte's, or cervical compression.
+   - cervico_thoracic: Neck and mid-back findings. Include relevant tests like Spurling's, Lhermitte's, or cervical compression, jacksons, cervical disctraction
    
-   - lumbopelvic: Low back and SI joint findings. Include relevant tests like Straight Leg Raise (SLR), Kemp's, or FABER.
+   - lumbopelvic: Low back and SI joint findings. Include relevant tests like Straight Leg Raise (SLR), Kemp's, or FABER, Braggards, Sicards
    
    - extremity: Findings related to any joint (shoulder, hip, knee, etc.). This is the location for orthopedic tests not listed in the spinal sections (e.g., Tinel's, Drawer test).
    
    - sensory_examination: Document dermatomal sensory findings.
    
-   - assessment_diagnosis: A list of diagnoses, each on a new line, with its corresponding ICD-10 code.
    
-   - plan: Transcribe the doctor's recommendations for treatment in paragraph form.
-
 C. Motor Exam (motor_exam) Instructions:
    - If motor strength is not tested, set the entire motor_exam object to null.
    - If tested, populate the upper_extremity and lower_extremity arrays with their respective muscle objects. All muscle groups for a tested region must be included.
@@ -144,7 +138,12 @@ D. Reflexes (reflexes) Instructions:
    - Deep Tendon Values: Use the scale: 0, 1+, 2+, 3+, 4+.
    - Pathological Values: Use "Positive" or "Negative".
    - Default Values: If DTRs are "normal" or "2+ bilaterally," fill all deep tendon reflexes with "2+". Default pathological reflexes to "Negative".
+  
+   - assessment_diagnosis: A list of diagnoses, each on a new line, with its corresponding ICD-10 code.
+   
+   - plan: Transcribe the doctor's recommendations for treatment in paragraph form.
 
+  
 Remember: Output ONLY the JSON object. No additional text, no explanations, no markdown formatting outside of string values.`;
 
 export const getStructuredInstructions = (includeMotorExam = true, includeReflexes = true) => {

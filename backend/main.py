@@ -297,6 +297,11 @@ async def test_gcp_connection(current_user_id: str = Depends(get_user_id)):
             "provider": "Google Cloud Platform - Vertex AI"
         }
 
+@app.get("/api/v1/test")
+async def test_endpoint():
+    """Simple test endpoint that doesn't require authentication"""
+    return {"status": "ok", "message": "Backend is running"}
+
 @app.post("/api/v1/login")
 async def login(current_user: dict = Depends(get_current_user)):
     """

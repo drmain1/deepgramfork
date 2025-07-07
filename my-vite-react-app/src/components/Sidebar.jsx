@@ -2,7 +2,6 @@ import { useNavigate } from 'react-router-dom';
 import { useRecordings } from '../contexts/RecordingsContext';
 import { useAuth } from '../contexts/FirebaseAuthContext';
 import { useState, useEffect } from 'react';
-import { parseSessionIdTime } from '../utils/dateUtils';
 
 function Sidebar() {
   const { recordings, deletePersistedRecording, isFetchingRecordings, selectRecording, selectedRecordingId } = useRecordings();
@@ -132,31 +131,31 @@ function Sidebar() {
   // Group recordings by date
   const groupRecordingsByDate = (recordings) => {
     const groups = {};
-    const today = new Date();
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     
     recordings.forEach(recording => {
-      // Simply use the date from backend - it now correctly handles dictation mode
+      // Use the backend date as the source of truth
       const recordingDate = new Date(recording.date);
+      if (!recordingDate || isNaN(recordingDate.getTime())) return;
       
-      // Debug logging
-      if (recording.isDictation) {
-        console.log(`[Sidebar] Dictation recording ${recording.id}: date=${recording.date}`);
-      }
-      
-      if (!recordingDate || recordingDate.toString() === 'Invalid Date') return;
-      
-      const dateKey = recordingDate.toDateString();
+      // Get date at midnight in local timezone for comparison
+      const recordingDay = new Date(
+        recordingDate.getFullYear(),
+        recordingDate.getMonth(),
+        recordingDate.getDate()
+      );
       
       let groupKey;
-      if (dateKey === today.toDateString()) {
+      if (recordingDay.getTime() === today.getTime()) {
         groupKey = 'Today';
-      } else if (dateKey === yesterday.toDateString()) {
+      } else if (recordingDay.getTime() === yesterday.getTime()) {
         groupKey = 'Yesterday';
       } else {
-        // Format as "Monday, January 15" for recent dates, or "January 15, 2024" for older dates
-        const isThisYear = recordingDate.getFullYear() === today.getFullYear();
+        // Format the date appropriately
+        const isThisYear = recordingDate.getFullYear() === now.getFullYear();
         if (isThisYear) {
           groupKey = recordingDate.toLocaleDateString(undefined, { 
             weekday: 'long', 
@@ -182,21 +181,6 @@ function Sidebar() {
   };
 
   const groupedRecordings = groupRecordingsByDate(sortedRecordings);
-
-  const formatTime = (isoString, sessionId) => {
-    // Always use the ISO string date from backend
-    // The backend handles dictation dates correctly
-    if (!isoString) return '';
-    try {
-      return new Date(isoString).toLocaleString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZoneName: 'short'  // Shows timezone like "PST" or "EST"
-      });
-    } catch (error) {
-      return 'Invalid time';
-    }
-  };
 
   const formatSessionId = (sessionId) => {
     if (!sessionId) return 'Unknown Session';

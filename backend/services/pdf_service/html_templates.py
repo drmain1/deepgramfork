@@ -25,19 +25,68 @@ class MedicalDocumentHTMLTemplate:
         if patient_info := data.get('patient_info'):
             html_parts.append(self._create_patient_info(patient_info))
         
-        # Document sections
+        # Document sections with proper SOAP order
         if sections := data.get('sections'):
+            # Process sections in SOAP order
+            # Subjective sections first
+            subjective_sections = ['chief_complaint', 'history_of_present_illness', 'past_medical_history', 
+                                 'previous_accidents_trauma', 'current_medications', 'past_surgical_history', 
+                                 'family_history', 'allergies', 'social_history', 'review_of_other_systems']
+            
+            # Objective sections (before tables)
+            objective_sections_before = ['duties_under_duress', 'vitals', 'physical_examination', 
+                                       'cervico_thoracic', 'lumbopelvic', 'extremity']
+            
+            # Objective sections (after tables)
+            objective_sections_after = ['sensory_examination']
+            
+            # Assessment and Plan
+            assessment_plan_sections = ['assessment_diagnosis', 'plan']
+            
+            # Process subjective sections
+            for section_key in subjective_sections:
+                if section_key in sections:
+                    section_content = sections[section_key]
+                    if isinstance(section_content, str) and section_content.strip():
+                        html_parts.append(self._create_section(section_key, section_content))
+            
+            # Process objective sections (before tables)
+            for section_key in objective_sections_before:
+                if section_key in sections:
+                    section_content = sections[section_key]
+                    if isinstance(section_content, str) and section_content.strip():
+                        html_parts.append(self._create_section(section_key, section_content))
+            
+            # Motor examination (part of objective)
+            if motor_exam := data.get('motor_exam'):
+                html_parts.append(self._create_motor_exam_section(motor_exam))
+            
+            # Reflex examination (part of objective)
+            if reflexes := data.get('reflexes'):
+                html_parts.append(self._create_reflex_section(reflexes))
+            
+            # Process remaining objective sections (after tables)
+            for section_key in objective_sections_after:
+                if section_key in sections:
+                    section_content = sections[section_key]
+                    if isinstance(section_content, str) and section_content.strip():
+                        html_parts.append(self._create_section(section_key, section_content))
+            
+            # Process assessment and plan sections
+            for section_key in assessment_plan_sections:
+                if section_key in sections:
+                    section_content = sections[section_key]
+                    if isinstance(section_content, str) and section_content.strip():
+                        html_parts.append(self._create_section(section_key, section_content))
+            
+            # Process any other sections not in our lists
             for section_key, section_content in sections.items():
-                if isinstance(section_content, str) and section_content.strip():
-                    html_parts.append(self._create_section(section_key, section_content))
-        
-        # Motor examination
-        if motor_exam := data.get('motor_exam'):
-            html_parts.append(self._create_motor_exam_section(motor_exam))
-        
-        # Reflex examination
-        if reflexes := data.get('reflexes'):
-            html_parts.append(self._create_reflex_section(reflexes))
+                if (section_key not in subjective_sections and 
+                    section_key not in objective_sections_before and 
+                    section_key not in objective_sections_after and 
+                    section_key not in assessment_plan_sections):
+                    if isinstance(section_content, str) and section_content.strip():
+                        html_parts.append(self._create_section(section_key, section_content))
         
         # Signature section
         if provider_info := data.get('provider_info'):
@@ -98,19 +147,75 @@ class MedicalDocumentHTMLTemplate:
                 if patient_info := data.get('patient_info'):
                     html_parts.append(self._create_patient_info(patient_info))
             
-            # Document sections for this visit
+            # Document sections for this visit with proper SOAP order
             if sections := data.get('sections'):
-                for section_key, section_content in sections.items():
-                    if isinstance(section_content, str) and section_content.strip():
-                        html_parts.append(self._create_section(section_key, section_content))
-            
-            # Motor examination for this visit
-            if motor_exam := data.get('motor_exam'):
-                html_parts.append(self._create_motor_exam_section(motor_exam))
-            
-            # Reflex examination for this visit
-            if reflexes := data.get('reflexes'):
-                html_parts.append(self._create_reflex_section(reflexes))
+                # For follow-up visits with narrative content
+                if visit_type == 'follow-up' and ('follow_up_visit' in sections or 'clinical_notes' in sections):
+                    # Just render the narrative content
+                    for section_key, section_content in sections.items():
+                        if isinstance(section_content, str) and section_content.strip():
+                            html_parts.append(self._create_section(section_key, section_content))
+                else:
+                    # For structured visits, use SOAP order
+                    # Subjective sections first
+                    subjective_sections = ['chief_complaint', 'history_of_present_illness', 'past_medical_history', 
+                                         'previous_accidents_trauma', 'current_medications', 'past_surgical_history', 
+                                         'family_history', 'allergies', 'social_history', 'review_of_other_systems']
+                    
+                    # Objective sections (before tables)
+                    objective_sections_before = ['duties_under_duress', 'vitals', 'physical_examination', 
+                                               'cervico_thoracic', 'lumbopelvic', 'extremity']
+                    
+                    # Objective sections (after tables)
+                    objective_sections_after = ['sensory_examination']
+                    
+                    # Assessment and Plan
+                    assessment_plan_sections = ['assessment_diagnosis', 'plan']
+                    
+                    # Process subjective sections
+                    for section_key in subjective_sections:
+                        if section_key in sections:
+                            section_content = sections[section_key]
+                            if isinstance(section_content, str) and section_content.strip():
+                                html_parts.append(self._create_section(section_key, section_content))
+                    
+                    # Process objective sections (before tables)
+                    for section_key in objective_sections_before:
+                        if section_key in sections:
+                            section_content = sections[section_key]
+                            if isinstance(section_content, str) and section_content.strip():
+                                html_parts.append(self._create_section(section_key, section_content))
+                    
+                    # Motor examination for this visit (part of objective)
+                    if motor_exam := data.get('motor_exam'):
+                        html_parts.append(self._create_motor_exam_section(motor_exam))
+                    
+                    # Reflex examination for this visit (part of objective)
+                    if reflexes := data.get('reflexes'):
+                        html_parts.append(self._create_reflex_section(reflexes))
+                    
+                    # Process remaining objective sections (after tables)
+                    for section_key in objective_sections_after:
+                        if section_key in sections:
+                            section_content = sections[section_key]
+                            if isinstance(section_content, str) and section_content.strip():
+                                html_parts.append(self._create_section(section_key, section_content))
+                    
+                    # Process assessment and plan sections
+                    for section_key in assessment_plan_sections:
+                        if section_key in sections:
+                            section_content = sections[section_key]
+                            if isinstance(section_content, str) and section_content.strip():
+                                html_parts.append(self._create_section(section_key, section_content))
+                    
+                    # Process any other sections not in our lists
+                    for section_key, section_content in sections.items():
+                        if (section_key not in subjective_sections and 
+                            section_key not in objective_sections_before and 
+                            section_key not in objective_sections_after and 
+                            section_key not in assessment_plan_sections):
+                            if isinstance(section_content, str) and section_content.strip():
+                                html_parts.append(self._create_section(section_key, section_content))
             
             # End visit container
             html_parts.append('</div>')
