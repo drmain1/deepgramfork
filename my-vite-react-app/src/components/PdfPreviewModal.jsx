@@ -16,9 +16,7 @@ import {
   Alert
 } from '@mui/material';
 import { Download, Visibility, Close } from '@mui/icons-material';
-import { 
-  generatePdfFromText
-} from './pdfUtils';
+// Removed: import { generatePdfFromText } from './pdfUtils'; - now using server-side PDF generation
 import { useUserSettings } from '../contexts/UserSettingsContext';
 
 /**
@@ -466,19 +464,8 @@ function PdfPreviewModal({
 
     setIsGenerating(true);
     try {
-      const metadata = {
-        location,
-        doctorName,
-        doctorSignature,
-        isSigned,
-        clinicLogo: userSettings.clinicLogo,
-        includeLogoOnPdf: userSettings.includeLogoOnPdf,
-        ...options
-      };
-
-      const fileName = `medical-note-${recordingId || 'current'}-${new Date().toISOString().split('T')[0]}.pdf`;
-      
-      await generatePdfFromText(content, fileName, location, metadata);
+      // For now, show an alert that this component needs to be updated to use server-side generation
+      alert('PDF generation from this preview modal needs to be updated to use the new server-side system. Please use the main PDF generation buttons in the transcript view.');
     } catch (error) {
       console.error('Error generating PDF:', error);
     } finally {

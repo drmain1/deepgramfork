@@ -70,27 +70,7 @@ sample_data = {
     }
 }
 
-def test_reportlab_pdf():
-    """Test ReportLab PDF generation"""
-    print("Testing ReportLab PDF generation...")
-    
-    try:
-        response = requests.post(
-            f"{BASE_URL}/api/generate-pdf",
-            json=sample_data,
-            headers={"Content-Type": "application/json"}
-        )
-        
-        if response.status_code == 200:
-            # Save PDF
-            with open("test_reportlab_output.pdf", "wb") as f:
-                f.write(response.content)
-            print("✓ ReportLab PDF saved as 'test_reportlab_output.pdf'")
-        else:
-            print(f"✗ ReportLab PDF generation failed: {response.status_code}")
-            print(response.text)
-    except Exception as e:
-        print(f"✗ ReportLab test error: {e}")
+# Removed ReportLab test function - now only using WeasyPrint
 
 def test_weasyprint_pdf():
     """Test WeasyPrint PDF generation"""
@@ -142,12 +122,10 @@ if __name__ == "__main__":
     # Test health endpoints first
     test_health_endpoints()
     
-    # Generate PDFs
-    test_reportlab_pdf()
+    # Generate PDF using WeasyPrint
     test_weasyprint_pdf()
     
     print("\n" + "=" * 50)
-    print("Test complete! Check the generated PDFs:")
-    print("- test_reportlab_output.pdf (current implementation)")
-    print("- test_weasyprint_output.pdf (new implementation)")
-    print("\nCompare these with your target PDF to see which is closer.")
+    print("Test complete! Check the generated PDF:")
+    print("- test_weasyprint_output.pdf (WeasyPrint implementation)")
+    print("\nWeasyPrint is now the only PDF generation system.")

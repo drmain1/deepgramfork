@@ -38,7 +38,7 @@ import {
   Add as AddIcon
 } from '@mui/icons-material';
 import { format } from 'date-fns';
-import { generatePdfFromText } from './pdfUtils';
+// Removed: import { generatePdfFromText } from './pdfUtils'; - now using server-side PDF generation
 import { 
   CPT_DESCRIPTIONS, 
   CPT_FEES, 
@@ -47,8 +47,7 @@ import {
   formatBillingDataAsHtml 
 } from '../utils/billingFormatter';
 import MedicalBillingPDF from './billingPdfGenerator';
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
+// Removed: html2canvas and jsPDF imports - now using server-side PDF generation
 
 function BillingStatement({ billingData, patientInfo, doctorInfo, onClose }) {
   const [activeTab, setActiveTab] = useState(0);
