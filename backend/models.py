@@ -177,3 +177,11 @@ class MultiVisitPDFRequest(BaseModel):
     patient_name: str
     include_watermark: bool = False
     include_signature: bool = True
+
+
+class BillingPDFRequest(BaseModel):
+    billing_data: Dict[str, Any]
+    patient_info: Dict[str, Any]
+    doctor_info: Dict[str, Any]
+    include_logo: bool = True
+    include_signature: bool = True

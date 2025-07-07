@@ -2,13 +2,16 @@ from fastapi import APIRouter, HTTPException, Response
 from typing import Dict, Any
 import json
 import logging
-from models import MedicalDocument, PDFGenerationRequest, PDFGenerationResponse, MultiVisitPDFRequest
+from datetime import datetime
+from models import MedicalDocument, PDFGenerationRequest, PDFGenerationResponse, MultiVisitPDFRequest, BillingPDFRequest
 from services.pdf_service.weasyprint_generator import WeasyPrintMedicalPDFGenerator
+from services.pdf_service.billing_generator import WeasyPrintBillingPDFGenerator
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 # Use WeasyPrint as the primary PDF generator
 generator = WeasyPrintMedicalPDFGenerator()
+billing_generator = WeasyPrintBillingPDFGenerator()
 
 @router.post("/api/generate-pdf")
 async def generate_pdf(data: MedicalDocument):
@@ -157,6 +160,36 @@ async def generate_multi_visit_pdf(request: MultiVisitPDFRequest):
         )
     except Exception as e:
         logger.error(f"WeasyPrint multi-visit PDF generation error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/api/generate-billing-pdf")
+async def generate_billing_pdf(request: BillingPDFRequest):
+    """Generate billing PDF from billing data using WeasyPrint"""
+    try:
+        # Generate PDF with WeasyPrint
+        pdf_bytes = billing_generator.generate_billing_pdf(
+            billing_data=request.billing_data,
+            patient_info=request.patient_info,
+            doctor_info=request.doctor_info,
+            include_logo=request.include_logo,
+            include_signature=request.include_signature
+        )
+        
+        # Create safe filename
+        patient_name = f"{request.patient_info.get('first_name', '')} {request.patient_info.get('last_name', '')}".strip()
+        safe_name = patient_name.replace(' ', '_').replace('/', '_').replace(',', '_')
+        filename = f"billing_{safe_name}_{datetime.now().strftime('%Y%m%d')}.pdf"
+        
+        # Return PDF as response
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"'
+            }
+        )
+    except Exception as e:
+        logger.error(f"WeasyPrint billing PDF generation error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Legacy endpoints for backward compatibility (now using WeasyPrint)

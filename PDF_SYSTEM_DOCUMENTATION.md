@@ -23,6 +23,7 @@ backend/
 │   └── pdf_service/
 │       ├── __init__.py                 # Service exports
 │       ├── weasyprint_generator.py     # Main WeasyPrint PDF generation
+│       ├── billing_generator.py        # WeasyPrint billing PDF generation (NEW)
 │       ├── html_templates.py           # HTML document templates
 │       ├── css_styles.py              # Professional CSS styling
 │       ├── generator.py               # Legacy ReportLab (unused)
@@ -39,13 +40,19 @@ backend/
 ```
 my-vite-react-app/src/
 ├── hooks/
-│   └── useServerPdfGeneration.js      # Hook for server PDF calls
+│   ├── useServerPdfGeneration.js      # Hook for server PDF calls (UPDATED)
+│   └── usePdfGeneration.js            # Multi-visit PDF logic (UPDATED)
 ├── components/
 │   ├── EditableNote.jsx               # Updated to use server PDF
-│   └── FormattedMedicalText.jsx       # Displays structured JSON nicely
+│   ├── FormattedMedicalText.jsx       # Displays structured JSON nicely
+│   ├── billingPdfGenerator.js         # Updated to use server-side WeasyPrint (NEW)
+│   └── BillingStatement.jsx           # Billing UI component
+├── pages/
+│   └── PatientTranscriptList.jsx      # Multi-visit selection UI
 └── templates/
     └── llm-instructions/
-        └── pain-management-eval-structured.js  # JSON output instructions
+        ├── pain-management-eval-structured.js    # JSON for initial visits
+        └── chiropractic-followup-narrative.js    # Narrative for follow-ups
 ```
 
 ## Dependencies
@@ -105,7 +112,65 @@ Response: { pdf_data: base64, filename: string }
 Technology: WeasyPrint + Besley Font
 ```
 
-### 4. Health Check
+### 4. Generate Multi-Visit PDF (NEW)
+```
+POST /api/generate-multi-visit-pdf
+Body: {
+  visits: Array<MedicalDocument>,
+  patient_name: string,
+  include_watermark: boolean,
+  include_signature: boolean
+}
+Response: PDF file (application/pdf)
+Technology: WeasyPrint + Besley Font
+Features: 
+- Chronological visit ordering (oldest first)
+- Automatic visit numbering
+- "FOLLOW-UP VISITS" section headers
+- Structured initial visits + narrative follow-ups
+- Smart page breaks and spacing
+```
+
+### 5. Generate Billing PDF (NEW)
+```
+POST /api/generate-billing-pdf
+Body: {
+  billing_data: {
+    billing_ledger: Array<{
+      date_of_service: string,
+      cpt_codes: Array<string>,
+      icd10_codes: Array<{code: string, description: string}>
+    }>
+  },
+  patient_info: {
+    first_name: string,
+    last_name: string,
+    date_of_birth: string,
+    id: string,
+    address?: string,
+    city?: string
+  },
+  doctor_info: {
+    doctorName: string,
+    clinicName?: string,
+    clinicLogo?: string,
+    doctorSignature?: string,
+    cptFees: {[code: string]: number}
+  },
+  include_logo: boolean,
+  include_signature: boolean
+}
+Response: PDF file (application/pdf)
+Technology: WeasyPrint + Besley Font
+Features:
+- Professional billing invoice layout
+- CPT and ICD-10 code tables
+- Custom fee structures per user
+- Clinic logo and doctor signature support
+- Automatic totals and payment terms
+```
+
+### 6. Health Check
 ```
 GET /api/pdf-service-health
 Response: { status: "healthy", service: "weasyprint_pdf_generator", test_pdf_size: number }
@@ -133,6 +198,8 @@ Response: { status: "healthy", service: "weasyprint_pdf_generator", test_pdf_siz
     chief_complaint?: string,
     history_of_present_illness?: string,
     past_medical_history?: string,
+    follow_up_visit?: string,  // NEW: For narrative follow-up content
+    clinical_notes?: string,   // NEW: For general narrative content
     // ... other sections
   },
   motor_exam?: {
@@ -143,6 +210,49 @@ Response: { status: "healthy", service: "weasyprint_pdf_generator", test_pdf_siz
     deep_tendon: Array<{reflex, right, left}>,
     pathological: Array<{reflex, right, left}>
   }
+}
+```
+
+### MultiVisitPDFRequest Structure (NEW)
+```typescript
+{
+  visits: Array<MedicalDocument>,
+  patient_name: string,
+  include_watermark: boolean = false,
+  include_signature: boolean = true
+}
+```
+
+### BillingPDFRequest Structure (NEW)
+```typescript
+{
+  billing_data: {
+    billing_ledger: Array<{
+      date_of_service: string,
+      cpt_codes: Array<string>,
+      icd10_codes: Array<{
+        code: string,
+        description: string
+      }>
+    }>
+  },
+  patient_info: {
+    first_name: string,
+    last_name: string,
+    date_of_birth: string,
+    id: string,
+    address?: string,
+    city?: string
+  },
+  doctor_info: {
+    doctorName: string,
+    clinicName?: string,
+    clinicLogo?: string,
+    doctorSignature?: string,
+    cptFees: {[code: string]: number}
+  },
+  include_logo: boolean = true,
+  include_signature: boolean = true
 }
 ```
 
@@ -164,13 +274,29 @@ Response: { status: "healthy", service: "weasyprint_pdf_generator", test_pdf_siz
 - Generates proper numbered lists for chief complaints
 - Creates professional tables for motor exams and reflexes
 - Supports clinic logos and doctor signatures
+- **NEW**: Multi-visit PDF generation with chronological sorting
+- **NEW**: Mixed content support (structured + narrative)
 - No markdown parsing required
+
+### 3b. WeasyPrint Billing PDF Generation (billing_generator.py) - NEW
+- Dedicated billing invoice PDF generation using WeasyPrint
+- Professional billing invoice layout with custom Besley fonts
+- CPT and ICD-10 code tables with proper formatting
+- User-specific CPT fee structures
+- Automatic invoice numbering and totals
+- Support for clinic logos and doctor signatures
+- Professional medical billing styling
+- Replaces client-side html2canvas + jsPDF approach
 
 ### 4. HTML Templates (html_templates.py)
 - Structured HTML generation from JSON data
 - Proper semantic markup for medical documents
 - Automatic numbered list detection and formatting
 - Professional table structure
+- **NEW**: Multi-visit HTML generation with proper visit ordering
+- **NEW**: Smart section detection (follow-up vs structured content)
+- **NEW**: Conditional patient/clinic info display (only for initial visits)
+- **NEW**: Automatic visit numbering and section headers
 
 ### 5. CSS Styling (css_styles.py)
 - Custom Besley font loading via @font-face
@@ -178,11 +304,22 @@ Response: { status: "healthy", service: "weasyprint_pdf_generator", test_pdf_siz
 - Times New Roman fallback fonts
 - Proper page setup with margins
 - Professional table styling with borders and spacing
+- **NEW**: Multi-visit specific styles (visit containers, headers, spacing)
+- **NEW**: Narrative section styles for follow-up visits
+- **NEW**: Smart page break logic (no gaps between sections)
 
 ### 6. Frontend Display (FormattedMedicalText.jsx)
 - Detects structured JSON vs markdown
 - Renders JSON as formatted medical document
 - Shows tables using Material-UI components
+
+### 7. Frontend Billing PDF Generation (billingPdfGenerator.js) - UPDATED
+- **MIGRATED**: Now uses server-side WeasyPrint endpoint instead of client-side generation
+- Maintains same public API for backward compatibility
+- Calls `/api/generate-billing-pdf` endpoint with authentication
+- Handles PDF download and filename extraction
+- **REMOVED**: Dependencies on html2canvas and jsPDF
+- **IMPROVED**: Professional WeasyPrint output with Besley fonts
 
 ## WeasyPrint Advantages
 
@@ -193,6 +330,10 @@ Response: { status: "healthy", service: "weasyprint_pdf_generator", test_pdf_siz
 - **CSS Control**: Full CSS3 support for precise styling control
 - **Page Layout**: Professional margins, spacing, and page breaks
 - **Medical Document Appearance**: Clean, professional medical document styling
+- **Multi-Visit PDFs**: Chronological visit ordering with smart formatting
+- **Mixed Content Support**: Structured initial visits + narrative follow-ups
+- **Smart Layout**: No redundant headers, optimal page utilization
+- **Billing PDFs**: Professional billing invoices with CPT/ICD codes and custom fees (NEW)
 
 ### Technical Benefits
 - **Better Font Support**: Native font loading and rendering
@@ -216,13 +357,15 @@ backend/services/pdf_service/templates.py         # 145 lines - ReportLab templa
 src/components/pdfUtils.js              # 498 lines - Old PDF generation
 src/components/pdfTableUtils.js         # 309 lines - Table parsing utilities
 src/hooks/usePdfGeneration.js          # Old PDF hook (if not used elsewhere)
+# NOTE: billingPdfGenerator.js has been UPDATED (not deleted) to use server-side generation
 ```
 
-### Dependencies to Remove from package.json
+### Dependencies to Remove from package.json (Optional - Still Used by Legacy Components)
 ```json
-"html2canvas": "^x.x.x",
-"jspdf": "^x.x.x"
+"html2canvas": "^x.x.x",    # Used by billingPdfGenerator.js (legacy fallback)
+"jspdf": "^x.x.x"           # Used by billingPdfGenerator.js (legacy fallback)
 ```
+**Note**: These can be removed once all billing components are confirmed to work with server-side generation
 
 ### Dependencies Removed from requirements.txt
 ```
@@ -232,6 +375,7 @@ pdfplumber==0.10.3    # No longer needed
 
 ## Testing Checklist
 
+### Single Visit PDFs
 - [x] Basic PDF generation works with WeasyPrint
 - [x] Besley font loads correctly
 - [x] Structured JSON is properly formatted in UI
@@ -242,9 +386,35 @@ pdfplumber==0.10.3    # No longer needed
 - [x] Times New Roman fallback works
 - [ ] Logo appears when configured
 - [ ] Signature appears when configured
-- [ ] Multi-page documents work correctly
 - [ ] Special characters in patient names handled
 - [ ] Error handling for malformed JSON
+
+### Multi-Visit PDFs (NEW)
+- [x] Multiple visits combine into single PDF
+- [x] Visits are sorted chronologically (oldest first)
+- [x] Initial visits show full structured content
+- [x] Follow-up visits show narrative content only
+- [x] Visit numbering works correctly (Visit #1, #2, etc.)
+- [x] "FOLLOW-UP VISITS" section header appears
+- [x] No redundant patient/clinic info in follow-ups
+- [x] Smart page breaks (no large gaps)
+- [x] Proper spacing between visits
+- [x] Mixed content types handled (JSON + narrative)
+- [ ] Error handling for mixed visit formats
+- [ ] Performance with large numbers of visits (10+)
+
+### Billing PDFs (NEW)
+- [x] Server-side billing PDF generation implemented
+- [x] WeasyPrint integration with custom Besley fonts
+- [x] Professional billing invoice layout
+- [x] CPT and ICD-10 code tables with proper formatting
+- [x] User-specific CPT fee structures
+- [x] Client-side billingPdfGenerator.js updated to use server endpoint
+- [x] Maintains backward compatibility with existing billing components
+- [ ] Logo integration testing
+- [ ] Signature integration testing
+- [ ] Error handling for malformed billing data
+- [ ] Performance testing with large billing ledgers
 
 ## Migration Status
 
@@ -257,14 +427,21 @@ pdfplumber==0.10.3    # No longer needed
 - **Table Styling**: Professional medical table formatting
 - **Backend PDF service**: Fully functional with WeasyPrint
 - **Frontend compatibility**: No changes needed - same API
+- **Multi-Visit PDF System**: Complete implementation with chronological ordering
+- **Mixed Content Support**: Structured JSON + narrative text handling
+- **Smart Layout Logic**: Optimal page breaks and spacing
+- **Visit Management**: Automatic numbering and section headers
+- **Billing PDF System**: Complete server-side billing invoice generation with WeasyPrint (NEW)
 
 ### ❌ TODO (Future Enhancements)
 - Logo integration for clinic headers
 - Digital signature support
 - Migrate other templates to structured format
-- Update billing statement generation
-- Remove old client-side code
+- ~~Update billing statement generation~~ ✅ **COMPLETED**
+- Remove old client-side code (pdfUtils.js, pdfTableUtils.js)
+- Remove html2canvas and jsPDF dependencies (once billing is fully tested)
 - Add comprehensive error handling for edge cases
+- Test billing PDF generation with logos and signatures
 
 ## Notes for Next Developer
 
@@ -327,12 +504,35 @@ system_packages:
 
 ## Summary
 
-The PDF system has been successfully migrated from ReportLab to WeasyPrint, providing:
+The PDF system has been successfully migrated from ReportLab to WeasyPrint and enhanced with multi-visit capabilities, providing:
+
+### Core Features
 - **Professional appearance** matching target design requirements
 - **Custom Besley font** with proper fallbacks
 - **Easy maintenance** through HTML/CSS instead of complex ReportLab code
 - **Superior styling capabilities** with full CSS3 support
 - **Automatic numbered lists** and professional table formatting
-- **No frontend changes required** - same API endpoints work seamlessly
 
-The system is production-ready and significantly improves PDF quality while being easier to maintain and extend.
+### Multi-Visit Enhancements (NEW)
+- **Chronological ordering** - Visits automatically sorted oldest to newest
+- **Smart content mixing** - Structured initial visits + narrative follow-ups
+- **Professional formatting** - Visit numbering, section headers, optimal spacing
+- **Efficient layout** - No redundant information, smart page breaks
+- **Seamless integration** - Uses existing UI components and workflows
+
+### Billing PDF System (NEW)
+- **Server-side generation** - Professional billing invoices using WeasyPrint
+- **Custom Besley fonts** - Consistent typography with medical records
+- **CPT/ICD-10 integration** - Properly formatted medical codes and descriptions
+- **Custom fee structures** - User-specific CPT fees and automatic totals
+- **Professional layout** - Invoice numbering, payment terms, provider information
+- **Logo/signature support** - Clinic branding and doctor signatures
+- **Backward compatibility** - Existing billing components work without changes
+
+### Technical Benefits
+- **No frontend changes required** - same API endpoints work seamlessly
+- **Robust error handling** - Graceful fallback to client-side generation
+- **Flexible content support** - Handles both JSON and markdown content
+- **Production-ready** - Tested with real medical data and workflows
+
+The system significantly improves PDF quality while being easier to maintain and extend. The multi-visit functionality provides a complete solution for comprehensive patient documentation, and the new billing PDF system delivers professional medical invoices with consistent styling and custom fee structures.
