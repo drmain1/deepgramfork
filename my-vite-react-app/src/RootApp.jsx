@@ -1,7 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/FirebaseAuthContext';
-import { UserSettingsProvider } from './contexts/UserSettingsContext';
 import FirebaseAuthenticator from './components/FirebaseAuthenticator';
 import EmailActionHandler from './pages/EmailActionHandler';
 import App from './App';
@@ -44,11 +43,7 @@ function AuthenticatedApp() {
   }
 
   console.log('User authenticated and email verified, showing app');
-  return (
-    <UserSettingsProvider>
-      <App />
-    </UserSettingsProvider>
-  );
+  return <App />;
 }
 
 function RootApp() {

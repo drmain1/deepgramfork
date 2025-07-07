@@ -1,8 +1,8 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { useAuth } from '../contexts/FirebaseAuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useRecordings } from '../contexts/RecordingsContext';
-import { useUserSettings } from '../contexts/UserSettingsContext';
+import { useUserSettings } from '../hooks/useUserSettings';
 import useTranscriptionSessionStore from '../stores/transcriptionSessionStore';
 import TranscriptViewer from '../components/TranscriptViewer';
 import SetupView from '../components/SetupView';

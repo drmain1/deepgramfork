@@ -103,13 +103,13 @@ class RateLimiter:
 user_rate_limiter = RateLimiter(
     requests_per_minute=60,
     requests_per_hour=1000,
-    burst_size=10
+    burst_size=30
 )
 
 ip_rate_limiter = RateLimiter(
     requests_per_minute=120,  # More lenient for shared IPs
     requests_per_hour=2000,
-    burst_size=20
+    burst_size=40
 )
 
 # Lenient rate limiter for read operations

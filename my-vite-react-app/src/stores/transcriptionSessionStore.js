@@ -32,6 +32,18 @@ const useTranscriptionSessionStore = create(
     error: null,
     showPreviousFindingsSidebar: false,
     
+    // Recording Session State
+    sessionId: null,
+    hasStreamedOnce: false,
+    finalTranscript: '',
+    currentInterimTranscript: '',
+    isSessionSaved: false,
+    saveStatusMessage: '',
+    recordingStartTime: null,
+    recordingDuration: 0,
+    currentProfileId: null,
+    showCloseConfirmation: false,
+    
     // Actions - Patient Information
     setPatientDetails: (details) => set({ patientDetails: details }),
     setPatientContext: (context) => set({ patientContext: context }),
@@ -72,6 +84,52 @@ const useTranscriptionSessionStore = create(
     setError: (error) => set({ error: error }),
     setShowPreviousFindingsSidebar: (show) => set({ showPreviousFindingsSidebar: show }),
     setIncludePreviousFindingsInPrompt: (include) => set({ includePreviousFindingsInPrompt: include }),
+    
+    // Actions - Recording Session State
+    setSessionId: (id) => set({ sessionId: id }),
+    setHasStreamedOnce: (hasStreamed) => set({ hasStreamedOnce: hasStreamed }),
+    setFinalTranscript: (transcript) => set({ finalTranscript: transcript }),
+    setCurrentInterimTranscript: (transcript) => set({ currentInterimTranscript: transcript }),
+    setIsSessionSaved: (saved) => set({ isSessionSaved: saved }),
+    setSaveStatusMessage: (message) => set({ saveStatusMessage: message }),
+    setRecordingStartTime: (time) => set({ recordingStartTime: time }),
+    setRecordingDuration: (duration) => set({ recordingDuration: duration }),
+    setCurrentProfileId: (id) => set({ currentProfileId: id }),
+    setShowCloseConfirmation: (show) => set({ showCloseConfirmation: show }),
+    
+    // Combined transcript getter (computed property)
+    getCombinedTranscript: () => {
+      const state = get();
+      return state.finalTranscript + state.currentInterimTranscript;
+    },
+    
+    // Recording Session Management
+    initializeRecording: (sessionId, profileId, resumeData = null) => set({
+      sessionId,
+      currentProfileId: profileId,
+      hasStreamedOnce: !!resumeData,
+      finalTranscript: resumeData?.savedTranscript || '',
+      currentInterimTranscript: '',
+      isSessionSaved: false,
+      saveStatusMessage: '',
+      recordingStartTime: Date.now(),
+      recordingDuration: 0,
+      showCloseConfirmation: false,
+      error: null
+    }),
+    
+    updateTranscript: (final, interim) => set((state) => ({
+      finalTranscript: final !== undefined ? final : state.finalTranscript,
+      currentInterimTranscript: interim !== undefined ? interim : state.currentInterimTranscript,
+      hasStreamedOnce: true
+    })),
+    
+    appendToFinalTranscript: (text) => set((state) => ({
+      finalTranscript: state.finalTranscript ? state.finalTranscript + ' ' + text : text,
+      currentInterimTranscript: ''
+    })),
+    
+    markSessionSaved: () => set({ isSessionSaved: true }),
     
     // Complex Actions
     updatePatientFromSelector: (patient) => {
@@ -120,6 +178,20 @@ const useTranscriptionSessionStore = create(
       dateOfService: ''
     }),
     
+    // Clear recording session state
+    clearRecordingSession: () => set({
+      sessionId: null,
+      hasStreamedOnce: false,
+      finalTranscript: '',
+      currentInterimTranscript: '',
+      isSessionSaved: false,
+      saveStatusMessage: '',
+      recordingStartTime: null,
+      recordingDuration: 0,
+      currentProfileId: null,
+      showCloseConfirmation: false
+    }),
+    
     // Reset entire session (for logout or new session)
     resetSession: () => set({
       patientDetails: '',
@@ -137,7 +209,18 @@ const useTranscriptionSessionStore = create(
       includePreviousFindingsInPrompt: true, // Reset to default
       currentView: 'setup',
       error: null,
-      showPreviousFindingsSidebar: false
+      showPreviousFindingsSidebar: false,
+      // Reset recording state
+      sessionId: null,
+      hasStreamedOnce: false,
+      finalTranscript: '',
+      currentInterimTranscript: '',
+      isSessionSaved: false,
+      saveStatusMessage: '',
+      recordingStartTime: null,
+      recordingDuration: 0,
+      currentProfileId: null,
+      showCloseConfirmation: false
     }),
     
     // Initialize settings (called when user settings load)
