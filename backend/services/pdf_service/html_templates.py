@@ -139,8 +139,8 @@ class MedicalDocumentHTMLTemplate:
         # Patient header for multi-visit document
         html_parts.append(f'<div class="patient-header"><h1>Medical Records for {html.escape(patient_name)}</h1></div>\n')
         
-        follow_up_count = 0
-        follow_up_section_added = False
+        visit_counters = {'follow_up': 0, 're_evaluation': 0}
+        section_headers_added = {'follow_up': False, 're_evaluation': False}
         
         for i, visit_data in enumerate(sorted_visits):
             data = visit_data.model_dump() if hasattr(visit_data, 'model_dump') else visit_data
@@ -149,25 +149,29 @@ class MedicalDocumentHTMLTemplate:
             visit_date = self._extract_visit_date(data)
             visit_type = self._determine_visit_type(data)
             
-            # Add follow-up section header if this is the first follow-up visit
-            if visit_type == 'follow-up' and not follow_up_section_added:
+            # Add section headers for different visit types
+            if visit_type == 'follow_up' and not section_headers_added['follow_up']:
                 html_parts.append('<div class="follow-up-header"><h2>FOLLOW-UP VISITS</h2></div>')
-                follow_up_section_added = True
+                section_headers_added['follow_up'] = True
+            elif visit_type == 're_evaluation' and not section_headers_added['re_evaluation']:
+                html_parts.append('<div class="re-evaluation-header"><h2>RE-EVALUATIONS</h2></div>')
+                section_headers_added['re_evaluation'] = True
             
-            # Count follow-up visits
-            if visit_type == 'follow-up':
-                follow_up_count += 1
+            # Count visits by type
+            if visit_type in visit_counters:
+                visit_counters[visit_type] += 1
             
             # Start visit container
             html_parts.append('<div class="visit-container">')
             
             # Visit date header with proper formatting
             if visit_date:
-                date_header = self._format_visit_date(visit_date, visit_type, follow_up_count)
+                count = visit_counters.get(visit_type, 1)
+                date_header = self._format_visit_date(visit_date, visit_type, count)
                 html_parts.append(f'<div class="visit-date-header"><h3>{date_header}</h3></div>')
             
-            # Only show clinic header and patient info for initial visits
-            if visit_type != 'follow-up':
+            # Show clinic header and patient info for structured visits (initial, re_evaluation, final)
+            if visit_type not in ['follow_up']:
                 # Clinic header for this visit
                 if clinic_info := data.get('clinic_info'):
                     html_parts.append(self._create_clinic_header(clinic_info))
@@ -179,11 +183,14 @@ class MedicalDocumentHTMLTemplate:
             # Document sections for this visit with proper SOAP order
             if sections := data.get('sections'):
                 # For follow-up visits with narrative content
-                if visit_type == 'follow-up' and ('follow_up_visit' in sections or 'clinical_notes' in sections):
+                if visit_type == 'follow_up' and ('follow_up_visit' in sections or 'clinical_notes' in sections):
                     # Just render the narrative content
                     for section_key, section_content in sections.items():
                         if isinstance(section_content, str) and section_content.strip():
                             html_parts.append(self._create_section(section_key, section_content))
+                elif visit_type == 're_evaluation':
+                    # For re-evaluations, render with special comparison highlighting
+                    html_parts.append(self._create_re_evaluation_content(data))
                 else:
                     # For structured visits, use SOAP order
                     # Subjective sections first
@@ -277,24 +284,35 @@ class MedicalDocumentHTMLTemplate:
         return None
     
     def _determine_visit_type(self, data: dict) -> str:
-        """Determine if this is an initial visit or follow-up"""
-        # Look for follow-up indicators in the content
+        """Determine visit type using explicit evaluation_type field"""
+        # Check for explicit evaluation_type field (most reliable)
+        evaluation_type = data.get('evaluation_type')
+        if evaluation_type in ['initial', 'follow_up', 're_evaluation', 'final']:
+            return evaluation_type
+        
+        # Fallback: look for indicators in content (for backward compatibility)
         sections = data.get('sections', {})
         for section_content in sections.values():
             if isinstance(section_content, str):
                 content_lower = section_content.lower()
                 if 'follow' in content_lower and 'up' in content_lower:
-                    return 'follow-up'
+                    return 'follow_up'
+                elif 'previously:' in content_lower and 'currently:' in content_lower:
+                    return 're_evaluation'
         return 'initial'
     
-    def _format_visit_date(self, date_str: str, visit_type: str, follow_up_count: int) -> str:
-        """Format visit date with visit number"""
-        if visit_type == 'follow-up':
-            return f"{date_str} - Visit #{follow_up_count}"
-        elif visit_type == 'initial':
+    def _format_visit_date(self, date_str: str, visit_type: str, visit_count: int) -> str:
+        """Format visit date with visit number and type"""
+        if visit_type == 'initial':
             return f"{date_str} - Initial Examination"
+        elif visit_type == 'follow_up':
+            return f"{date_str} - Follow-up Visit #{visit_count}"
+        elif visit_type == 're_evaluation':
+            return f"{date_str} - Re-evaluation"
+        elif visit_type == 'final':
+            return f"{date_str} - Final Examination"
         else:
-            return date_str
+            return f"{date_str} - Visit #{visit_count}"
     
     def _sort_visits_by_date(self, visits_data: list) -> list:
         """Sort visits by date (oldest first)"""
@@ -493,6 +511,155 @@ class MedicalDocumentHTMLTemplate:
         
         list_html += '</ul>\n'
         return list_html
+    
+    def _create_re_evaluation_content(self, data: Dict[str, Any]) -> str:
+        """Create re-evaluation content with comparison highlighting for multi-visit PDFs"""
+        import re
+        sections = data.get('sections', {})
+        content_html = ''
+        
+        # Chief Complaint with comparison
+        if chief_complaint := sections.get('chief_complaint'):
+            content_html += '<div class="section">\n'
+            content_html += '<h2 class="section-header">CHIEF COMPLAINT & STATUS:</h2>\n'
+            # Parse and format complaints with comparison highlighting
+            complaints = self._parse_complaints_for_display(chief_complaint)
+            for i, complaint in enumerate(complaints, 1):
+                content_html += f'<div class="complaint-block">\n'
+                content_html += f'<p class="complaint-current">{i}. {html.escape(complaint["text"])}</p>\n'
+                if complaint.get("initial_part"):
+                    content_html += f'<p class="complaint-initial">{html.escape(complaint["initial_part"])}</p>\n'
+                content_html += '</div>\n'
+            content_html += '</div>\n'
+        
+        # History of Present Illness
+        if hpi := sections.get('history_of_present_illness'):
+            content_html += '<div class="section">\n'
+            content_html += '<h2 class="section-header">HISTORY OF PRESENT ILLNESS:</h2>\n'
+            content_html += f'<p class="section-content">{html.escape(hpi)}</p>\n'
+            content_html += '</div>\n'
+        
+        # Outcome Assessments with progress visualization
+        if outcomes := sections.get('outcome_assessments'):
+            content_html += '<div class="section">\n'
+            content_html += '<h2 class="section-header">OUTCOME ASSESSMENTS:</h2>\n'
+            assessments = self._parse_outcomes_for_display(outcomes)
+            for assessment in assessments:
+                content_html += '<div class="dashboard-item">\n'
+                content_html += f'<strong>{html.escape(assessment["name"])}: '
+                if assessment.get("improvement_percentage"):
+                    content_html += f'<span class="improvement-text">{assessment["improvement_percentage"]}% Improvement</span>'
+                content_html += '</strong>\n'
+                
+                if assessment.get("initial_percentage"):
+                    content_html += f'<p style="margin: 2px 0; font-size: 9pt;">Initial: {assessment["initial_percentage"]}% Disabled</p>\n'
+                    content_html += '<div class="progress-bar-container">\n'
+                    content_html += f'<div class="progress-bar" style="width: {assessment["initial_percentage"]}%;"></div>\n'
+                    content_html += '</div>\n'
+                
+                if assessment.get("current_percentage"):
+                    content_html += f'<p style="margin: 2px 0; font-size: 9pt;">Current: {assessment["current_percentage"]}% Disabled</p>\n'
+                    content_html += '<div class="progress-bar-container">\n'
+                    content_html += f'<div class="progress-bar current" style="width: {assessment["current_percentage"]}%;"></div>\n'
+                    content_html += '</div>\n'
+                
+                content_html += '</div>\n'
+            content_html += '</div>\n'
+        
+        # Physical Examination with comparisons
+        exam_sections = ['cervico_thoracic', 'lumbopelvic', 'extremity', 'physical_examination']
+        for section_key in exam_sections:
+            if section_content := sections.get(section_key):
+                display_title = section_key.replace('_', ' ').upper()
+                content_html += '<div class="section">\n'
+                content_html += f'<h2 class="section-header">{html.escape(display_title)}:</h2>\n'
+                content_html += f'<p class="section-content">{html.escape(section_content)}</p>\n'
+                content_html += '</div>\n'
+        
+        # Assessment and Plan
+        if assessment := sections.get('assessment_diagnosis'):
+            content_html += '<div class="section">\n'
+            content_html += '<h2 class="section-header">ASSESSMENT & DIAGNOSIS:</h2>\n'
+            content_html += f'<p class="diagnosis-list">{html.escape(assessment)}</p>\n'
+            content_html += '</div>\n'
+        
+        if plan := sections.get('plan'):
+            content_html += '<div class="section">\n'
+            content_html += '<h2 class="section-header">PLAN:</h2>\n'
+            content_html += f'<p class="section-content">{html.escape(plan)}</p>\n'
+            content_html += '</div>\n'
+        
+        return content_html
+    
+    def _parse_complaints_for_display(self, complaint_text: str) -> list:
+        """Parse chief complaints for display formatting"""
+        if not complaint_text:
+            return []
+        
+        import re
+        complaints = []
+        lines = complaint_text.split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            if re.match(r'^\d+\.', line):  # Starts with number and period
+                # Extract the main complaint text
+                complaint_match = re.match(r'^\d+\.\s*(.+)', line)
+                if complaint_match:
+                    text = complaint_match.group(1)
+                    
+                    # Check for comparison format
+                    if 'Previously:' in text and 'Currently:' in text:
+                        # Split into current and initial parts
+                        parts = text.split('Previously:')
+                        current_part = parts[0].strip().rstrip(',').rstrip(':')
+                        initial_part = 'Previously:' + parts[1] if len(parts) > 1 else ''
+                        
+                        complaints.append({
+                            'text': current_part,
+                            'initial_part': initial_part
+                        })
+                    else:
+                        complaints.append({
+                            'text': text,
+                            'initial_part': ''
+                        })
+        
+        return complaints
+    
+    def _parse_outcomes_for_display(self, assessment_text: str) -> list:
+        """Parse outcome assessments for progress display"""
+        if not assessment_text:
+            return []
+        
+        import re
+        assessments = []
+        lines = assessment_text.split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            if ':' in line:
+                # Split on the first colon
+                name_part, value_part = line.split(':', 1)
+                name = name_part.strip()
+                
+                # Extract percentages and improvement using regex
+                initial_match = re.search(r'Previously\s+(\d+)%', value_part)
+                current_match = re.search(r'currently\s+(\d+)%', value_part)
+                improvement_match = re.search(r'\((\d+)%\s+improvement\)', value_part)
+                
+                assessment = {'name': name}
+                
+                if initial_match:
+                    assessment['initial_percentage'] = int(initial_match.group(1))
+                if current_match:
+                    assessment['current_percentage'] = int(current_match.group(1))
+                if improvement_match:
+                    assessment['improvement_percentage'] = int(improvement_match.group(1))
+                
+                assessments.append(assessment)
+        
+        return assessments
     
     def _create_motor_exam_section(self, motor_data: Dict[str, List]) -> str:
         """Create motor examination section with tables"""

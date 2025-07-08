@@ -147,6 +147,13 @@ def polish_transcript_with_gemini(
         # Extract the polished text
         polished_text = response.text
         
+        # Log the FULL JSON response for debugging PDF templates
+        logger.info("=" * 80)
+        logger.info("FULL LLM JSON RESPONSE:")
+        logger.info("=" * 80)
+        logger.info(polished_text)
+        logger.info("=" * 80)
+        
         # For findings extraction, keep the full response with code blocks
         if encounter_type == "findings_extraction":
             logger.info("Findings extraction mode - keeping full response with code blocks")

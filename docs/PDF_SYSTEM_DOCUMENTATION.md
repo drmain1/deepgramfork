@@ -72,11 +72,6 @@ sudo apt-get install python3-cffi python3-brotli libpango-1.0-0 libpangoft2-1.0-
 sudo yum install python3-cffi python3-brotli pango
 ```
 
-### Frontend Changes
-- No changes needed - same API endpoints
-- Removed dependency on client-side PDF generation
-- No longer needs: html2canvas, jspdf
-
 ## API Endpoints
 
 ### 1. Generate PDF from Structured Data
@@ -335,38 +330,7 @@ Response: { status: "healthy", service: "weasyprint_pdf_generator", test_pdf_siz
 - **Better Font Support**: Native font loading and rendering
 - **Superior Styling**: Full CSS3 support vs limited ReportLab styling
 - **Easier Maintenance**: HTML/CSS is easier to modify than ReportLab code
-- **Better Performance**: More efficient for complex layouts
-- **Future-Proof**: Standard web technologies
 
-## Files That Can Be Deleted
-
-### Backend Files Deleted ✅
-```
-backend/services/pdf_service/generator.py          # 219 lines - ReportLab generator (DELETED)
-backend/services/pdf_service/styles.py            # 205 lines - ReportLab styles (DELETED)
-backend/services/pdf_service/table_builder.py     # 118 lines - ReportLab tables (DELETED)
-backend/services/pdf_service/templates.py         # 145 lines - ReportLab templates (DELETED)
-backend/test_font_registration.py                 # ReportLab test file (DELETED)
-backend/test_pdf_simple.py                        # ReportLab test file (DELETED)
-backend/test_reportlab_output.pdf                 # Test output file (DELETED)
-backend/test_simple.pdf                           # Test output file (DELETED)
-```
-
-### Frontend Files Deleted ✅
-```
-src/components/pdfUtils.js              # 498 lines - Old PDF generation (DELETED)
-src/components/pdfTableUtils.js         # 309 lines - Table parsing utilities (DELETED)
-src/components/TestPdfGeneration.jsx    # Test component for old PDF system (DELETED)
-# NOTE: billingPdfGenerator.js has been UPDATED (not deleted) to use server-side generation
-# NOTE: usePdfGeneration.js has been UPDATED to remove fallback to old system
-```
-
-### Dependencies Removed from package.json ✅
-```json
-"html2canvas": "^1.4.1",   # Client-side PDF generation (REMOVED)
-"html2pdf.js": "^0.10.3",  # Client-side PDF conversion (REMOVED)
-"jspdf": "^3.0.1"          # Client-side PDF library (REMOVED)
-```
 **Note**: All components now use server-side WeasyPrint generation
 
 ### Dependencies Removed from requirements.txt
@@ -466,9 +430,6 @@ pdfplumber==0.10.3    # No longer needed
 ### Issue: 422 Error on PDF generation
 **Solution**: Check that all required fields in MedicalDocument model are present
 
-### Issue: Besley font not loading
-**Solution**: Check that `backend/fonts/Besley-Regular.ttf` exists and font path is correct
-
 ### Issue: WeasyPrint installation fails
 **Solution**: Install system dependencies first: `brew install cairo pango gdk-pixbuf libffi` (macOS)
 
@@ -505,10 +466,6 @@ system_packages:
 - PDF generation time: ~1-3 seconds for typical medical documents
 - Memory usage: Moderate (HTML/CSS parsing + font rendering)
 
-## Summary
-
-The PDF system has been completely migrated from ReportLab to WeasyPrint, with all legacy code removed and enhanced with multi-visit and billing capabilities, providing:
-
 ### Core Features
 - **Professional appearance** matching target design requirements
 - **Custom Besley font** with proper fallbacks
@@ -539,10 +496,3 @@ The PDF system has been completely migrated from ReportLab to WeasyPrint, with a
 - **Improved performance** - Server-side generation with optimized fonts
 - **Production-ready** - Tested with real medical data and workflows
 
-### Migration Achievements ✅
-- **Complete legacy removal** - 1000+ lines of old PDF code deleted
-- **Dependency cleanup** - Removed html2canvas, jsPDF, and ReportLab dependencies
-- **Unified system** - Medical transcripts and billing invoices use same technology
-- **Zero breaking changes** - Existing components work seamlessly with new system
-
-The system significantly improves PDF quality while being easier to maintain and extend. The multi-visit functionality provides a complete solution for comprehensive patient documentation, and the new billing PDF system delivers professional medical invoices with consistent styling and custom fee structures. All legacy PDF generation code has been completely removed, creating a clean, maintainable codebase.

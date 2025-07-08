@@ -151,6 +151,7 @@ class ClinicInfo(BaseModel):
 
 
 class MedicalDocument(BaseModel):
+    evaluation_type: Optional[str] = None  # "initial", "follow_up", "re_evaluation", "final"
     patient_info: PatientInfo
     clinic_info: Optional[ClinicInfo] = None
     sections: Dict[str, Optional[str]]

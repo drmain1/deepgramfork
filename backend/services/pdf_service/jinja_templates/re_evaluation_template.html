@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Re-Evaluation Report</title>
+    <style>
+        {{ css_styles }}
+    </style>
+</head>
+<body>
+
+    <!-- Clinic Header -->
+    {% if data.clinic_info and data.clinic_info.name %}
+    <h1>{{ data.clinic_info.name }}</h1>
+    {% endif %}
+    <h2>RE-EVALUATION REPORT</h2>
+
+    <!-- Patient Information Bar -->
+    <div class="patient-bar">
+        <strong>Patient:</strong> {{ data.patient_info.patient_name or 'N/A' }} | 
+        <strong>DOB:</strong> {{ data.patient_info.date_of_birth or 'N/A' }} | 
+        {% if data.patient_info.date_of_accident %}
+        <strong>DOA:</strong> {{ data.patient_info.date_of_accident }} | 
+        {% endif %}
+        <strong>Date of Service:</strong> {{ data.patient_info.date_of_treatment or 'N/A' }}
+    </div>
+
+    <!-- Chief Complaint & Status -->
+    <h3>Chief Complaint & Status</h3>
+    {% if data.sections.chief_complaint %}
+        {% set complaint_text = data.sections.chief_complaint %}
+        
+        <!-- Process each line separately -->
+        {% for line in complaint_text.split('\n') %}
+            {% if line.strip() %}
+                <div class="complaint-block">
+                    {% set clean_line = line.strip() %}
+                    
+                    {% if '|' in clean_line %}
+                        <!-- Split on pipe character -->
+                        {% set before_pipe = clean_line.split('|')[0].strip() %}
+                        {% set after_pipe = clean_line.split('|')[1].strip() %}
+                        
+                        <!-- Extract complaint name (everything before and including first colon) -->
+                        {% if ':' in before_pipe %}
+                            {% set complaint_parts = before_pipe.split(':') %}
+                            {% set complaint_name = complaint_parts[0].strip() %}
+                            {% set prev_text = complaint_parts[1].strip() %}
+                            
+                            <!-- Remove "Previously" if present -->
+                            {% if prev_text.startswith('Previously') %}
+                                {% set prev_text = prev_text[10:].strip() %}
+                            {% endif %}
+                            
+                            <!-- Remove "Currently" from after pipe if present -->
+                            {% set curr_text = after_pipe %}
+                            {% if curr_text.startswith('Currently') %}
+                                {% set curr_text = curr_text[9:].strip() %}
+                            {% endif %}
+                            
+                            <p class="complaint-current"><strong>{{ complaint_name }}:</strong> {{ curr_text }}</p>
+                            <p class="complaint-initial">(Initial: {{ prev_text }})</p>
+                        {% else %}
+                            <!-- Fallback if no colon found -->
+                            <p class="complaint-current">{{ clean_line }}</p>
+                        {% endif %}
+                    {% else %}
+                        <!-- No pipe, display as is -->
+                        <p class="complaint-current">{{ clean_line }}</p>
+                    {% endif %}
+                </div>
+            {% endif %}
+        {% endfor %}
+    {% else %}
+        <p>No chief complaints documented.</p>
+    {% endif %}
+
+    <!-- History of Present Illness -->
+    {% if data.sections.history_of_present_illness %}
+    <h3>History of Present Illness</h3>
+    <p>{{ data.sections.history_of_present_illness }}</p>
+    {% endif %}
+
+    <hr>
+
+    <!-- Objective Progress & Data -->
+    <h3>Objective Progress & Data</h3>
+
+    <!-- Visual Progress Dashboard -->
+    {% if data.sections.outcome_assessments %}
+    <h4>Visual Progress Dashboard</h4>
+    {% set outcome_text = data.sections.outcome_assessments %}
+    
+    <!-- Parse format: "Neck Disability Index: Previously 31/50, currently 25/50" -->
+    {% if ":" in outcome_text %}
+        {% set parts = outcome_text.split(':') %}
+        {% set assessment_name = parts[0].strip() %}
+        {% set values_part = parts[1].strip() if parts|length > 1 else "" %}
+        
+        {% set initial_score = "" %}
+        {% set current_score = "" %}
+        {% set initial_percentage = "" %}
+        {% set current_percentage = "" %}
+        {% set improvement_percentage = "" %}
+        
+        <!-- Parse "Previously 31/50, currently 25/50" or "Previously 31/50 | Current: 25/50" formats -->
+        {% if "Previously" in values_part and ("currently" in values_part or "Current:" in values_part) %}
+            {% if "currently" in values_part %}
+                {% set prev_part = values_part.split('currently')[0].replace('Previously', '').strip().rstrip(',') %}
+                {% set curr_part = values_part.split('currently')[1].strip() %}
+            {% elif "Current:" in values_part %}
+                {% set prev_part = values_part.split('|')[0].replace('Previously', '').strip() if '|' in values_part else values_part.replace('Previously', '').strip() %}
+                {% set curr_part = values_part.split('Current:')[1].strip() if 'Current:' in values_part else "" %}
+            {% endif %}
+            
+            <!-- Extract scores like "31/50" from potentially complex text like "31/50 (62%)" -->
+            {% if "/" in prev_part %}
+                <!-- Extract just the fraction part before any parentheses -->
+                {% set fraction_match = prev_part.split('(')[0].strip() %}
+                {% set prev_nums = fraction_match.split('/') %}
+                {% if prev_nums|length >= 2 %}
+                    {% set initial_numerator = prev_nums[0].strip() %}
+                    {% set initial_denominator = prev_nums[1].strip() %}
+                    {% set initial_score = initial_numerator + "/" + initial_denominator %}
+                    {% set initial_percentage = ((initial_numerator|int / initial_denominator|int) * 100)|round|int %}
+                {% endif %}
+            {% endif %}
+            
+            {% if "/" in curr_part %}
+                <!-- Extract just the fraction part before any parentheses -->
+                {% set fraction_match = curr_part.split('(')[0].strip() %}
+                {% set curr_nums = fraction_match.split('/') %}
+                {% if curr_nums|length >= 2 %}
+                    {% set current_numerator = curr_nums[0].strip() %}
+                    {% set current_denominator = curr_nums[1].strip() %}
+                    {% set current_score = current_numerator + "/" + current_denominator %}
+                    {% set current_percentage = ((current_numerator|int / current_denominator|int) * 100)|round|int %}
+                {% endif %}
+            {% endif %}
+            
+            <!-- Calculate improvement percentage -->
+            {% if initial_percentage and current_percentage %}
+                {% set improvement_percentage = ((initial_percentage - current_percentage) / initial_percentage * 100)|round|int %}
+            {% endif %}
+        {% endif %}
+        
+        <div class="dashboard-item">
+            <strong>{{ assessment_name }}: 
+            {% if improvement_percentage and improvement_percentage > 0 %}
+            <span class="improvement-text">{{ improvement_percentage }}% Improvement</span>
+            {% endif %}
+            </strong>
+            
+            {% if initial_score %}
+            <p style="margin: 2px 0; font-size: 9pt;">Initial: {{ initial_score }} ({{ initial_percentage }}% Disabled)</p>
+            <div class="progress-bar-container">
+                <div class="progress-bar" style="width: {{ initial_percentage }}%;"></div>
+            </div>
+            {% endif %}
+            
+            {% if current_score %}
+            <p style="margin: 2px 0; font-size: 9pt;">Current: {{ current_score }} ({{ current_percentage }}% Disabled)</p>
+            <div class="progress-bar-container">
+                <div class="progress-bar current" style="width: {{ current_percentage }}%;"></div>
+            </div>
+            {% endif %}
+        </div>
+    {% else %}
+        <div class="dashboard-item">
+            <p>{{ outcome_text }}</p>
+        </div>
+    {% endif %}
+    {% endif %}
+
+    <!-- Physical Examination Highlights -->
+    <h4>Physical Examination Findings</h4>
+    <p>Objective tests confirm the patient's subjective report of improvement.</p>
+    
+    <!-- Parse and display physical examination findings -->
+    
+    <!-- Check if we have any sections with physical exam data -->
+    {% if (data.sections.cervico_thoracic and ('Previously' in data.sections.cervico_thoracic or 'currently' in data.sections.cervico_thoracic or 'Current:' in data.sections.cervico_thoracic)) or
+          (data.sections.lumbopelvic and ('Previously' in data.sections.lumbopelvic or 'currently' in data.sections.lumbopelvic or 'Current:' in data.sections.lumbopelvic)) or
+          (data.sections.extremity and ('Previously' in data.sections.extremity or 'currently' in data.sections.extremity or 'Current:' in data.sections.extremity)) or
+          (data.sections.sensory_examination and ('Previously' in data.sections.sensory_examination or 'currently' in data.sections.sensory_examination or 'Current:' in data.sections.sensory_examination)) %}
+    
+    <table>
+        <thead>
+            <tr>
+                <th>Finding</th>
+                <th>Initial State</th>
+                <th>Current State</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Process each physical exam section -->
+            {% for section_name, section_data in [("cervico_thoracic", data.sections.cervico_thoracic), ("lumbopelvic", data.sections.lumbopelvic), ("extremity", data.sections.extremity), ("sensory_examination", data.sections.sensory_examination)] %}
+                {% if section_data %}
+                    <!-- Split by newlines to get individual findings -->
+                    {% set findings = section_data.split('\n') %}
+                    {% for finding in findings %}
+                        {% set finding = finding.strip() %}
+                        {% if finding and ':' in finding %}
+                            <!-- Parse different formats: "Test: Previously X | Current: Y" or "Test: Previously X, currently Y" -->
+                            {% set parts = finding.split(':', 1) %}
+                            {% if parts|length >= 2 %}
+                                {% set finding_name = parts[0].strip() %}
+                                {% set states = parts[1].strip() %}
+                                
+                                {% set prev_state = "" %}
+                                {% set curr_state = "" %}
+                                
+                                <!-- Handle "Previously X | Current: Y" format -->
+                                {% if 'Previously' in states and '|' in states and 'Current:' in states %}
+                                    {% set pipe_parts = states.split('|') %}
+                                    {% if pipe_parts|length >= 2 %}
+                                        {% set prev_state = pipe_parts[0].replace('Previously', '').strip() %}
+                                        {% set curr_state = pipe_parts[1].replace('Current:', '').strip().rstrip('.') %}
+                                    {% endif %}
+                                    
+                                <!-- Handle "Previously X, currently Y" format -->
+                                {% elif 'Previously' in states and 'currently' in states %}
+                                    {% set state_parts = states.split('currently') %}
+                                    {% if state_parts|length >= 2 %}
+                                        {% set prev_state = state_parts[0].replace('Previously', '').replace(',', '').strip() %}
+                                        {% set curr_state = state_parts[1].strip().rstrip('.') %}
+                                    {% endif %}
+                                    
+                                <!-- Handle "Current: Y" only format -->
+                                {% elif 'Current:' in states and 'Previously' not in states %}
+                                    {% set prev_state = "Not specified" %}
+                                    {% set curr_state = states.replace('Current:', '').strip().rstrip('.') %}
+                                {% endif %}
+                                
+                                {% if prev_state and curr_state %}
+                                <tr>
+                                    <td>{{ finding_name }}</td>
+                                    <td>{{ prev_state|capitalize }}</td>
+                                    <td><strong>{{ curr_state|capitalize }}</strong></td>
+                                </tr>
+                                {% endif %}
+                            {% endif %}
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    <!-- Motor Examination (if present) -->
+    {% if data.motor_exam %}
+    <h4>Motor Examination Comparison</h4>
+    
+    {% if data.motor_exam.upper_extremity %}
+    <h5>Upper Extremity Motor Strength</h5>
+    <table class="motor-table">
+        <thead>
+            <tr>
+                <th>MUSCLE GROUP</th>
+                <th>RIGHT</th>
+                <th>LEFT</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for muscle in data.motor_exam.upper_extremity %}
+            <tr>
+                <td class="muscle-name">{{ muscle.muscle }}</td>
+                <td class="strength-value">{{ muscle.right }}</td>
+                <td class="strength-value">{{ muscle.left }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    {% if data.motor_exam.lower_extremity %}
+    <h5>Lower Extremity Motor Strength</h5>
+    <table class="motor-table">
+        <thead>
+            <tr>
+                <th>MUSCLE GROUP</th>
+                <th>RIGHT</th>
+                <th>LEFT</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for muscle in data.motor_exam.lower_extremity %}
+            <tr>
+                <td class="muscle-name">{{ muscle.muscle }}</td>
+                <td class="strength-value">{{ muscle.right }}</td>
+                <td class="strength-value">{{ muscle.left }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+    {% endif %}
+
+    <hr>
+
+    <!-- Assessment & Plan -->
+    <h3>Assessment & Plan</h3>
+    
+    {% if data.sections.assessment_diagnosis %}
+    <h4>Diagnosis</h4>
+    <p class="diagnosis-list">{{ data.sections.assessment_diagnosis }}</p>
+    {% endif %}
+    
+    {% if data.sections.plan %}
+    <h4>Plan</h4>
+    <p>{{ data.sections.plan }}</p>
+    {% endif %}
+
+    <!-- Treatment Performed Today -->
+    {% if data.sections.treatment_performed_today %}
+    <h4>Treatment Performed Today</h4>
+    <p>{{ data.sections.treatment_performed_today }}</p>
+    {% endif %}
+
+</body>
+</html>
