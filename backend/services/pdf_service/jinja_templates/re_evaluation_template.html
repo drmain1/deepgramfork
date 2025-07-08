@@ -12,7 +12,19 @@
 
     <!-- Clinic Header -->
     {% if data.clinic_info and data.clinic_info.name %}
-    <h1>{{ data.clinic_info.name }}</h1>
+    <div class="clinic-header" style="text-align: right; margin-bottom: 20px;">
+        <h1 style="margin: 0; font-size: 18pt; color: #333;">{{ data.clinic_info.name }}</h1>
+        {% if data.clinic_info.address %}
+        <div class="clinic-address" style="font-size: 10pt; color: #666; margin-top: 5px;">{{ data.clinic_info.address }}</div>
+        {% endif %}
+        {% if data.clinic_info.phone or data.clinic_info.fax %}
+        <div class="clinic-contact" style="font-size: 10pt; color: #666; margin-top: 2px;">
+            {% if data.clinic_info.phone %}Tel: {{ data.clinic_info.phone }}{% endif %}
+            {% if data.clinic_info.phone and data.clinic_info.fax %} | {% endif %}
+            {% if data.clinic_info.fax %}Fax: {{ data.clinic_info.fax }}{% endif %}
+        </div>
+        {% endif %}
+    </div>
     {% endif %}
     <h2>RE-EVALUATION REPORT</h2>
 

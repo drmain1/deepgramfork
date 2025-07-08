@@ -8,6 +8,9 @@ from weasyprint.text.fonts import FontConfiguration
 from jinja2 import Environment, FileSystemLoader
 from .html_templates import MedicalDocumentHTMLTemplate
 from .css_styles import get_medical_document_css, get_re_evaluation_css
+from services.user_settings_service import UserSettingsService
+from firestore_client import firestore_client
+from gcs_utils import GCSClient
 import logging
 
 logger = logging.getLogger(__name__)
@@ -18,6 +21,8 @@ class WeasyPrintMedicalPDFGenerator:
         self.font_config = FontConfiguration()
         self._register_fonts()
         self._setup_jinja_environment()
+        # Initialize user settings service for clinic info retrieval
+        self.user_settings_service = UserSettingsService(GCSClient())
     
     def _register_fonts(self):
         """Register Besley font with WeasyPrint"""
@@ -183,6 +188,72 @@ class WeasyPrintMedicalPDFGenerator:
         
         return comparisons
     
+    async def _get_clinic_info_from_database(self, user_id: str) -> Dict[str, Any]:
+        """Fetch clinic information from user settings in Firestore/GCS"""
+        try:
+            # First try to get from Firestore (faster)
+            firestore_settings = await firestore_client.get_user_settings(user_id)
+            if firestore_settings and firestore_settings.get('office_information'):
+                office_info = firestore_settings.get('office_information', [])
+                logger.info(f"Retrieved clinic info from Firestore for user {user_id}")
+            else:
+                # Fallback to GCS
+                gcs_settings = await self.user_settings_service.get_user_settings(user_id)
+                office_info = gcs_settings.get('officeInformation', [])
+                logger.info(f"Retrieved clinic info from GCS for user {user_id}")
+            
+            # Parse office information into structured clinic info
+            clinic_info = {}
+            if office_info:
+                # Office info is stored as a list of strings, parse them
+                for info_line in office_info:
+                    if isinstance(info_line, str):
+                        # Try to parse structured information first
+                        if 'name:' in info_line.lower():
+                            clinic_info['name'] = info_line.split(':', 1)[1].strip()
+                        elif 'address:' in info_line.lower():
+                            clinic_info['address'] = info_line.split(':', 1)[1].strip()
+                        elif 'phone:' in info_line.lower():
+                            clinic_info['phone'] = info_line.split(':', 1)[1].strip()
+                        elif 'fax:' in info_line.lower():
+                            clinic_info['fax'] = info_line.split(':', 1)[1].strip()
+                        elif not clinic_info.get('name') and len(info_line.strip()) > 0:
+                            # If no structured data, treat entire line as clinic name/address
+                            # This handles cases like "Efficient Chiropractic 1234 Main St Los Angeles, CA 90024"
+                            clinic_info['name'] = info_line.strip()
+                
+                # If we have a name that contains address info, try to parse it
+                if clinic_info.get('name') and not clinic_info.get('address'):
+                    full_info = clinic_info['name']
+                    # Split into lines for better display in PDF
+                    if len(full_info) > 50:  # Long line, likely contains address
+                        # Try to separate clinic name from address
+                        words = full_info.split()
+                        if len(words) > 3:
+                            # Look for patterns that suggest address starts
+                            address_start = None
+                            for i, word in enumerate(words):
+                                if (word.isdigit() or 
+                                    any(word.lower().startswith(street) for street in ['street', 'st', 'avenue', 'ave', 'boulevard', 'blvd', 'road', 'rd', 'drive', 'dr', 'lane', 'ln'])):
+                                    address_start = i
+                                    break
+                            
+                            if address_start:
+                                clinic_info['name'] = ' '.join(words[:address_start])
+                                clinic_info['address'] = ' '.join(words[address_start:])
+                            else:
+                                # No clear address pattern, keep as single name
+                                clinic_info['name'] = full_info
+                
+                # Log what we extracted
+                logger.info(f"Extracted clinic info: {clinic_info}")
+            
+            return clinic_info
+            
+        except Exception as e:
+            logger.error(f"Error fetching clinic info for user {user_id}: {e}")
+            return {}
+    
     def _is_re_evaluation_data(self, data: Dict[str, Any]) -> bool:
         """Determine if this data represents a re-evaluation visit using explicit evaluation_type"""
         # Check for explicit evaluation_type field (most reliable)
@@ -211,13 +282,26 @@ class WeasyPrintMedicalPDFGenerator:
         logger.info("❌ Not detected as re-evaluation")
         return False
     
-    def generate_pdf(self, data: Dict[str, Any]) -> bytes:
+    async def generate_pdf(self, data: Dict[str, Any], user_id: Optional[str] = None) -> bytes:
         """Generate PDF from structured medical data using WeasyPrint"""
         # Ensure data is not None
         if data is None:
             data = {}
         
         logger.info(f"WeasyPrint PDF generation started with data keys: {list(data.keys())}")
+        
+        # Automatically fetch and inject clinic info if user_id is provided
+        if user_id and not data.get('clinic_info'):
+            clinic_info = await self._get_clinic_info_from_database(user_id)
+            if clinic_info:
+                data['clinic_info'] = clinic_info
+                logger.info(f"Injected clinic info from database: {clinic_info}")
+            else:
+                logger.warning(f"No clinic info found for user {user_id}")
+        elif data.get('clinic_info'):
+            logger.info(f"Using provided clinic info: {data['clinic_info']}")
+        else:
+            logger.warning("No clinic info available - no user_id provided and no clinic_info in data")
         
         # Check if this is a re-evaluation and use Jinja2 template
         is_re_eval = self._is_re_evaluation_data(data)
@@ -228,26 +312,29 @@ class WeasyPrintMedicalPDFGenerator:
         if has_jinja:
             current_dir = Path(__file__).parent
             templates_dir = current_dir / "jinja_templates" 
-            template_file = templates_dir / "re_evaluation_template.html"
-            logger.info(f"🔍 Template file exists: {template_file.exists()} at {template_file}")
+            re_eval_template_file = templates_dir / "re_evaluation_template.html"
+            initial_template_file = templates_dir / "initial_exam_template.html"
+            logger.info(f"🔍 Re-eval template exists: {re_eval_template_file.exists()}")
+            logger.info(f"🔍 Initial template exists: {initial_template_file.exists()}")
         else:
             logger.error("❌ Jinja2 environment is None - template setup failed")
         
-        if is_re_eval and has_jinja:
+        if has_jinja:
             try:
-                logger.info("✅ Using Jinja2 re-evaluation template")
-                html_content = self._generate_re_evaluation_html(data)
-                css_content = get_re_evaluation_css(self._get_besley_font_path())
+                if is_re_eval:
+                    logger.info("✅ Using Jinja2 re-evaluation template")
+                    html_content = self._generate_re_evaluation_html(data)
+                else:
+                    logger.info("✅ Using Jinja2 initial exam template")
+                    html_content = self._generate_initial_exam_html(data)
+                css_content = get_medical_document_css(self._get_besley_font_path())
             except Exception as e:
                 logger.error(f"❌ Error with Jinja2 template, falling back to standard template: {e}")
                 html_content = self.html_template.generate_html(data)
                 css_content = get_medical_document_css(self._get_besley_font_path())
         else:
             # Use standard string concatenation template
-            if not is_re_eval:
-                logger.info("📄 Using standard HTML template (not detected as re-evaluation)")
-            else:
-                logger.info("📄 Using standard HTML template (Jinja2 not available)")
+            logger.info("📄 Using standard HTML template (Jinja2 not available)")
             html_content = self.html_template.generate_html(data)
             css_content = get_medical_document_css(self._get_besley_font_path())
         
@@ -285,7 +372,27 @@ class WeasyPrintMedicalPDFGenerator:
         
         return html_content
     
-    def generate_from_transcript(self, transcript: str, format_type: str = "markdown") -> bytes:
+    def _generate_initial_exam_html(self, data: Dict[str, Any]) -> str:
+        """Generate HTML using Jinja2 initial exam template"""
+        if not self.jinja_env:
+            raise Exception("Jinja2 environment not initialized")
+        
+        # Load the initial exam template
+        template = self.jinja_env.get_template('initial_exam_template.html')
+        
+        # Get CSS content for embedding in template
+        besley_font_path = self._get_besley_font_path()
+        css_styles = get_medical_document_css(besley_font_path)
+        
+        # Render the template with data and CSS
+        html_content = template.render(
+            data=data,
+            css_styles=css_styles
+        )
+        
+        return html_content
+    
+    async def generate_from_transcript(self, transcript: str, format_type: str = "markdown", user_id: Optional[str] = None) -> bytes:
         """Generate PDF from transcript text"""
         if format_type == "structured":
             # Parse structured JSON format
@@ -295,7 +402,7 @@ class WeasyPrintMedicalPDFGenerator:
             # Convert markdown to structured format
             data = self._convert_markdown_to_structured(transcript)
         
-        return self.generate_pdf(data)
+        return await self.generate_pdf(data, user_id=user_id)
     
     def _convert_markdown_to_structured(self, markdown_text: str) -> Dict[str, Any]:
         """Convert markdown text to structured format"""
@@ -343,12 +450,31 @@ class WeasyPrintMedicalPDFGenerator:
         
         return data
     
-    def generate_multi_visit_pdf(self, visits_data: list, patient_name: str) -> bytes:
+    async def generate_multi_visit_pdf(self, visits_data: list, patient_name: str, user_id: Optional[str] = None) -> bytes:
         """Generate PDF from multiple medical visits using WeasyPrint"""
         if not visits_data:
             raise ValueError("No visits data provided")
         
         logger.info(f"WeasyPrint multi-visit PDF generation started for {len(visits_data)} visits")
+        
+        # Automatically fetch and inject clinic info ONLY for the first visit if user_id is provided
+        if user_id:
+            clinic_info = await self._get_clinic_info_from_database(user_id)
+            if clinic_info:
+                # Only add clinic info to the first visit to avoid redundancy
+                if visits_data and not visits_data[0].get('clinic_info'):
+                    visits_data[0]['clinic_info'] = clinic_info
+                    logger.info(f"Injected clinic info into FIRST visit only for multi-visit PDF")
+                
+                # Ensure other visits don't have clinic info to avoid duplication
+                for i, visit_data in enumerate(visits_data[1:], 1):
+                    if visit_data.get('clinic_info'):
+                        del visit_data['clinic_info']
+                        logger.info(f"Removed clinic info from visit #{i+1} to avoid duplication")
+            else:
+                logger.warning(f"No clinic info found for user {user_id}")
+        else:
+            logger.warning("No user_id provided for multi-visit PDF generation")
         
         # Generate combined HTML content for all visits
         combined_html_content = self.html_template.generate_multi_visit_html(visits_data, patient_name)

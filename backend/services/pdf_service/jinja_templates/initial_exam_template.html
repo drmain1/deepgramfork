@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Initial Examination Report</title>
+    <style>
+        {{ css_styles }}
+    </style>
+</head>
+<body>
+
+    <!-- Clinic Header -->
+    {% if data.clinic_info and data.clinic_info.name %}
+    <div class="clinic-header" style="text-align: right; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px;">
+        <div class="clinic-name" style="font-size: 16pt; font-weight: bold; color: #333;">{{ data.clinic_info.name }}</div>
+        {% if data.clinic_info.address %}
+        <div class="clinic-address" style="font-size: 9pt; color: #666; margin-top: 3px;">{{ data.clinic_info.address }}</div>
+        {% endif %}
+        {% if data.clinic_info.phone %}
+        <div class="clinic-contact" style="font-size: 9pt; color: #666; margin-top: 2px;">Tel: {{ data.clinic_info.phone }}</div>
+        {% endif %}
+        {% if data.clinic_info.fax %}
+        <div class="clinic-contact" style="font-size: 9pt; color: #666; margin-top: 2px;">Fax: {{ data.clinic_info.fax }}</div>
+        {% endif %}
+    </div>
+    {% endif %}
+    <h2>INITIAL EXAMINATION REPORT</h2>
+
+    <!-- Patient Information Bar -->
+    <div class="patient-bar">
+        <strong>Patient:</strong> {{ data.patient_info.patient_name or 'N/A' }} | 
+        <strong>DOB:</strong> {{ data.patient_info.date_of_birth or 'N/A' }} | 
+        {% if data.patient_info.date_of_accident %}
+        <strong>DOA:</strong> {{ data.patient_info.date_of_accident }} | 
+        {% endif %}
+        <strong>Date of Service:</strong> {{ data.patient_info.date_of_treatment or 'N/A' }}
+    </div>
+
+    <!-- Subjective Section -->
+    <h3>Subjective</h3>
+    
+    <!-- Chief Complaint -->
+    {% if data.sections.chief_complaint %}
+    <h4>Chief Complaint</h4>
+    <div>
+        {% set complaint_text = data.sections.chief_complaint %}
+        {% if '1.' in complaint_text %}
+            {% set lines = complaint_text.split('\n') %}
+            {% for line in lines %}
+                {% set trimmed = line.strip() %}
+                {% if trimmed %}
+                    {{ trimmed }}
+                    {% if not loop.last %}<br><br>{% endif %}
+                {% endif %}
+            {% endfor %}
+        {% else %}
+            {{ complaint_text | replace('1.', '1.<br><br>') | replace('2.', '<br><br>2.') | replace('3.', '<br><br>3.') | replace('4.', '<br><br>4.') | replace('5.', '<br><br>5.') | safe }}
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- History of Present Illness -->
+    {% if data.sections.history_of_present_illness %}
+    <h4>History of Present Illness</h4>
+    <p>{{ data.sections.history_of_present_illness }}</p>
+    {% endif %}
+
+    <!-- Past Medical History -->
+    {% if data.sections.past_medical_history %}
+    <h4>Past Medical History</h4>
+    <p>{{ data.sections.past_medical_history }}</p>
+    {% endif %}
+
+    <!-- Previous Accidents/Trauma -->
+    {% if data.sections.previous_accidents_trauma %}
+    <h4>Previous Accidents/Trauma</h4>
+    <p>{{ data.sections.previous_accidents_trauma }}</p>
+    {% endif %}
+
+    <!-- Current Medications -->
+    {% if data.sections.current_medications %}
+    <h4>Current Medications</h4>
+    <p>{{ data.sections.current_medications }}</p>
+    {% endif %}
+
+    <!-- Past Surgical History -->
+    {% if data.sections.past_surgical_history %}
+    <h4>Past Surgical History</h4>
+    <p>{{ data.sections.past_surgical_history }}</p>
+    {% endif %}
+
+    <!-- Family History -->
+    {% if data.sections.family_history %}
+    <h4>Family History</h4>
+    <p>{{ data.sections.family_history }}</p>
+    {% endif %}
+
+    <!-- Allergies -->
+    {% if data.sections.allergies %}
+    <h4>Allergies</h4>
+    <p>{{ data.sections.allergies }}</p>
+    {% endif %}
+
+    <!-- Social History -->
+    {% if data.sections.social_history %}
+    <h4>Social History</h4>
+    <p>{{ data.sections.social_history }}</p>
+    {% endif %}
+
+    <!-- Review of Other Systems -->
+    {% if data.sections.review_of_other_systems %}
+    <h4>Review of Other Systems</h4>
+    <p>{{ data.sections.review_of_other_systems }}</p>
+    {% endif %}
+
+    <hr>
+
+    <!-- Objective Section -->
+    <h3>Objective</h3>
+
+    <!-- Duties Under Duress -->
+    {% if data.sections.duties_under_duress %}
+    <h4>Duties Under Duress</h4>
+    <p>{{ data.sections.duties_under_duress }}</p>
+    {% endif %}
+
+    <!-- Vitals -->
+    {% if data.sections.vitals %}
+    <h4>Vitals</h4>
+    <p>{{ data.sections.vitals }}</p>
+    {% endif %}
+
+    <!-- Physical Examination -->
+    {% if data.sections.physical_examination %}
+    <h4>Physical Examination</h4>
+    <p>{{ data.sections.physical_examination }}</p>
+    {% endif %}
+
+    <!-- Cervico-Thoracic -->
+    {% if data.sections.cervico_thoracic %}
+    <h4>Cervico-Thoracic</h4>
+    <p>{{ data.sections.cervico_thoracic }}</p>
+    {% endif %}
+
+    <!-- Lumbopelvic -->
+    {% if data.sections.lumbopelvic %}
+    <h4>Lumbopelvic</h4>
+    <p>{{ data.sections.lumbopelvic }}</p>
+    {% endif %}
+
+    <!-- Extremity -->
+    {% if data.sections.extremity %}
+    <h4>Extremity</h4>
+    <p>{{ data.sections.extremity }}</p>
+    {% endif %}
+
+    <!-- Motor Examination -->
+    {% if data.motor_exam %}
+    <h4>Motor Examination</h4>
+    
+    {% if data.motor_exam.upper_extremity %}
+    <h5>Upper Extremity Motor Strength</h5>
+    <table class="motor-table">
+        <thead>
+            <tr>
+                <th>MUSCLE GROUP</th>
+                <th>RIGHT</th>
+                <th>LEFT</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for muscle in data.motor_exam.upper_extremity %}
+            <tr>
+                <td class="muscle-name">{{ muscle.muscle }}</td>
+                <td class="strength-value">{{ muscle.right }}</td>
+                <td class="strength-value">{{ muscle.left }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    {% if data.motor_exam.lower_extremity %}
+    <h5>Lower Extremity Motor Strength</h5>
+    <table class="motor-table">
+        <thead>
+            <tr>
+                <th>MUSCLE GROUP</th>
+                <th>RIGHT</th>
+                <th>LEFT</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for muscle in data.motor_exam.lower_extremity %}
+            <tr>
+                <td class="muscle-name">{{ muscle.muscle }}</td>
+                <td class="strength-value">{{ muscle.right }}</td>
+                <td class="strength-value">{{ muscle.left }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+    {% endif %}
+
+    <!-- Reflex Examination -->
+    {% if data.reflexes %}
+    <h4>Reflex Examination</h4>
+    
+    {% if data.reflexes.deep_tendon %}
+    <h5>Deep Tendon Reflexes</h5>
+    <table class="reflex-table">
+        <thead>
+            <tr>
+                <th>REFLEX</th>
+                <th>RIGHT</th>
+                <th>LEFT</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for reflex in data.reflexes.deep_tendon %}
+            <tr>
+                <td class="reflex-name">{{ reflex.reflex }}</td>
+                <td class="reflex-value">{{ reflex.right }}</td>
+                <td class="reflex-value">{{ reflex.left }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    {% if data.reflexes.pathological %}
+    <h5>Pathological Reflexes</h5>
+    <table class="reflex-table">
+        <thead>
+            <tr>
+                <th>REFLEX</th>
+                <th>RIGHT</th>
+                <th>LEFT</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for reflex in data.reflexes.pathological %}
+            <tr>
+                <td class="reflex-name">{{ reflex.reflex }}</td>
+                <td class="reflex-value">{{ reflex.right }}</td>
+                <td class="reflex-value">{{ reflex.left }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+    {% endif %}
+
+    <!-- Sensory Examination -->
+    {% if data.sections.sensory_examination %}
+    <h4>Sensory Examination</h4>
+    <p>{{ data.sections.sensory_examination }}</p>
+    {% endif %}
+
+    <hr>
+
+    <!-- Assessment & Plan -->
+    <h3>Assessment & Plan</h3>
+    
+    {% if data.sections.assessment_diagnosis %}
+    <h4>Assessment & Diagnosis</h4>
+    <p class="diagnosis-list">{{ data.sections.assessment_diagnosis | replace('- ', '• ') | replace('\n', '<br>• ') | replace('<br>• <br>', '<br>') | safe }}</p>
+    {% endif %}
+    
+    {% if data.sections.plan %}
+    <h4>Plan</h4>
+    <p>{{ data.sections.plan }}</p>
+    {% endif %}
+
+    <!-- Signature Section -->
+    {% if data.provider_info %}
+    <div class="signature-section">
+        <div class="signature-line"></div>
+        <p class="provider-name">{{ data.provider_info.name }}</p>
+        <p class="provider-credentials">{{ data.provider_info.credentials }}</p>
+        <p class="date-line">Date: _____________________</p>
+    </div>
+    {% endif %}
+
+</body>
+</html>
