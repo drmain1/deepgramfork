@@ -92,17 +92,20 @@
     <h4>Visual Progress Dashboard</h4>
     {% set outcome_text = data.sections.outcome_assessments %}
     
+    <!-- Try to parse the assessment data -->
+    {% set ns = namespace(parsed_successfully=false) %}
+    
     <!-- Parse format: "Neck Disability Index: Previously 31/50, currently 25/50" -->
     {% if ":" in outcome_text %}
-        {% set parts = outcome_text.split(':') %}
+        {% set parts = outcome_text.split(':', 1) %}
         {% set assessment_name = parts[0].strip() %}
         {% set values_part = parts[1].strip() if parts|length > 1 else "" %}
         
         {% set initial_score = "" %}
         {% set current_score = "" %}
-        {% set initial_percentage = "" %}
-        {% set current_percentage = "" %}
-        {% set improvement_percentage = "" %}
+        {% set initial_percentage = 0 %}
+        {% set current_percentage = 0 %}
+        {% set improvement_percentage = 0 %}
         
         <!-- Parse "Previously 31/50, currently 25/50" or "Previously 31/50 | Current: 25/50" formats -->
         {% if "Previously" in values_part and ("currently" in values_part or "Current:" in values_part) %}
@@ -119,11 +122,13 @@
                 <!-- Extract just the fraction part before any parentheses -->
                 {% set fraction_match = prev_part.split('(')[0].strip() %}
                 {% set prev_nums = fraction_match.split('/') %}
-                {% if prev_nums|length >= 2 %}
-                    {% set initial_numerator = prev_nums[0].strip() %}
-                    {% set initial_denominator = prev_nums[1].strip() %}
-                    {% set initial_score = initial_numerator + "/" + initial_denominator %}
-                    {% set initial_percentage = ((initial_numerator|int / initial_denominator|int) * 100)|round|int %}
+                {% if prev_nums|length >= 2 and prev_nums[0].strip().isdigit() and prev_nums[1].strip().isdigit() %}
+                    {% set initial_numerator = prev_nums[0].strip()|int %}
+                    {% set initial_denominator = prev_nums[1].strip()|int %}
+                    {% if initial_denominator > 0 %}
+                        {% set initial_score = initial_numerator|string + "/" + initial_denominator|string %}
+                        {% set initial_percentage = ((initial_numerator / initial_denominator) * 100)|round|int %}
+                    {% endif %}
                 {% endif %}
             {% endif %}
             
@@ -131,46 +136,58 @@
                 <!-- Extract just the fraction part before any parentheses -->
                 {% set fraction_match = curr_part.split('(')[0].strip() %}
                 {% set curr_nums = fraction_match.split('/') %}
-                {% if curr_nums|length >= 2 %}
-                    {% set current_numerator = curr_nums[0].strip() %}
-                    {% set current_denominator = curr_nums[1].strip() %}
-                    {% set current_score = current_numerator + "/" + current_denominator %}
-                    {% set current_percentage = ((current_numerator|int / current_denominator|int) * 100)|round|int %}
+                {% if curr_nums|length >= 2 and curr_nums[0].strip().isdigit() and curr_nums[1].strip().isdigit() %}
+                    {% set current_numerator = curr_nums[0].strip()|int %}
+                    {% set current_denominator = curr_nums[1].strip()|int %}
+                    {% if current_denominator > 0 %}
+                        {% set current_score = current_numerator|string + "/" + current_denominator|string %}
+                        {% set current_percentage = ((current_numerator / current_denominator) * 100)|round|int %}
+                    {% endif %}
                 {% endif %}
             {% endif %}
             
             <!-- Calculate improvement percentage -->
-            {% if initial_percentage and current_percentage %}
+            {% if initial_percentage > 0 and current_percentage >= 0 %}
                 {% set improvement_percentage = ((initial_percentage - current_percentage) / initial_percentage * 100)|round|int %}
             {% endif %}
         {% endif %}
         
         <div class="dashboard-item">
             <strong>{{ assessment_name }}: 
-            {% if improvement_percentage and improvement_percentage > 0 %}
+            {% if improvement_percentage > 0 %}
             <span class="improvement-text">{{ improvement_percentage }}% Improvement</span>
             {% endif %}
             </strong>
             
-            {% if initial_score %}
+            {% if initial_score and initial_percentage >= 0 %}
             <p style="margin: 2px 0; font-size: 9pt;">Initial: {{ initial_score }} ({{ initial_percentage }}% Disabled)</p>
-            <div class="progress-bar-container">
-                <div class="progress-bar" style="width: {{ initial_percentage }}%;"></div>
+            <div class="progress-bar-container" style="background-color: #e9ecef; border-radius: 4pt; height: 18pt; margin-top: 4pt; margin-bottom: 8pt;">
+                <div class="progress-bar" style="background-color: #ced4da; height: 100%; border-radius: 4pt; width: {{ initial_percentage }}%;"></div>
             </div>
             {% endif %}
             
-            {% if current_score %}
+            {% if current_score and current_percentage >= 0 %}
             <p style="margin: 2px 0; font-size: 9pt;">Current: {{ current_score }} ({{ current_percentage }}% Disabled)</p>
-            <div class="progress-bar-container">
-                <div class="progress-bar current" style="width: {{ current_percentage }}%;"></div>
+            <div class="progress-bar-container" style="background-color: #e9ecef; border-radius: 4pt; height: 18pt; margin-top: 4pt; margin-bottom: 8pt;">
+                <div class="progress-bar current" style="background-color: #28a745; height: 100%; border-radius: 4pt; width: {{ current_percentage }}%;"></div>
             </div>
             {% endif %}
-        </div>
-    {% else %}
-        <div class="dashboard-item">
-            <p>{{ outcome_text }}</p>
+            
+            <!-- Mark as successfully parsed if we have at least one score -->
+            {% if initial_score or current_score %}
+                {% set ns.parsed_successfully = true %}
+            {% endif %}
         </div>
     {% endif %}
+    
+    <!-- If parsing failed, show the raw text in a styled format -->
+    {% if not ns.parsed_successfully %}
+        <div class="dashboard-item">
+            <p><strong>{{ outcome_text.split(':')[0].strip() if ':' in outcome_text else 'Assessment' }}:</strong></p>
+            <p style="margin-left: 20px;">{{ outcome_text.split(':', 1)[1].strip() if ':' in outcome_text else outcome_text }}</p>
+        </div>
+    {% endif %}
+    
     {% endif %}
 
     <!-- Physical Examination Highlights -->
