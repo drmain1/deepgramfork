@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Box, FormControl, FormControlLabel, Radio, RadioGroup, TextField, Button, Card, CardContent, Switch, ToggleButton, ToggleButtonGroup, Typography, Modal, IconButton, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility'; 
-import { useTemplate } from '../contexts/TemplateContext';
+import { useUserSettings } from '../hooks/useUserSettings';
 import { generateLLMInstructions } from '../utils/generateLLMInstructions';
 import { getNoteSample } from '../utils/getNoteSample'; 
 
@@ -25,7 +25,9 @@ function NoteStructureTab() {
   const [customInstructions, setCustomInstructions] = useState('');
   const [showDiagnoses, setShowDiagnoses] = useState(false);
   const [outputFormat, setOutputFormat] = useState('paragraph');
-  const { macroPhrases, customVocabulary } = useTemplate();
+  const { userSettings } = useUserSettings();
+  const macroPhrases = userSettings.macroPhrases || [];
+  const customVocabulary = userSettings.customVocabulary || [];
 
   const [sampleModalOpen, setSampleModalOpen] = useState(false);
   const [currentSampleText, setCurrentSampleText] = useState('');

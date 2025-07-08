@@ -27,23 +27,47 @@ const useUserSettingsStore = create(
     setError: (error) => set({ error }),
     
     // Initialize store with user settings from API
-    initializeSettings: (settings) => set({
-      doctorInfo: {
+    initializeSettings: (settings) => {
+      console.log('userSettingsStore: initializeSettings called with:', settings);
+      const currentState = get();
+      
+      // Only update if settings actually changed to prevent unnecessary re-renders
+      const newDoctorInfo = {
         doctorName: settings.doctorName || '',
         doctorSignature: settings.doctorSignature || null,
         clinicLogo: settings.clinicLogo || null,
         includeLogoOnPdf: settings.includeLogoOnPdf || false,
         medicalSpecialty: settings.medicalSpecialty || '',
-      },
-      officeInformation: settings.officeInformation || [],
-      transcriptionProfiles: settings.transcriptionProfiles || [],
-      macroPhrases: settings.macroPhrases || [],
-      customVocabulary: settings.customVocabulary || [],
-      customBillingRules: settings.customBillingRules || '',
-      cptFees: settings.cptFees || {},
-      loading: false,
-      error: null,
-    }),
+      };
+      
+      const hasChanged = (
+        JSON.stringify(currentState.doctorInfo) !== JSON.stringify(newDoctorInfo) ||
+        JSON.stringify(currentState.officeInformation) !== JSON.stringify(settings.officeInformation || []) ||
+        JSON.stringify(currentState.transcriptionProfiles) !== JSON.stringify(settings.transcriptionProfiles || []) ||
+        JSON.stringify(currentState.macroPhrases) !== JSON.stringify(settings.macroPhrases || []) ||
+        JSON.stringify(currentState.customVocabulary) !== JSON.stringify(settings.customVocabulary || []) ||
+        currentState.customBillingRules !== (settings.customBillingRules || '') ||
+        JSON.stringify(currentState.cptFees) !== JSON.stringify(settings.cptFees || {})
+      );
+      
+      if (!hasChanged && !currentState.loading) {
+        console.log('userSettingsStore: No changes detected, skipping update');
+        return;
+      }
+      
+      console.log('userSettingsStore: Settings changed, updating store');
+      set({
+        doctorInfo: newDoctorInfo,
+        officeInformation: settings.officeInformation || [],
+        transcriptionProfiles: settings.transcriptionProfiles || [],
+        macroPhrases: settings.macroPhrases || [],
+        customVocabulary: settings.customVocabulary || [],
+        customBillingRules: settings.customBillingRules || '',
+        cptFees: settings.cptFees || {},
+        loading: false,
+        error: null,
+      });
+    },
     
     // Individual update methods
     updateDoctorInfo: (info) => set((state) => ({

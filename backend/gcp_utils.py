@@ -96,7 +96,7 @@ def polish_transcript_with_gemini(
         model_used = model_name
         
         # Try requested model first, then fallback to available models
-        model_options = [model_name, "publishers/google/models/gemini-2.5-flash", "gemini-2.0-flash-exp"]
+        model_options = [model_name, "gemini-2.5-flash-lite-preview-06-17", "publishers/google/models/gemini-2.5-flash", "gemini-2.0-flash-exp"]
         
         for try_model in model_options:
             try:
@@ -112,15 +112,27 @@ def polish_transcript_with_gemini(
             raise Exception("No compatible Gemini model found")
         
         # Configure generation parameters for medical accuracy
-        generation_config = GenerationConfig(
-            temperature=0.4,  # Low temperature for consistency
-            top_p=0.95,
-            top_k=40,
-            max_output_tokens=12000,
-        )
+        if encounter_type == "findings_extraction":
+            # Optimized parameters for fast extraction
+            generation_config = GenerationConfig(
+                temperature=0.2,  # Very low temperature for consistent extraction
+                top_p=0.9,
+                top_k=20,
+                max_output_tokens=4000,  # Smaller output for findings only
+            )
+        else:
+            generation_config = GenerationConfig(
+                temperature=0.4,  # Low temperature for consistency
+                top_p=0.95,
+                top_k=40,
+                max_output_tokens=12000,
+            )
         
         # Generate response
-        logger.info(f"Sending transcript to Gemini Pro for polishing (model: {model_name})")
+        if encounter_type == "findings_extraction":
+            logger.info(f"Extracting findings using lightweight model: {model_used}")
+        else:
+            logger.info(f"Sending transcript to Gemini for polishing (model: {model_used})")
         response = model.generate_content(
             full_prompt,
             generation_config=generation_config,
@@ -135,16 +147,23 @@ def polish_transcript_with_gemini(
         # Extract the polished text
         polished_text = response.text
         
-        # Clean up the response in case it's wrapped in markdown or quotes
-        # Remove markdown code blocks if present
-        if polished_text.strip().startswith('```json'):
-            polished_text = polished_text.strip()[7:]  # Remove ```json
-            if polished_text.endswith('```'):
-                polished_text = polished_text[:-3]  # Remove closing ```
-        elif polished_text.strip().startswith('```'):
-            polished_text = polished_text.strip()[3:]  # Remove ```
-            if polished_text.endswith('```'):
-                polished_text = polished_text[:-3]  # Remove closing ```
+        # For findings extraction, keep the full response with code blocks
+        if encounter_type == "findings_extraction":
+            logger.info("Findings extraction mode - keeping full response with code blocks")
+            logger.info(f"Raw LLM response length: {len(polished_text)}")
+            logger.info(f"First 500 chars of LLM response: {polished_text[:500]}...")
+            # Don't strip anything for findings extraction
+        else:
+            # Clean up the response in case it's wrapped in markdown or quotes
+            # Remove markdown code blocks if present
+            if polished_text.strip().startswith('```json'):
+                polished_text = polished_text.strip()[7:]  # Remove ```json
+                if polished_text.endswith('```'):
+                    polished_text = polished_text[:-3]  # Remove closing ```
+            elif polished_text.strip().startswith('```'):
+                polished_text = polished_text.strip()[3:]  # Remove ```
+                if polished_text.endswith('```'):
+                    polished_text = polished_text[:-3]  # Remove closing ```
         
         # Remove any leading/trailing whitespace
         polished_text = polished_text.strip()

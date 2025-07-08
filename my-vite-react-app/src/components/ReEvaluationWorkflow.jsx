@@ -1,12 +1,29 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 
 function ReEvaluationWorkflow({ 
   previousFindings
 }) {
+  const logCountRef = useRef(0);
+  
+  // Debug: Log the findings object with rate limiting
+  useEffect(() => {
+    if (logCountRef.current < 5) {
+      console.log('ReEvaluationWorkflow received previousFindings:', previousFindings);
+      logCountRef.current++;
+    }
+  }, [previousFindings]);
   
   // Only show when findings are loaded
   if (!previousFindings) {
-    return null;
+    return (
+      <div className="mt-6">
+        <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+          <p className="text-sm text-yellow-800">
+            Debug: No previousFindings received by ReEvaluationWorkflow
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -24,6 +41,19 @@ function ReEvaluationWorkflow({
               </p>
             </div>
           </div>
+        </div>
+        
+        {/* Debug info */}
+        <div className="mt-3 p-2 bg-white rounded border">
+          <p className="text-xs font-mono text-gray-600">
+            Debug: Findings keys: {Object.keys(previousFindings || {}).join(', ')}
+          </p>
+          <p className="text-xs font-mono text-gray-600">
+            Has _markdown: {!!previousFindings?._markdown}
+          </p>
+          <p className="text-xs font-mono text-gray-600">
+            _markdown type: {typeof previousFindings?._markdown}
+          </p>
         </div>
       </div>
     </div>

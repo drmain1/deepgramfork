@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import PatientSelector from './PatientSelector';
 import ReEvaluationIndicator from './ReEvaluationIndicator';
 import MicrophoneMonitor from './MicrophoneMonitor';
@@ -10,6 +10,9 @@ import { useAuth } from '../contexts/FirebaseAuthContext';
 import useTranscriptionSessionStore from '../stores/transcriptionSessionStore';
 import { useMicrophoneMonitor } from '../hooks/useMicrophoneMonitor';
 import { formatDateForDisplay } from '../utils/dateUtils';
+
+// Memoize ReEvaluationWorkflow to prevent unnecessary re-renders
+const MemoizedReEvaluationWorkflow = memo(ReEvaluationWorkflow);
 
 function SetupView({ userSettings, settingsLoading, error, onStartEncounter }) {
   // Get all state and actions from Zustand store
@@ -55,11 +58,14 @@ function SetupView({ userSettings, settingsLoading, error, onStartEncounter }) {
   const { micLevel, micStatus, retryMicrophoneAccess } = useMicrophoneMonitor();
   
   // Initialize settings when user settings are loaded
+  const [settingsInitialized, setSettingsInitialized] = useState(false);
+  
   useEffect(() => {
-    if (!settingsLoading && userSettings) {
+    if (!settingsLoading && userSettings && !settingsInitialized) {
       initializeSettings(userSettings);
+      setSettingsInitialized(true);
     }
-  }, [userSettings, settingsLoading, initializeSettings]);
+  }, [userSettings, settingsLoading, initializeSettings, settingsInitialized]);
 
 
   const handleLoadFindings = async () => {
@@ -77,16 +83,20 @@ function SetupView({ userSettings, settingsLoading, error, onStartEncounter }) {
       
       if (response.ok) {
         const evaluation = await response.json();
+        console.log('Initial evaluation response:', evaluation);
+        console.log('Positive findings:', evaluation.positive_findings);
+        console.log('Positive findings markdown:', evaluation.positive_findings_markdown);
         setInitialEvaluationId(evaluation.id);
         
         // Extract findings if not already done
-        if (evaluation.positive_findings) {
+        if (evaluation.positive_findings && Object.keys(evaluation.positive_findings).length > 0) {
           // Check if we need to re-extract due to old format
           const needsReExtraction = evaluation.positive_findings.raw_findings && 
                                   !evaluation.positive_findings.pain_findings &&
                                   !evaluation.positive_findings_markdown;
           
           if (needsReExtraction) {
+            console.log('Old format detected, triggering re-extraction');
             // Trigger re-extraction for old format
             const extractResponse = await fetch(`${API_BASE_URL}/api/v1/transcripts/${evaluation.id}/extract-findings`, {
               method: 'POST',
@@ -97,23 +107,38 @@ function SetupView({ userSettings, settingsLoading, error, onStartEncounter }) {
             
             if (extractResponse.ok) {
               const extractResult = await extractResponse.json();
+              console.log('Extract response:', extractResult);
               if (extractResult.success && extractResult.findings) {
+                // Check if markdown has actual content
+                const hasValidMarkdown = extractResult.findings_markdown && extractResult.findings_markdown.trim().length > 0;
                 setPreviousFindings({
                   ...extractResult.findings,
                   date: evaluation.date || evaluation.created_at,
-                  _markdown: extractResult.findings_markdown || null
+                  _markdown: hasValidMarkdown ? extractResult.findings_markdown : null
                 });
               }
             }
           } else {
-            setPreviousFindings({
+            console.log('Setting previous findings from evaluation:', evaluation.positive_findings);
+            console.log('Findings markdown available:', !!evaluation.positive_findings_markdown);
+            console.log('Findings markdown content:', evaluation.positive_findings_markdown);
+            
+            // Check if markdown is empty or just whitespace
+            const markdownContent = evaluation.positive_findings_markdown;
+            const hasValidMarkdown = markdownContent && markdownContent.trim().length > 0;
+            
+            const findingsToSet = {
               ...evaluation.positive_findings,
               date: evaluation.date || evaluation.created_at,
-              // Include markdown version if available
-              _markdown: evaluation.positive_findings_markdown || null
-            });
+              // Only include markdown if it has actual content
+              _markdown: hasValidMarkdown ? markdownContent : null
+            };
+            console.log('Final findings object being set:', findingsToSet);
+            console.log('Has valid markdown:', hasValidMarkdown);
+            setPreviousFindings(findingsToSet);
           }
         } else {
+          console.log('No positive_findings found, triggering extraction');
           // Trigger extraction of findings
           const extractResponse = await fetch(`${API_BASE_URL}/api/v1/transcripts/${evaluation.id}/extract-findings`, {
             method: 'POST',
@@ -126,11 +151,13 @@ function SetupView({ userSettings, settingsLoading, error, onStartEncounter }) {
             const extractResult = await extractResponse.json();
             
             if (extractResult.success && extractResult.findings) {
+              // Check if markdown has actual content
+              const hasValidMarkdown = extractResult.findings_markdown && extractResult.findings_markdown.trim().length > 0;
               setPreviousFindings({
                 ...extractResult.findings,
                 date: evaluation.date || evaluation.created_at,
-                // Include markdown version if available
-                _markdown: extractResult.findings_markdown || null
+                // Include markdown version if available and not empty
+                _markdown: hasValidMarkdown ? extractResult.findings_markdown : null
               });
             } else {
               alert('Failed to extract findings from the previous evaluation');
@@ -140,9 +167,13 @@ function SetupView({ userSettings, settingsLoading, error, onStartEncounter }) {
           }
         }
       } else if (response.status === 404) {
-        alert('No initial evaluation found for this patient');
+        console.error('404: No initial evaluation found');
+        alert('No initial evaluation found for this patient. Please ensure this patient has a completed initial evaluation before attempting re-evaluation.');
+      } else {
+        console.error('Failed to load initial evaluation:', response.status, response.statusText);
       }
     } catch (error) {
+      console.error('Error loading previous findings:', error);
       alert('Failed to load previous findings');
     } finally {
       setLoadingFindings(false);
@@ -499,7 +530,7 @@ function SetupView({ userSettings, settingsLoading, error, onStartEncounter }) {
 
                   {/* Re-evaluation Workflow - Show when re-evaluation is selected */}
                   {selectedPatient && evaluationType === 're_evaluation' && (
-                    <ReEvaluationWorkflow
+                    <MemoizedReEvaluationWorkflow
                       previousFindings={previousFindings}
                     />
                   )}

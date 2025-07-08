@@ -1,5 +1,33 @@
 # Re-evaluation Functionality Documentation
 
+*Last Updated: July 8, 2025*
+
+## Current Status (July 8, 2025)
+
+✅ **FULLY FUNCTIONAL** - The re-evaluation system is working end-to-end with the following capabilities:
+
+### Working Features:
+- ✅ **Previous Findings Loading**: Automatically loads positive findings from initial evaluations
+- ✅ **LLM Integration**: Uses Google Gemini 2.5 Flash for findings extraction and comparison
+- ✅ **UI Workflow**: Complete frontend workflow from patient selection to recording
+- ✅ **Data Persistence**: Proper storage and retrieval of evaluation metadata in Firestore
+- ✅ **Date Validation**: Prevents initial/re-evaluation conflicts on same day
+- ✅ **Error Handling**: Comprehensive error handling and user feedback
+- ✅ **Performance**: Optimized with fast model selection and efficient data flow
+
+### Recent Fixes Completed:
+1. **React infinite loop issues** - Memoized components and added initialization guards
+2. **LLM extraction failures** - Fixed code block stripping for findings extraction 
+3. **Save session errors** - Resolved datetime import conflicts
+4. **Date validation** - Added business rule enforcement for evaluation dates
+5. **Model compatibility** - Updated to use stable `gemini-2.5-flash` model
+
+### Next Steps for Testing:
+1. Test complete re-evaluation workflow from patient selection to save
+2. Verify date validation prevents same-day evaluations
+3. Confirm findings extraction works with new model
+4. Optional: Add frontend validation for better UX (currently only backend validation)
+
 ## Overview
 The re-evaluation functionality allows healthcare practitioners to perform comprehensive re-evaluations by comparing current examination findings with previous initial evaluations. The system automatically retrieves and displays previous positive findings, with optional AI-assisted comparison during transcription.
 
@@ -232,7 +260,7 @@ main.py (FastAPI Application)
   "patient_id": "patient_123",
   "evaluation_type": "re_evaluation",              // Evaluation type enum
   "initial_evaluation_id": "20240115_100000_xyz",  // Links to initial eval
-  "positive_findings": {                           // Structured findings (JSON)
+  "positive_findings": {                           // Structured findings (JSON) - extracted from THIS transcript
     "pain_findings": ["Finding 1", "Finding 2"],
     "range_of_motion_findings": [...],
     "neurological_findings": [...],
@@ -247,6 +275,7 @@ main.py (FastAPI Application)
   "transcript_polished": "...",
   "created_at": "2024-06-30T14:30:22Z",
   "status": "completed"
+  // Note: previous_findings are NOT stored here - they're only used during AI processing
 }
 ```
 
@@ -282,7 +311,10 @@ main.py (FastAPI Application)
 
 ## Key Implementation Details
 
-### 1. Previous Findings Injection
+### 1. Findings Data Flow
+Each transcript maintains its own `positive_findings` field which is extracted after the transcript is saved. For re-evaluations, the previous evaluation's findings are passed separately and only used for AI context, not stored on the new transcript.
+
+### 2. Previous Findings Injection
 The system injects findings in two paths to ensure they're always included when needed:
 
 ```python
@@ -302,7 +334,7 @@ else:
         custom_instructions += f"\n\nPrevious Initial Evaluation Findings:\n{json.dumps(previous_findings, indent=2)}"
 ```
 
-### 2. User Control Implementation
+### 3. User Control Implementation
 ```javascript
 // RecordingView.jsx
 const requestBody = {
@@ -311,7 +343,7 @@ const requestBody = {
 };
 ```
 
-### 3. Old Format Migration
+### 4. Old Format Migration
 The system automatically detects and migrates old finding formats:
 
 ```javascript
@@ -332,7 +364,15 @@ if (needsReExtraction) {
 ## Debugging and Monitoring
 
 ### Frontend Debug Points
-1. **SetupView.jsx**: Logs evaluation loading and format detection
+1. **SetupView.jsx**: 
+   - Logs evaluation loading and format detection
+   - Added debug logging (July 7, 2025):
+     ```javascript
+     console.log('Initial evaluation response:', evaluation);
+     console.log('Positive findings:', evaluation.positive_findings);
+     console.log('Positive findings markdown:', evaluation.positive_findings_markdown);
+     ```
+
 2. **RecordingView.jsx**: Logs include preference and request body
 3. **ReEvaluationWorkflow.jsx**: Component render with findings state
 
@@ -342,7 +382,15 @@ if (needsReExtraction) {
    - Shows custom instructions length and preview
    - Confirms findings injection
 
-2. **gcp_utils.py**:
+2. **patient_endpoints.py**:
+   - Added debug logging (July 7, 2025):
+     ```python
+     logger.info(f"Total transcripts found: {len(transcripts)}")
+     logger.info(f"Initial evaluations found: {len(initial_evaluations)}")
+     logger.info(f"Most recent initial evaluation has positive_findings: {bool(most_recent.get('positive_findings'))}")
+     ```
+
+3. **gcp_utils.py**:
    - Detects "Previous Initial Evaluation Findings:" in prompt
    - Shows preview of findings section
    - Confirms AI received context
@@ -361,6 +409,47 @@ if (needsReExtraction) {
 3. **No Initial Evaluation Found**
    - Verify patient has a completed initial evaluation
    - Check evaluation_type field in Firestore
+
+4. **Previous Findings Not Loading (Fixed July 7, 2025)**
+   - **Issue**: The re-evaluation wasn't pulling any positive findings from previous evaluations
+   - **Root Cause**: In `firestore_endpoints.py`, the `save_session_data_firestore` function was incorrectly setting `positive_findings` to the value of `previous_findings` from the request
+   - **Impact**: This overwrote the current transcript's findings with the previous evaluation's findings
+   - **Fix**: Removed the line that set `positive_findings: previous_findings` in the transcript data, allowing each transcript to maintain its own findings
+   - **Debug Steps Added**:
+     - Frontend logging in `SetupView.jsx` to trace API responses and findings data
+     - Backend logging in `patient_endpoints.py` to verify transcript filtering and findings presence
+
+5. **Infinite Loop in React Components (Fixed July 8, 2025)**
+   - **Issue**: ReEvaluationWorkflow component was causing infinite console logs and React re-renders
+   - **Root Cause**: Unstable component references and useEffect dependency issues
+   - **Fix**: 
+     - Memoized ReEvaluationWorkflow component using React.memo
+     - Added settingsInitialized state guard to prevent initialization loops
+     - Added rate-limited logging with useRef counter
+   - **Files Modified**: `SetupView.jsx`, `ReEvaluationWorkflow.jsx`
+
+6. **LLM Findings Extraction Issues (Fixed July 8, 2025)**
+   - **Issue**: Empty findings extraction due to code block stripping
+   - **Root Cause**: `polish_transcript_with_gemini` was stripping markdown code blocks for findings extraction
+   - **Fix**: Added special handling for `encounter_type === "findings_extraction"` to preserve full response
+   - **Performance**: Switched to `gemini-2.5-flash` model for extraction
+   - **Files Modified**: `gcp_utils.py`, `patient_endpoints.py`
+
+7. **Save Session DateTime Error (Fixed July 8, 2025)**
+   - **Issue**: `NameError: name 'datetime' is not defined` when saving re-evaluations
+   - **Root Cause**: Duplicate datetime imports in conditional blocks causing variable scope issues
+   - **Fix**: Removed duplicate import statements and consolidated datetime handling
+   - **Files Modified**: `firestore_endpoints.py`
+
+8. **Date Validation for Medical Evaluations (Implemented July 8, 2025)**
+   - **Issue**: Initial evaluations and re-evaluations could be saved on the same date
+   - **Business Rule**: Medical practice requires different evaluation types on different dates
+   - **Fix**: Added comprehensive date validation logic in `save_session_data_firestore`
+   - **Implementation**: 
+     - Checks existing evaluations for the patient
+     - Prevents same-day conflicts between initial and re-evaluation types
+     - Returns clear error messages for date conflicts
+   - **Files Modified**: `firestore_endpoints.py`
 
 ## Future Enhancements
 

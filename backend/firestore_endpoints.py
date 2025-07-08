@@ -380,6 +380,50 @@ async def save_session_data_firestore(
             elif 're-eval' in encounter_type_lower or 'reeval' in encounter_type_lower:
                 evaluation_type = 're_evaluation'
         
+        # Validate that initial and re-evaluation are not on the same date
+        if evaluation_type in ['initial', 're_evaluation'] and patient_id:
+            try:
+                # Get the service date for this session
+                current_service_date = original_date_of_service or created_at.date()
+                if isinstance(current_service_date, str):
+                    current_service_date = datetime.strptime(current_service_date, "%Y-%m-%d").date()
+                elif isinstance(current_service_date, datetime):
+                    current_service_date = current_service_date.date()
+                
+                # Get all existing evaluations for this patient
+                existing_evaluations = await firestore_client.get_patient_transcripts(patient_id, current_user_id)
+                
+                for transcript in existing_evaluations:
+                    existing_eval_type = transcript.get('evaluation_type')
+                    if existing_eval_type in ['initial', 're_evaluation'] and existing_eval_type != evaluation_type:
+                        # Get the date of the existing evaluation
+                        existing_date = None
+                        if transcript.get('date_of_service'):
+                            existing_date = datetime.strptime(transcript['date_of_service'], "%Y-%m-%d").date()
+                        elif transcript.get('created_at'):
+                            existing_created_at = transcript['created_at']
+                            if isinstance(existing_created_at, str):
+                                existing_date = datetime.fromisoformat(existing_created_at.replace('Z', '+00:00')).date()
+                            else:
+                                existing_date = existing_created_at.date()
+                        
+                        # Check for same date conflict
+                        if existing_date and existing_date == current_service_date:
+                            conflict_type = "initial evaluation" if existing_eval_type == 'initial' else "re-evaluation"
+                            current_type = "initial evaluation" if evaluation_type == 'initial' else "re-evaluation"
+                            raise HTTPException(
+                                status_code=400,
+                                detail=f"Cannot save {current_type} on {current_service_date}. A {conflict_type} already exists for this patient on the same date. Initial evaluations and re-evaluations must be on different dates."
+                            )
+                
+                logger.info(f"Date validation passed: {evaluation_type} on {current_service_date}")
+                
+            except HTTPException:
+                raise  # Re-raise validation errors
+            except Exception as e:
+                logger.warning(f"Error during date validation: {e}")
+                # Continue with save if validation fails due to technical issues
+        
         transcript_data = {
             'user_id': user_id,
             'session_id': session_id,
@@ -398,8 +442,8 @@ async def save_session_data_firestore(
             'date_of_service': original_date_of_service,  # Store the original service date if provided
             'is_dictation': bool(original_date_of_service),  # Flag to identify dictation mode transcripts
             'evaluation_type': evaluation_type,
-            'initial_evaluation_id': initial_evaluation_id,
-            'positive_findings': previous_findings
+            'initial_evaluation_id': initial_evaluation_id
+            # Note: positive_findings will be extracted later, not copied from previous evaluation
         }
         
         logger.info(f"[DICTATION DEBUG] Saving transcript with created_at: {created_at.isoformat()}, is_dictation: {bool(original_date_of_service)}")
@@ -533,7 +577,6 @@ async def save_session_data_firestore(
                     if original_date_of_service:
                         custom_instructions += f"\nDate of Service: {original_date_of_service}"
                     else:
-                        from datetime import datetime
                         current_date = datetime.now().strftime('%m/%d/%Y')
                         custom_instructions += f"\nDate of Service: {current_date}"
                     custom_instructions += f"\nTemplate: {llm_template}"
@@ -553,7 +596,6 @@ async def save_session_data_firestore(
                         custom_instructions += f"\nDate of Service: {original_date_of_service}"
                         logger.info(f"Added date of service to instructions: {original_date_of_service}")
                     else:
-                        from datetime import datetime
                         current_date = datetime.now().strftime('%m/%d/%Y')
                         custom_instructions += f"\nDate of Service: {current_date}"
                         logger.info(f"Added current date as date of service: {current_date}")

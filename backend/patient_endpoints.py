@@ -487,12 +487,24 @@ async def get_patient_initial_evaluation(
                 (t.get('encounter_type') and 'initial' in t.get('encounter_type', '').lower()))
         ]
         
+        # Debug logging
+        logger.info(f"Total transcripts found: {len(transcripts)}")
+        logger.info(f"Initial evaluations found: {len(initial_evaluations)}")
+        if transcripts:
+            logger.info(f"Sample transcript evaluation_type: {transcripts[0].get('evaluation_type')}")
+            logger.info(f"Sample transcript encounter_type: {transcripts[0].get('encounter_type')}")
+        
         if not initial_evaluations:
             raise HTTPException(status_code=404, detail="No initial evaluation found for this patient")
         
         # Sort by date and get the most recent
         initial_evaluations.sort(key=lambda x: x.get('created_at', ''), reverse=True)
         most_recent = initial_evaluations[0]
+        
+        # Debug log the findings
+        logger.info(f"Most recent initial evaluation has positive_findings: {bool(most_recent.get('positive_findings'))}")
+        if most_recent.get('positive_findings'):
+            logger.info(f"Positive findings keys: {list(most_recent.get('positive_findings', {}).keys())}")
         
         # Log PHI access for HIPAA compliance
         AuditLogger.log_data_access(
@@ -734,6 +746,9 @@ async def extract_transcript_findings(
         extraction_prompt = get_enhanced_extraction_prompt(specialty=specialty)
         
         # Run the synchronous function in an executor
+        # Use lightweight model for findings extraction
+        import time
+        start_time = time.time()
         result = await asyncio.get_event_loop().run_in_executor(
             None,
             polish_transcript_with_gemini,
@@ -743,8 +758,10 @@ async def extract_transcript_findings(
             "findings_extraction",  # encounter_type
             extraction_prompt,  # llm_instructions
             None,  # location (optional)
-            "publishers/google/models/gemini-2.5-flash"  # model_name
+            "gemini-2.5-flash"  # Use standard flash model for extraction
         )
+        extraction_time = time.time() - start_time
+        logger.info(f"Findings extraction completed in {extraction_time:.2f} seconds")
         
         if result['success']:
             # Parse the enhanced extraction output (contains both JSON and markdown)
@@ -760,8 +777,18 @@ async def extract_transcript_findings(
                 if json_match:
                     try:
                         findings = json.loads(json_match.group(1))
-                    except:
+                        logger.info(f"Successfully parsed JSON findings: {list(findings.keys())}")
+                    except Exception as e:
+                        logger.error(f"Failed to parse JSON: {e}")
                         findings = {"raw_findings": json_match.group(1)}
+                else:
+                    logger.warning("No JSON section found in LLM output")
+                    # Try to parse the entire output as JSON
+                    try:
+                        findings = json.loads(output)
+                        logger.info("Parsed entire output as JSON")
+                    except:
+                        logger.warning("Could not parse output as JSON")
                 
                 # Extract markdown section
                 markdown_match = re.search(r'```markdown\n(.*?)\n```', output, re.DOTALL)
@@ -786,14 +813,21 @@ async def extract_transcript_findings(
                     logger.warning(output[:500])
                 
             except Exception as e:
-                logger.warning(f"Failed to parse enhanced extraction output: {str(e)}")
+                logger.error(f"Failed to parse enhanced extraction output: {str(e)}")
+                logger.error(f"Raw output preview: {result['polished_transcript'][:500]}...")
                 # Fallback to simple JSON parsing
                 try:
                     findings = json.loads(result['polished_transcript'])
                     findings_markdown = None
+                    logger.info("Fallback: parsed as plain JSON")
                 except:
-                    findings = {"raw_findings": result['polished_transcript']}
-                    findings_markdown = None
+                    # If all else fails, create basic findings structure
+                    findings = {
+                        "pain_findings": ["Unable to parse findings - check raw transcript"],
+                        "raw_output": result['polished_transcript'][:1000]
+                    }
+                    findings_markdown = "### Extraction Error\n\nUnable to extract structured findings. Please review the transcript manually."
+                    logger.error("Fallback: created error findings structure")
             
             # Update the transcript with both JSON findings and markdown
             update_data = {'positive_findings': findings}

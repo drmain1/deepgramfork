@@ -6,10 +6,17 @@ class UserSettingsService {
   constructor() {
     this.currentUser = null;
     this.getToken = null;
+    this.fetchInProgress = false;
+    this.lastFetchedUserId = null;
   }
 
   // Initialize with auth context
   init(currentUser, getToken) {
+    // Reset fetch state if user changed
+    if (this.currentUser?.uid !== currentUser?.uid) {
+      this.fetchInProgress = false;
+      this.lastFetchedUserId = null;
+    }
     this.currentUser = currentUser;
     this.getToken = getToken;
   }
@@ -21,10 +28,26 @@ class UserSettingsService {
       return;
     }
 
+    // Prevent multiple concurrent fetches for the same user
+    if (this.fetchInProgress && this.lastFetchedUserId === this.currentUser.uid) {
+      console.log('Fetch already in progress for user:', this.currentUser.uid);
+      return;
+    }
+
+    // Check if settings were already fetched for this user
+    if (this.lastFetchedUserId === this.currentUser.uid) {
+      console.log('Settings already fetched for user:', this.currentUser.uid);
+      return;
+    }
+
+    this.fetchInProgress = true;
+    this.lastFetchedUserId = this.currentUser.uid;
+    
     useUserSettingsStore.getState().setLoading(true);
     useUserSettingsStore.getState().setError(null);
 
     try {
+      console.log('Fetching settings for user:', this.currentUser.uid);
       const accessToken = await this.getToken();
       const response = await fetch(`${API_BASE_URL}/api/v1/user_settings/${this.currentUser.uid}`, {
         headers: {
@@ -42,12 +65,16 @@ class UserSettingsService {
         }
       } else {
         const data = await response.json();
+        console.log('Settings fetched successfully:', data);
         useUserSettingsStore.getState().initializeSettings(data);
       }
     } catch (error) {
       console.error('Error fetching user settings:', error);
       useUserSettingsStore.getState().setError(error.message);
+      // Reset fetch state on error so we can retry
+      this.lastFetchedUserId = null;
     } finally {
+      this.fetchInProgress = false;
       useUserSettingsStore.getState().setLoading(false);
     }
   }
