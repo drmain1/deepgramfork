@@ -410,134 +410,30 @@ ooking at these LLM instruction files, I can spot several edge
 
 ---
 
-## Major Template Improvements - July 2025
+### Separation of ROM and Orthopedic Tests - July 2025
 
-### Overview of New Dedicated Tables
+**Problem**: ROM tables were appearing even when no ROM testing was performed because the template checked for any content in `cervico_thoracic` or `lumbopelvic` sections, which also contained orthopedic tests.
 
-The re-evaluation template has been significantly enhanced with dedicated tables for comprehensive physical examination comparisons. Instead of a single consolidated table, we now have specialized tables for each examination category:
+**Solution**: Created dedicated ROM fields in the JSON schema:
+- `cervical_rom`: Exclusively for cervical range of motion findings
+- `lumbar_rom`: Exclusively for lumbar range of motion findings
+- `cervico_thoracic` and `lumbopelvic`: Now only for orthopedic/special tests
 
-1. **Cervical Range of Motion Table**
-2. **Lumbar Range of Motion Table**
-3. **Upper Extremity Motor Examination Table**
-4. **Lower Extremity Motor Examination Table**
-5. **Deep Tendon Reflexes Table**
+**Implementation Changes**:
 
-### 1. Cervical Range of Motion Table
+1. **Updated LLM Instructions** (`chiropractic-reevaluation.js`):
+   - Added new fields to JSON schema
+   - Clear instructions to separate ROM from orthopedic tests
+   - ROM findings go in `cervical_rom`/`lumbar_rom`
+   - Orthopedic tests go in `cervico_thoracic`/`lumbopelvic`/`extremity`
 
-**Features:**
-- Displays all 6 standard cervical movements:
-  - Flexion
-  - Extension
-  - Left Rotation
-  - Right Rotation
-  - Left Lateral Flexion
-  - Right Lateral Flexion
-- Automatically defaults to "Normal" for any movement not mentioned in the data
-- 4-column layout: Movement | Initial | Current | Status
+2. **Updated Re-evaluation Template**:
+   - ROM tables only display if `cervical_rom` or `lumbar_rom` fields exist
+   - No longer parse ROM from orthopedic test sections
+   - Orthopedic findings now properly displayed in consolidated table
 
-**Data Parsing:**
-- Extracts from `cervico_thoracic` section
-- Recognizes various naming patterns: "cervical right rotation", "rotation right", etc.
-- Parses "Previously X | Currently Y" format
-
-**Example JSON Input:**
-```json
-"cervico_thoracic": "Cervical right rotation: Previously restricted, with pain | Currently normal\nCervical extension: Previously restricted, with pain | Currently normal"
-```
-
-### 2. Lumbar Range of Motion Table
-
-**Features:**
-- Displays all 6 standard lumbar movements:
-  - Flexion
-  - Extension
-  - Left Lateral Flexion (also recognizes "side bending")
-  - Right Lateral Flexion
-  - Left Rotation
-  - Right Rotation
-- Same defaulting behavior and layout as cervical table
-
-**Data Parsing:**
-- Extracts from `lumbopelvic` section
-- Recognizes "lumbar" or "lumbosacral" prefixes
-- Handles alternative terminology like "side bending" for lateral flexion
-
-### 3. Upper Extremity Motor Examination Table
-
-**Features:**
-- Displays all 8 standard upper extremity muscles:
-  - DELTOID
-  - BICEPS
-  - TRICEPS
-  - WRIST EXT
-  - FINGER FLEX
-  - FINGER EXT
-  - THUMB EXT
-  - HAND INTRINSICS
-- 7-column layout: Muscle | Right Initial | Left Initial | Right Current | Left Current | R | L
-- Grouped initial values together and current values together for easier comparison
-
-**Data Parsing:**
-- Handles "Previously X, currently Y" format within individual muscle entries
-- Defaults to "5/5" for unmentioned muscles
-- Example: `{"muscle": "BICEPS", "right": "5/5", "left": "Previously 4+/5, currently 5/5"}`
-
-### 4. Lower Extremity Motor Examination Table
-
-**Features:**
-- Displays all 6 standard lower extremity muscles:
-  - ILIOPSOAS
-  - QUAD
-  - HAMSTRINGS
-  - GLUTEUS
-  - ANTERIOR TIBIALIS
-  - EXT HALLUCIS LONGUS
-- Same layout and parsing logic as upper extremity table
-
-### 5. Deep Tendon Reflexes Table
-
-**Features:**
-- Displays all 5 standard reflexes:
-  - BICEPS
-  - TRICEPS
-  - BRACHIORADIALIS
-  - PATELLAR
-  - ACHILLES
-- Same 7-column layout as motor tables
-- Defaults to "2+" (normal) for unmentioned reflexes
-
-**Special Status Logic:**
-- ✓ = Improved (returning to 2+ from abnormal)
-- ✗ = Worsened (becoming hyperreflexic 3+/4+ or hyporeflexic 0/1+)
-- → = No change
-- • = Other changes
-
-### Visual Status Indicators
-
-All tables use consistent visual indicators:
-- ✓ (green) = Improved
-- ✗ (red) = Worsened
-- → (gray) = No change
-- • (gray) = Status changed
-
-### Other Physical Examination Findings
-
-The "Other Physical Examination Findings" section now only displays:
-- Non-ROM orthopedic/special tests
-- Sensory examination findings
-- Other findings not covered by the dedicated tables
-
-This prevents duplication and provides a cleaner, more organized view of the examination results.
-
-### Benefits of the New Template Structure
-
-1. **Complete View**: All standard movements/muscles/reflexes are shown, even if not mentioned
-2. **Easy Comparison**: Side-by-side initial and current values
-3. **Visual Clarity**: Immediate identification of improvements with color-coded indicators
-4. **Professional Appearance**: Clean, medical-grade tables suitable for clinical documentation
-5. **Intelligent Defaults**: Assumes normal findings for unmentioned items (reflecting real clinical practice)
-
-### Template Location
-
-All improvements are implemented in:
-`/backend/services/pdf_service/jinja_templates/re_evaluation_template.html`
+**Benefits**:
+- No more empty ROM tables when ROM wasn't tested
+- Clear separation of test types
+- More accurate PDF generation
+- Better data organization

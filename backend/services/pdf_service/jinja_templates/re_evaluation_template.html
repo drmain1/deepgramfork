@@ -243,12 +243,12 @@
     <h4>Physical Examination Progress</h4>
     
     <!-- Cervical Range of Motion Table -->
-    {% if data.sections.cervico_thoracic %}
+    {% if data.sections.cervical_rom %}
         <h5 style="margin-top: 15px; margin-bottom: 10px;">Cervical Range of Motion</h5>
         
         <!-- Parse cervical ROM findings -->
         {% set cervical_rom_data = {} %}
-        {% set cervical_findings = data.sections.cervico_thoracic.split('\n') %}
+        {% set cervical_findings = data.sections.cervical_rom.split('\n') %}
         {% for finding in cervical_findings %}
             {% if finding.strip() and ':' in finding %}
                 {% set parts = finding.split(':', 1) %}
@@ -345,12 +345,12 @@
     {% endif %}
     
     <!-- Lumbar Range of Motion Table -->
-    {% if data.sections.lumbopelvic %}
+    {% if data.sections.lumbar_rom %}
         <h5 style="margin-top: 15px; margin-bottom: 10px;">Lumbar Range of Motion</h5>
         
         <!-- Parse lumbar ROM findings -->
         {% set lumbar_rom_data = {} %}
-        {% set lumbar_findings = data.sections.lumbopelvic.split('\n') %}
+        {% set lumbar_findings = data.sections.lumbar_rom.split('\n') %}
         {% for finding in lumbar_findings %}
             {% if finding.strip() and ':' in finding %}
                 {% set parts = finding.split(':', 1) %}
@@ -359,22 +359,20 @@
                     {% set states = parts[1].strip() %}
                     
                     <!-- Extract movement type -->
-                    {% if 'lumbar' in movement or 'lumbosacral' in movement %}
-                        {% if 'flexion' in movement and 'lateral' not in movement and 'side' not in movement %}
-                            {% set lumbar_rom_data = lumbar_rom_data.update({'flexion': states}) or lumbar_rom_data %}
-                        {% elif 'extension' in movement %}
-                            {% set lumbar_rom_data = lumbar_rom_data.update({'extension': states}) or lumbar_rom_data %}
-                        {% elif ('left lateral' in movement or 'lateral flexion left' in movement or 
-                                'left side' in movement or 'side bending left' in movement) %}
-                            {% set lumbar_rom_data = lumbar_rom_data.update({'left_lateral_flexion': states}) or lumbar_rom_data %}
-                        {% elif ('right lateral' in movement or 'lateral flexion right' in movement or 
-                                'right side' in movement or 'side bending right' in movement) %}
-                            {% set lumbar_rom_data = lumbar_rom_data.update({'right_lateral_flexion': states}) or lumbar_rom_data %}
-                        {% elif 'left rotation' in movement or 'rotation left' in movement %}
-                            {% set lumbar_rom_data = lumbar_rom_data.update({'left_rotation': states}) or lumbar_rom_data %}
-                        {% elif 'right rotation' in movement or 'rotation right' in movement %}
-                            {% set lumbar_rom_data = lumbar_rom_data.update({'right_rotation': states}) or lumbar_rom_data %}
-                        {% endif %}
+                    {% if 'flexion' in movement and 'lateral' not in movement and 'side' not in movement %}
+                        {% set lumbar_rom_data = lumbar_rom_data.update({'flexion': states}) or lumbar_rom_data %}
+                    {% elif 'extension' in movement %}
+                        {% set lumbar_rom_data = lumbar_rom_data.update({'extension': states}) or lumbar_rom_data %}
+                    {% elif ('left lateral' in movement or 'lateral flexion left' in movement or 
+                            'left side' in movement or 'side bending left' in movement) %}
+                        {% set lumbar_rom_data = lumbar_rom_data.update({'left_lateral_flexion': states}) or lumbar_rom_data %}
+                    {% elif ('right lateral' in movement or 'lateral flexion right' in movement or 
+                            'right side' in movement or 'side bending right' in movement) %}
+                        {% set lumbar_rom_data = lumbar_rom_data.update({'right_lateral_flexion': states}) or lumbar_rom_data %}
+                    {% elif 'left rotation' in movement or 'rotation left' in movement %}
+                        {% set lumbar_rom_data = lumbar_rom_data.update({'left_rotation': states}) or lumbar_rom_data %}
+                    {% elif 'right rotation' in movement or 'rotation right' in movement %}
+                        {% set lumbar_rom_data = lumbar_rom_data.update({'right_rotation': states}) or lumbar_rom_data %}
                     {% endif %}
                 {% endif %}
             {% endif %}
@@ -821,6 +819,12 @@
         </table>
     {% endif %}
     
+    <!-- Other Physical Examinations -->
+    {% if data.sections.physical_examination %}
+        <h5 style="margin-top: 15px; margin-bottom: 10px;">Other Physical Examinations</h5>
+        <p>{{ data.sections.physical_examination }}</p>
+    {% endif %}
+    
     <!-- Collect all positive findings from various sections -->
     {% set all_findings = [] %}
     
@@ -838,20 +842,8 @@
                 {% if finding and ':' in finding and ('Previously' in finding or 'currently' in finding) %}
                     {% set parts = finding.split(':', 1) %}
                     {% if parts|length >= 2 %}
-                        {% set finding_name = parts[0].strip().lower() %}
-                        <!-- Exclude cervical and lumbar ROM movements from other findings -->
-                        {% if (section_name != "Cervico-thoracic" or (
-                            'flexion' not in finding_name and
-                            'extension' not in finding_name and
-                            'rotation' not in finding_name and
-                            'lateral' not in finding_name
-                        )) and (section_name != "Lumbopelvic" or (
-                            'lumbar' not in finding_name and
-                            'lumbosacral' not in finding_name
-                        )) %}
-                            {% set finding_dict = {'category': section_name, 'name': parts[0].strip(), 'states': parts[1].strip()} %}
-                            {% set _ = all_findings.append(finding_dict) %}
-                        {% endif %}
+                        {% set finding_dict = {'category': section_name, 'name': parts[0].strip(), 'states': parts[1].strip()} %}
+                        {% set _ = all_findings.append(finding_dict) %}
                     {% endif %}
                 {% endif %}
             {% endfor %}
@@ -945,8 +937,6 @@
     <p style="margin-top: 10px; font-size: 8pt; color: #6c757d;">
         Legend: ✓ = Improved, ✗ = Worsened, → = No change, • = Status changed
     </p>
-    {% else %}
-        <p>{{ data.sections.physical_examination or "No specific comparative findings documented for this re-evaluation." }}</p>
     {% endif %}
 
     <hr>

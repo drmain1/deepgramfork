@@ -478,9 +478,7 @@ class WeasyPrintMedicalPDFGenerator:
             if visit_type == 'follow_up' and not section_headers_added['follow_up']:
                 html_parts.append('<div class="follow-up-header"><h2>FOLLOW-UP VISITS</h2></div>')
                 section_headers_added['follow_up'] = True
-            elif visit_type == 're_evaluation' and not section_headers_added['re_evaluation']:
-                html_parts.append('<div class="re-evaluation-header"><h2>RE-EVALUATIONS</h2></div>')
-                section_headers_added['re_evaluation'] = True
+            # Skip RE-EVALUATIONS header since the re-evaluation template already includes its own header
             
             # Count visits by type
             if visit_type in visit_counters:

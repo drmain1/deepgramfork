@@ -42,6 +42,8 @@ CRITICAL: if you do not receive a data showing a previous examination was positi
     "vitals": "string | null",
     "outcome_assessments": "string | null",
     "physical_examination": "string | null",
+    "cervical_rom": "string | null",
+    "lumbar_rom": "string | null",
     "cervico_thoracic": "string | null",
     "lumbopelvic": "string | null",
     "extremity": "string | null",
@@ -128,12 +130,27 @@ CRITICAL: if you do not receive a data showing a previous examination was positi
   - Overall improvement statement
   - No comparison format needed here
 
+- **\`cervical_rom\`**: 
+  - ONLY for cervical range of motion findings (flexion, extension, rotation, lateral flexion)
+  - Format: "[Movement]: Previously [initial state] | Currently [current state]"
+  - Each movement on a new line (use \n)
+  - Example: "Cervical flexion: Previously limited with pain | Currently full range\nCervical right rotation: Previously 30 degrees | Currently 75 degrees"
+  - If no ROM testing performed, leave as null
+
+- **\`lumbar_rom\`**: 
+  - ONLY for lumbar range of motion findings (flexion, extension, rotation, lateral flexion)
+  - Same format as cervical_rom
+  - Example: "Lumbar flexion: Previously limited | Currently full range"
+  - If no ROM testing performed, leave as null
+
 - **\`cervico_thoracic\`/\`lumbopelvic\`/\`extremity\`**: 
+  - ONLY for orthopedic/special tests (NOT range of motion)
   - MUST use pipe separator for table rendering:
   - Format: "[Test/Finding name]: Previously [initial state] | Currently [current state]"
   - Each finding on a new line (use \n)
   - Example: "Cervical compression test: Previously positive | Currently negative\nKemp's test: Previously positive | Currently normal"
   - Use "Currently" with capital C after the pipe
+  - Do NOT include ROM findings here - use cervical_rom and lumbar_rom fields instead
 
 - **\`assessment_diagnosis\`**: 
   - List diagnoses with ICD-10 codes
@@ -203,7 +220,9 @@ CRITICAL: if you do not receive a data showing a previous examination was positi
     "vitals": null,
     "outcome_assessments": "Neck Disability Index: Previously 26/50, currently 5/50",
     "physical_examination": "Patient presents with significant clinical improvement compared to initial evaluation.",
-    "cervico_thoracic": "Cervical rotation right: Previously 30 degrees with pain | Currently 75 degrees pain-free",
+    "cervical_rom": "Cervical rotation right: Previously 30 degrees with pain | Currently 75 degrees pain-free",
+    "lumbar_rom": null,
+    "cervico_thoracic": null,
     "lumbopelvic": null,
     "extremity": null,
     "sensory_examination": null,
@@ -230,7 +249,10 @@ For outcome assessments with multiple tools:
 
 For physical exam findings with multiple tests:
 \`\`\`json
-"cervico_thoracic": "Cervical compression test: Previously positive | Currently negative\nKemp's test: Previously positive bilaterally | Currently negative\nSpurling's test: Previously positive left | Currently negative"
+"cervical_rom": "Cervical flexion: Previously limited | Currently full range\nCervical extension: Previously restricted with pain | Currently mild restriction",
+"lumbar_rom": "Lumbar flexion: Previously 60 degrees | Currently 80 degrees\nLumbar extension: Previously painful | Currently pain-free",
+"cervico_thoracic": "Cervical compression test: Previously positive | Currently negative\nSpurling's test: Previously positive left | Currently negative",
+"lumbopelvic": "Kemp's test: Previously positive bilaterally | Currently negative\nStraight leg raise: Previously positive at 45 degrees | Currently negative"
 \`\`\`
 
 **Example 3: Partial Improvement or No Change**
