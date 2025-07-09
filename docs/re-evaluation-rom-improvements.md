@@ -205,3 +205,152 @@ To update existing findings to the new format:
 - `/backend/patient_endpoints.py` - Handles initial evaluation retrieval
 - `/backend/gcp_utils.py` - LLM processing with Gemini
 - `/docs/re-eval-functionality.md` - Overall re-evaluation documentation
+
+---
+
+## Re-evaluation Template Updates - July 2025
+
+### Multiple Outcome Assessments Support
+
+The re-evaluation template has been updated to handle multiple outcome assessments (up to 3) with improved visualization:
+
+**Key Changes:**
+- Automatically splits multiple assessments separated by periods (`. `)
+- Each assessment gets its own progress bar visualization
+- Handles improvement, worsening, or no change scenarios
+- Clear visual feedback with percentage labels
+
+**Example Input:**
+```json
+"outcome_assessments": "Neck Disability Index: Previously 31/50, currently 25/50. Oswestry Low Back Disability Index: Previously 28/50, currently 10/50. Visual Analog Scale: Previously 8/10, currently 3/10."
+```
+
+### Consolidated Physical Findings Table
+
+**Problem Solved:**
+- Previously showed ALL motor exam entries including "Not documented"
+- Multiple separate tables made it hard to see overall progress
+- Cluttered display with irrelevant information
+
+**New Implementation:**
+- Single consolidated table showing only previously positive findings
+- Intelligent filtering removes "Not documented" entries
+- Combines findings from all examination types:
+  - Orthopedic/Special tests (cervico-thoracic, lumbopelvic, extremity)
+  - Motor examination (upper and lower extremity)
+  - Sensory examination
+  - Reflexes
+- Visual status indicators: ✓ (improved), ✗ (worsened), → (no change)
+- Professional 5-column layout: Category | Finding | Initial State | Current State | Status
+
+**Benefits:**
+- Clean, uncluttered display
+- All improvements visible at a glance
+- Consistent format across all examination types
+- Professional appearance suitable for medical records
+
+**Template Location:** `/backend/services/pdf_service/jinja_templates/re_evaluation_template.html`
+
+
+
+ooking at these LLM instruction files, I can spot several edge
+  cases that could cause issues with the new consolidated physical
+  findings table:
+
+  Edge Cases to Consider:
+
+  1. Range of Motion Descriptions
+
+  The re-evaluation instructions don't specify how to handle ROM
+  findings. Doctors might say:
+  - "Cervical flexion: Previously limited to 30 degrees | Currently
+  full range"
+  - "Lumbar extension: Previously painful at end range | Currently
+  pain-free"
+  - "Shoulder abduction: Previously restricted | Currently improved
+  but still limited"
+
+  Issue: The table expects clear "positive/negative" or
+  "normal/abnormal" states, but ROM is often described in degrees or
+  qualitative terms.
+
+  2. Partial Improvements
+
+  From the examples:
+  "chief_complaint": "1. Neck pain radiating to arm: Previously
+  present | Currently present (no change)"
+
+  Issue: The template might not handle "(no change)" or "(partial
+  improvement)" annotations well in the status determination logic.
+
+  3. Bilateral Findings with Different Sides
+
+  "Kemp's test: Previously positive bilaterally | Currently negative"
+  "Spurling's test: Previously positive left | Currently negative"
+
+  Issue: When a test was positive on both sides but only one side
+  improved, the current format might not capture this nuance.
+
+  4. Mixed Motor Strength Formats
+
+  The pain management template expects formats like "4+/5" while
+  re-evaluation might have:
+  - "Previously 4/5, currently 5/5" (standard)
+  - "Previously weak, currently normal" (qualitative)
+  - "Right 5/5, Left previously 4/5 now 5/5" (mixed in one field)
+
+  5. Sensory Findings
+
+  Neither template gives clear examples for sensory examination
+  comparisons. Doctors might dictate:
+  - "L5 dermatome: Previously diminished | Currently intact"
+  - "Light touch: Previously absent below knee | Currently present but
+   reduced"
+
+  Issue: The template's improvement detection logic might not handle
+  sensory-specific terminology.
+
+  6. New Positive Findings
+
+  The template handles "Previously not present | Currently 3/10" but
+  what about:
+  - New positive orthopedic tests discovered during re-evaluation
+  - Tests that were negative initially but are now positive
+  (worsening)
+
+  7. Incomplete Comparisons
+
+  What if the doctor only mentions current state without referencing
+  the previous state:
+  - "Straight leg raise is negative today"
+  - "Motor strength is 5/5 throughout"
+
+  Issue: The template filters for entries with "Previously" - these
+  might get excluded even though they represent improvements.
+
+  8. Multiple Test Components
+
+  Some tests have multiple components:
+  - "Straight leg raise: Previously positive at 30 degrees on right
+  with radicular symptoms | Currently positive at 60 degrees without
+  radicular symptoms"
+
+  Issue: This is technically both improved (angle) and improved (no
+  radicular symptoms), but the simple positive/negative logic might
+  miss this nuance.
+
+  Recommendations:
+
+  1. Add ROM-specific handling in the template to parse degree
+  measurements and qualitative descriptions
+  2. Enhance status determination to handle partial improvements and
+  mixed findings
+  3. Create fallback display for findings that don't fit the standard
+  format
+  4. Consider a "Notes" column for complex findings that need
+  additional context
+  5. Add instruction examples for sensory and ROM comparisons in the
+  LLM prompts
+
+  Would you like me to implement any of these improvements to make the
+   template more robust?

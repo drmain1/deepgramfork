@@ -12,7 +12,7 @@
 
     <!-- Clinic Header -->
     {% if data.clinic_info %}
-    <div class="clinic-header" style="text-align: right; margin-bottom: 20px;">
+    <div class="clinic-header">
         {% if data.clinic_info.lines %}
             <!-- Display each line of office information as entered by user -->
             {% for line in data.clinic_info.lines %}
@@ -239,129 +239,167 @@
     
     {% endif %}
 
-    <!-- Physical Examination Highlights -->
-    <h4>Physical Examination Findings</h4>
-    <p>Objective tests confirm the patient's subjective report of improvement.</p>
+    <!-- Consolidated Physical Examination Findings -->
+    <h4>Physical Examination Progress</h4>
     
-    <!-- Parse and display physical examination findings -->
+    <!-- Collect all positive findings from various sections -->
+    {% set all_findings = [] %}
     
-    <!-- Check if we have any sections with physical exam data -->
-    {% if (data.sections.cervico_thoracic and ('Previously' in data.sections.cervico_thoracic or 'currently' in data.sections.cervico_thoracic or 'Current:' in data.sections.cervico_thoracic)) or
-          (data.sections.lumbopelvic and ('Previously' in data.sections.lumbopelvic or 'currently' in data.sections.lumbopelvic or 'Current:' in data.sections.lumbopelvic)) or
-          (data.sections.extremity and ('Previously' in data.sections.extremity or 'currently' in data.sections.extremity or 'Current:' in data.sections.extremity)) or
-          (data.sections.sensory_examination and ('Previously' in data.sections.sensory_examination or 'currently' in data.sections.sensory_examination or 'Current:' in data.sections.sensory_examination)) %}
+    <!-- Process orthopedic/special tests from different body regions -->
+    {% for section_name, section_data in [
+        ("Cervico-thoracic", data.sections.cervico_thoracic), 
+        ("Lumbopelvic", data.sections.lumbopelvic), 
+        ("Extremity", data.sections.extremity), 
+        ("Sensory", data.sections.sensory_examination)
+    ] %}
+        {% if section_data %}
+            {% set findings = section_data.split('\n') %}
+            {% for finding in findings %}
+                {% set finding = finding.strip() %}
+                {% if finding and ':' in finding and ('Previously' in finding or 'currently' in finding) %}
+                    {% set parts = finding.split(':', 1) %}
+                    {% if parts|length >= 2 %}
+                        {% set finding_dict = {'category': section_name, 'name': parts[0].strip(), 'states': parts[1].strip()} %}
+                        {% set _ = all_findings.append(finding_dict) %}
+                    {% endif %}
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+    {% endfor %}
     
-    <table>
+    <!-- Process motor examination findings -->
+    {% if data.motor_exam %}
+        <!-- Upper extremity -->
+        {% if data.motor_exam.upper_extremity %}
+            {% for muscle in data.motor_exam.upper_extremity %}
+                {% if muscle.right and muscle.right != "Not documented" and ('Previously' in muscle.right or '/' in muscle.right) %}
+                    {% set finding_dict = {'category': 'Motor - Upper', 'name': muscle.muscle + ' (R)', 'states': muscle.right} %}
+                    {% set _ = all_findings.append(finding_dict) %}
+                {% endif %}
+                {% if muscle.left and muscle.left != "Not documented" and ('Previously' in muscle.left or '/' in muscle.left) %}
+                    {% set finding_dict = {'category': 'Motor - Upper', 'name': muscle.muscle + ' (L)', 'states': muscle.left} %}
+                    {% set _ = all_findings.append(finding_dict) %}
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+        
+        <!-- Lower extremity -->
+        {% if data.motor_exam.lower_extremity %}
+            {% for muscle in data.motor_exam.lower_extremity %}
+                {% if muscle.right and muscle.right != "Not documented" and ('Previously' in muscle.right or '/' in muscle.right) %}
+                    {% set finding_dict = {'category': 'Motor - Lower', 'name': muscle.muscle + ' (R)', 'states': muscle.right} %}
+                    {% set _ = all_findings.append(finding_dict) %}
+                {% endif %}
+                {% if muscle.left and muscle.left != "Not documented" and ('Previously' in muscle.left or '/' in muscle.left) %}
+                    {% set finding_dict = {'category': 'Motor - Lower', 'name': muscle.muscle + ' (L)', 'states': muscle.left} %}
+                    {% set _ = all_findings.append(finding_dict) %}
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+    {% endif %}
+    
+    <!-- Process reflex findings -->
+    {% if data.reflexes %}
+        {% if data.reflexes.deep_tendon %}
+            {% for reflex in data.reflexes.deep_tendon %}
+                {% if reflex.right and reflex.right != "Not documented" and ('Previously' in reflex.right or '+' in reflex.right) %}
+                    {% set finding_dict = {'category': 'Reflexes', 'name': reflex.reflex + ' (R)', 'states': reflex.right} %}
+                    {% set _ = all_findings.append(finding_dict) %}
+                {% endif %}
+                {% if reflex.left and reflex.left != "Not documented" and ('Previously' in reflex.left or '+' in reflex.left) %}
+                    {% set finding_dict = {'category': 'Reflexes', 'name': reflex.reflex + ' (L)', 'states': reflex.left} %}
+                    {% set _ = all_findings.append(finding_dict) %}
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+    {% endif %}
+    
+    <!-- Display consolidated findings table if we have any positive findings -->
+    {% if all_findings %}
+    <p style="margin-bottom: 10px;">Previously positive findings compared with current status:</p>
+    
+    <table style="width: 100%; border-collapse: collapse;">
         <thead>
-            <tr>
-                <th>Finding</th>
-                <th>Initial State</th>
-                <th>Current State</th>
+            <tr style="background-color: #f8f9fa;">
+                <th style="width: 20%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Category</th>
+                <th style="width: 30%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Finding</th>
+                <th style="width: 20%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Initial State</th>
+                <th style="width: 20%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Current State</th>
+                <th style="width: 10%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Status</th>
             </tr>
         </thead>
         <tbody>
-            <!-- Process each physical exam section -->
-            {% for section_name, section_data in [("cervico_thoracic", data.sections.cervico_thoracic), ("lumbopelvic", data.sections.lumbopelvic), ("extremity", data.sections.extremity), ("sensory_examination", data.sections.sensory_examination)] %}
-                {% if section_data %}
-                    <!-- Split by newlines to get individual findings -->
-                    {% set findings = section_data.split('\n') %}
-                    {% for finding in findings %}
-                        {% set finding = finding.strip() %}
-                        {% if finding and ':' in finding %}
-                            <!-- Parse different formats: "Test: Previously X | Current: Y" or "Test: Previously X, currently Y" -->
-                            {% set parts = finding.split(':', 1) %}
-                            {% if parts|length >= 2 %}
-                                {% set finding_name = parts[0].strip() %}
-                                {% set states = parts[1].strip() %}
-                                
-                                {% set prev_state = "" %}
-                                {% set curr_state = "" %}
-                                
-                                <!-- Handle "Previously X | Current: Y" format -->
-                                {% if 'Previously' in states and '|' in states and 'Current:' in states %}
-                                    {% set pipe_parts = states.split('|') %}
-                                    {% if pipe_parts|length >= 2 %}
-                                        {% set prev_state = pipe_parts[0].replace('Previously', '').strip() %}
-                                        {% set curr_state = pipe_parts[1].replace('Current:', '').strip().rstrip('.') %}
-                                    {% endif %}
-                                    
-                                <!-- Handle "Previously X, currently Y" format -->
-                                {% elif 'Previously' in states and 'currently' in states %}
-                                    {% set state_parts = states.split('currently') %}
-                                    {% if state_parts|length >= 2 %}
-                                        {% set prev_state = state_parts[0].replace('Previously', '').replace(',', '').strip() %}
-                                        {% set curr_state = state_parts[1].strip().rstrip('.') %}
-                                    {% endif %}
-                                    
-                                <!-- Handle "Current: Y" only format -->
-                                {% elif 'Current:' in states and 'Previously' not in states %}
-                                    {% set prev_state = "Not specified" %}
-                                    {% set curr_state = states.replace('Current:', '').strip().rstrip('.') %}
-                                {% endif %}
-                                
-                                {% if prev_state and curr_state %}
-                                <tr>
-                                    <td>{{ finding_name }}</td>
-                                    <td>{{ prev_state|capitalize }}</td>
-                                    <td><strong>{{ curr_state|capitalize }}</strong></td>
-                                </tr>
-                                {% endif %}
-                            {% endif %}
+            {% for finding in all_findings %}
+                {% set prev_state = "" %}
+                {% set curr_state = "" %}
+                {% set improvement_status = "" %}
+                
+                <!-- Parse the states string -->
+                {% set states = finding.states %}
+                
+                <!-- Handle "Previously X | Currently Y" format -->
+                {% if 'Previously' in states and '|' in states and ('Currently' in states or 'Current:' in states) %}
+                    {% set pipe_parts = states.split('|') %}
+                    {% if pipe_parts|length >= 2 %}
+                        {% set prev_state = pipe_parts[0].replace('Previously', '').strip() %}
+                        {% set curr_state = pipe_parts[1].replace('Currently', '').replace('Current:', '').strip().rstrip('.') %}
+                    {% endif %}
+                    
+                <!-- Handle "Previously X, currently Y" format (for motor strength) -->
+                {% elif 'Previously' in states and 'currently' in states %}
+                    {% set state_parts = states.split('currently') %}
+                    {% if state_parts|length >= 2 %}
+                        {% set prev_state = state_parts[0].replace('Previously', '').replace(',', '').strip() %}
+                        {% set curr_state = state_parts[1].strip().rstrip('.') %}
+                    {% endif %}
+                
+                <!-- Handle direct comparison format (e.g., "4+/5" for current only) -->
+                {% elif '/' in states and 'Previously' not in states %}
+                    {% set prev_state = "Not previously tested" %}
+                    {% set curr_state = states %}
+                {% endif %}
+                
+                <!-- Determine improvement status -->
+                {% if prev_state and curr_state %}
+                    {% if 'normal' in curr_state.lower() or 'negative' in curr_state.lower() or '5/5' in curr_state %}
+                        {% set improvement_status = "improved" %}
+                    {% elif prev_state == curr_state %}
+                        {% set improvement_status = "unchanged" %}
+                    {% elif 'positive' in curr_state.lower() and 'negative' in prev_state.lower() %}
+                        {% set improvement_status = "worsened" %}
+                    {% else %}
+                        {% set improvement_status = "changed" %}
+                    {% endif %}
+                {% endif %}
+                
+                {% if prev_state and curr_state %}
+                <tr>
+                    <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt;">{{ finding.category }}</td>
+                    <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt;">{{ finding.name }}</td>
+                    <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt;">{{ prev_state|capitalize }}</td>
+                    <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt; font-weight: bold;">{{ curr_state|capitalize }}</td>
+                    <td style="padding: 6px; border: 1px solid #dee2e6; text-align: center; font-size: 9pt;">
+                        {% if improvement_status == "improved" %}
+                            <span style="color: #28a745;">✓</span>
+                        {% elif improvement_status == "worsened" %}
+                            <span style="color: #dc3545;">✗</span>
+                        {% elif improvement_status == "unchanged" %}
+                            <span style="color: #6c757d;">→</span>
+                        {% else %}
+                            <span style="color: #6c757d;">•</span>
                         {% endif %}
-                    {% endfor %}
+                    </td>
+                </tr>
                 {% endif %}
             {% endfor %}
         </tbody>
     </table>
-    {% endif %}
-
-    <!-- Motor Examination (if present) -->
-    {% if data.motor_exam %}
-    <h4>Motor Examination Comparison</h4>
     
-    {% if data.motor_exam.upper_extremity %}
-    <h5>Upper Extremity Motor Strength</h5>
-    <table class="motor-table">
-        <thead>
-            <tr>
-                <th>MUSCLE GROUP</th>
-                <th>RIGHT</th>
-                <th>LEFT</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for muscle in data.motor_exam.upper_extremity %}
-            <tr>
-                <td class="muscle-name">{{ muscle.muscle }}</td>
-                <td class="strength-value">{{ muscle.right }}</td>
-                <td class="strength-value">{{ muscle.left }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% endif %}
-
-    {% if data.motor_exam.lower_extremity %}
-    <h5>Lower Extremity Motor Strength</h5>
-    <table class="motor-table">
-        <thead>
-            <tr>
-                <th>MUSCLE GROUP</th>
-                <th>RIGHT</th>
-                <th>LEFT</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for muscle in data.motor_exam.lower_extremity %}
-            <tr>
-                <td class="muscle-name">{{ muscle.muscle }}</td>
-                <td class="strength-value">{{ muscle.right }}</td>
-                <td class="strength-value">{{ muscle.left }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% endif %}
+    <p style="margin-top: 10px; font-size: 8pt; color: #6c757d;">
+        Legend: ✓ = Improved, ✗ = Worsened, → = No change, • = Status changed
+    </p>
+    {% else %}
+        <p>{{ data.sections.physical_examination or "No specific comparative findings documented for this re-evaluation." }}</p>
     {% endif %}
 
     <hr>

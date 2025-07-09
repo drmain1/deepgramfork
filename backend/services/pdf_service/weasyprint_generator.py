@@ -194,28 +194,97 @@ class WeasyPrintMedicalPDFGenerator:
         try:
             # First try to get from Firestore (faster)
             firestore_settings = await firestore_client.get_user_settings(user_id)
-            if firestore_settings and firestore_settings.get('office_information'):
-                office_info = firestore_settings.get('office_information', [])
-                logger.info(f"Retrieved clinic info from Firestore for user {user_id}")
+            # Check both field names for compatibility
+            if firestore_settings and (firestore_settings.get('office_information') or firestore_settings.get('officeInformation')):
+                office_info = firestore_settings.get('officeInformation') or firestore_settings.get('office_information', [])
+                logger.info(f"Retrieved clinic info from Firestore for user {user_id}: type={type(office_info)}, value={office_info}")
             else:
                 # Fallback to GCS
                 gcs_settings = await self.user_settings_service.get_user_settings(user_id)
                 office_info = gcs_settings.get('officeInformation', [])
-                logger.info(f"Retrieved clinic info from GCS for user {user_id}")
+                logger.info(f"Retrieved clinic info from GCS for user {user_id}: type={type(office_info)}, value={office_info}")
             
             # Parse office information into structured clinic info
             clinic_info = {}
             if office_info:
-                # Office info is now stored as a list of individual lines
-                # Each line is a separate piece of information added by the user
+                logger.info(f"Raw office_info type: {type(office_info)}, value: {office_info}")
+                
+                # Office info should be a list of individual lines
                 clinic_lines = []
-                for info_line in office_info:
-                    if isinstance(info_line, str) and info_line.strip():
-                        clinic_lines.append(info_line.strip())
+                if isinstance(office_info, list):
+                    for info_line in office_info:
+                        if isinstance(info_line, str) and info_line.strip():
+                            # Check if this line contains newlines (multiline string)
+                            if '\n' in info_line:
+                                # Split on newlines and add each line separately
+                                for sub_line in info_line.split('\n'):
+                                    if sub_line.strip():
+                                        clinic_lines.append(sub_line.strip())
+                            else:
+                                clinic_lines.append(info_line.strip())
+                elif isinstance(office_info, str):
+                    # Check if it's a single string with all info concatenated
+                    logger.warning(f"Office info came as string instead of list: {office_info}")
+                    # Try to split the string if it contains known patterns
+                    if " CA " in office_info and "@" in office_info:
+                        # This looks like concatenated info, try to split it
+                        # Pattern: "Name Address City, CA ZIP Email Phone"
+                        import re
+                        # Split on common delimiters while preserving structure
+                        parts = office_info.strip()
+                        
+                        # Use regex to find patterns
+                        # 1. Everything before the state abbreviation is name/address
+                        # 2. Email contains @
+                        # 3. Phone is usually numeric
+                        
+                        # Find email
+                        email_match = re.search(r'[\w\.-]+@[\w\.-]+', parts)
+                        email = email_match.group(0) if email_match else ""
+                        
+                        # Find phone (10+ digits)
+                        phone_match = re.search(r'\d{10,}', parts)
+                        phone = phone_match.group(0) if phone_match else ""
+                        
+                        # Split the rest
+                        if email:
+                            before_email = parts[:parts.find(email)].strip()
+                        else:
+                            before_email = parts
+                            
+                        # Try to intelligently split address
+                        if " CA " in before_email:
+                            # Find where CA appears
+                            ca_index = before_email.find(" CA ")
+                            # Everything after "1234" or similar number pattern is likely address
+                            address_match = re.search(r'(\d+\s+[^,]+(?:,\s*[^,]+)*?\s+CA\s+\d{5})', before_email)
+                            if address_match:
+                                address = address_match.group(1)
+                                name = before_email[:before_email.find(address)].strip()
+                                clinic_lines = [name, address]
+                            else:
+                                # Fallback: first two words are name
+                                words = before_email.split()
+                                if len(words) > 2:
+                                    clinic_lines.append(' '.join(words[:2]))
+                                    clinic_lines.append(' '.join(words[2:]))
+                                else:
+                                    clinic_lines.append(before_email)
+                        else:
+                            clinic_lines.append(before_email)
+                            
+                        if email:
+                            clinic_lines.append(email)
+                        if phone:
+                            clinic_lines.append(phone)
+                    else:
+                        # Can't parse, use as single line
+                        clinic_lines = [office_info.strip()]
                 
                 # Store all lines for display in template
                 if clinic_lines:
                     clinic_info['lines'] = clinic_lines
+                    logger.info(f"Parsed clinic_lines: {clinic_lines}")
                     # For compatibility, also set individual fields if we can detect them
                     for line in clinic_lines:
                         line_lower = line.lower()
@@ -392,8 +461,7 @@ class WeasyPrintMedicalPDFGenerator:
         # HTML document start
         html_parts.append(self._get_html_header())
         
-        # Patient header for multi-visit document
-        html_parts.append(f'<div class="patient-header"><h1>Medical Records for {html.escape(patient_name)}</h1></div>\n')
+        # Removed patient header for cleaner look
         
         visit_counters = {'follow_up': 0, 're_evaluation': 0}
         section_headers_added = {'follow_up': False, 're_evaluation': False}
@@ -493,6 +561,15 @@ class WeasyPrintMedicalPDFGenerator:
         besley_font_path = self._get_besley_font_path()
         css_styles = get_medical_document_css(besley_font_path)
         
+        # Debug clinic info before rendering
+        if data.get('clinic_info'):
+            logger.info(f"Initial exam - Clinic info being passed to template: {data['clinic_info']}")
+            if 'lines' in data['clinic_info']:
+                logger.info(f"Initial exam - Clinic info lines: {data['clinic_info']['lines']}")
+                logger.info(f"Initial exam - Number of lines: {len(data['clinic_info']['lines'])}")
+                for i, line in enumerate(data['clinic_info']['lines']):
+                    logger.info(f"Initial exam - Line {i}: '{line}'")
+        
         # Render just the body content (no full HTML document structure)
         html_content = template.render(
             data=data,
@@ -501,9 +578,29 @@ class WeasyPrintMedicalPDFGenerator:
         
         # Extract only the body content (remove html, head, body tags)
         import re
+        
+        # Debug: Log the clinic header section and write to file
+        # Use a more inclusive pattern to capture nested divs
+        clinic_header_match = re.search(r'<div class="clinic-header">.*?</div>\s*(?=<h2>|{% endif %})', html_content, re.DOTALL)
+        if clinic_header_match:
+            logger.info(f"DEBUG Initial exam: Rendered clinic header HTML: {clinic_header_match.group(0)}")
+        
+        # Write full HTML to a debug file for inspection
+        import os
+        debug_file = "/tmp/debug_multi_visit_render.html"
+        with open(debug_file, "w") as f:
+            f.write(html_content)
+        logger.info(f"DEBUG: Full rendered HTML written to {debug_file}")
+        
         body_match = re.search(r'<body[^>]*>(.*?)</body>', html_content, re.DOTALL)
         if body_match:
-            return body_match.group(1)
+            # Also write just the extracted body content
+            body_debug_file = "/tmp/debug_multi_visit_body.html"
+            body_content = body_match.group(1)
+            with open(body_debug_file, "w") as f:
+                f.write(body_content)
+            logger.info(f"DEBUG: Body content written to {body_debug_file}")
+            return body_content
         else:
             return html_content
     
@@ -722,9 +819,10 @@ class WeasyPrintMedicalPDFGenerator:
             clinic_info = await self._get_clinic_info_from_database(user_id)
             if clinic_info:
                 # Only add clinic info to the first visit to avoid redundancy
-                if visits_data and not visits_data[0].get('clinic_info'):
+                if visits_data:
+                    # Always overwrite the clinic_info with the properly parsed one from database
                     visits_data[0]['clinic_info'] = clinic_info
-                    logger.info(f"Injected clinic info into FIRST visit only for multi-visit PDF")
+                    logger.info(f"Injected clinic info into FIRST visit only for multi-visit PDF: {clinic_info}")
                 
                 # Ensure other visits don't have clinic info to avoid duplication
                 for i, visit_data in enumerate(visits_data[1:], 1):
@@ -742,8 +840,8 @@ class WeasyPrintMedicalPDFGenerator:
         # Get font path for CSS
         besley_font_path = self._get_besley_font_path()
         
-        # Use re-evaluation CSS which includes all styles needed for multi-visit with re-evaluations
-        css_content = get_re_evaluation_css(besley_font_path)
+        # Use medical document CSS which includes all styles needed for multi-visit documents
+        css_content = get_medical_document_css(besley_font_path)
         
         # Create PDF in memory
         buffer = io.BytesIO()

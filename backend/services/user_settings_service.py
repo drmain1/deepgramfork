@@ -388,6 +388,7 @@ class UserSettingsService:
             logger.info(f"transcription_profiles: {len(firestore_settings.get('transcription_profiles', []))} items")
             logger.info(f"custom_vocabulary: {len(firestore_settings.get('custom_vocabulary', []))} items")
             logger.info(f"macro_phrases: {len(firestore_settings.get('macro_phrases', []))} items")
+            logger.info(f"office_information: type={type(firestore_settings.get('office_information'))}, value={firestore_settings.get('office_information', [])}")
             
             # Save full settings to Firestore
             success = await firestore_client.update_user_settings(
@@ -406,6 +407,8 @@ class UserSettingsService:
                     logger.info(f"transcription_profiles count: {len(saved_doc.get('transcription_profiles', []))}")
                     logger.info(f"doctor_name: {saved_doc.get('doctor_name', 'NOT FOUND')}")
                     logger.info(f"medical_specialty: {saved_doc.get('medical_specialty', 'NOT FOUND')}")
+                    logger.info(f"office_information exists: {'office_information' in saved_doc}")
+                    logger.info(f"office_information: type={type(saved_doc.get('office_information'))}, value={saved_doc.get('office_information', 'NOT FOUND')}")
             
             return success
             

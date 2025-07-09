@@ -12,8 +12,10 @@
 
     <!-- Clinic Header -->
     {% if data.clinic_info %}
-    <div class="clinic-header" style="text-align: right; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px;">
+    <!-- DEBUG: clinic_info exists -->
+    <div class="clinic-header">
         {% if data.clinic_info.lines %}
+        <!-- DEBUG: clinic_info.lines exists with {{ data.clinic_info.lines|length }} items -->
             <!-- Display each line of office information as entered by user -->
             {% for line in data.clinic_info.lines %}
             <div class="clinic-info-line" style="font-size: {% if loop.first %}16pt{% else %}9pt{% endif %}; font-weight: {% if loop.first %}bold{% else %}normal{% endif %}; color: {% if loop.first %}#333{% else %}#666{% endif %}; margin-top: {% if loop.first %}0{% else %}3px{% endif %};">
@@ -21,6 +23,7 @@
             </div>
             {% endfor %}
         {% else %}
+            <!-- DEBUG: Using fallback - no lines array found -->
             <!-- Fallback to individual fields for compatibility -->
             {% if data.clinic_info.name %}
             <div class="clinic-name" style="font-size: 16pt; font-weight: bold; color: #333;">{{ data.clinic_info.name }}</div>

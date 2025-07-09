@@ -141,16 +141,18 @@ body {
 
 /* Clinic header styles */
 .clinic-header {
-    text-align: center;
+    text-align: right;
     margin-bottom: 20pt;
     padding-bottom: 15pt;
     border-bottom: 1px solid #e9ecef;
 }
 
 .clinic-info-line {
-    display: block;
+    display: block !important;
     margin: 0;
     padding: 0;
+    line-height: 1.2;
+    clear: both;
 }
 
 .clinic-name {
