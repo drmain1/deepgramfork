@@ -354,3 +354,190 @@ ooking at these LLM instruction files, I can spot several edge
 
   Would you like me to implement any of these improvements to make the
    template more robust?
+
+
+ 2 seperate PDF tempaltes 
+
+  Here's the key difference:
+
+  Single Visit PDF (from /transcription):
+
+  - Uses the full re-evaluation template
+  including HTML structure, headers, body
+   tags
+  - Renders complete HTML document with
+  <html>, <head>, <body> tags
+  - Includes CSS styles embedded in the
+  template
+
+  Multi-Visit PDF (from /patients):
+
+  - Uses _generate_re_evaluation_content_
+  for_multi_visit() method (line 607)
+  - Renders the same template BUT then
+  extracts only the body content (line
+  627)
+  - Strips out the <html>, <head>, and
+  <body> tags using regex
+  - Returns only the inner HTML content
+  between <body> tags
+
+  The specific code difference:
+  # Multi-visit version (line 625-631):
+  body_match =
+  re.search(r'<body[^>]*>(.*?)</body>',
+  html_content, re.DOTALL)
+  if body_match:
+      return body_match.group(1)  # 
+  Returns only body content
+
+  This extraction process could
+  potentially:
+  1. Remove important CSS styles that
+  were in the <head> section
+  2. Lose formatting that depends on the
+  full document structure
+  3. Cause slight rendering differences
+
+  The reason for this approach is that
+  multi-visit PDFs combine multiple
+  visits into one document, so they can't
+   have multiple <html> structures. But
+  this body extraction might be causing
+  the differences you're seeing between
+  single visit and multi-visit
+  re-evaluation outputs.
+
+---
+
+## Major Template Improvements - July 2025
+
+### Overview of New Dedicated Tables
+
+The re-evaluation template has been significantly enhanced with dedicated tables for comprehensive physical examination comparisons. Instead of a single consolidated table, we now have specialized tables for each examination category:
+
+1. **Cervical Range of Motion Table**
+2. **Lumbar Range of Motion Table**
+3. **Upper Extremity Motor Examination Table**
+4. **Lower Extremity Motor Examination Table**
+5. **Deep Tendon Reflexes Table**
+
+### 1. Cervical Range of Motion Table
+
+**Features:**
+- Displays all 6 standard cervical movements:
+  - Flexion
+  - Extension
+  - Left Rotation
+  - Right Rotation
+  - Left Lateral Flexion
+  - Right Lateral Flexion
+- Automatically defaults to "Normal" for any movement not mentioned in the data
+- 4-column layout: Movement | Initial | Current | Status
+
+**Data Parsing:**
+- Extracts from `cervico_thoracic` section
+- Recognizes various naming patterns: "cervical right rotation", "rotation right", etc.
+- Parses "Previously X | Currently Y" format
+
+**Example JSON Input:**
+```json
+"cervico_thoracic": "Cervical right rotation: Previously restricted, with pain | Currently normal\nCervical extension: Previously restricted, with pain | Currently normal"
+```
+
+### 2. Lumbar Range of Motion Table
+
+**Features:**
+- Displays all 6 standard lumbar movements:
+  - Flexion
+  - Extension
+  - Left Lateral Flexion (also recognizes "side bending")
+  - Right Lateral Flexion
+  - Left Rotation
+  - Right Rotation
+- Same defaulting behavior and layout as cervical table
+
+**Data Parsing:**
+- Extracts from `lumbopelvic` section
+- Recognizes "lumbar" or "lumbosacral" prefixes
+- Handles alternative terminology like "side bending" for lateral flexion
+
+### 3. Upper Extremity Motor Examination Table
+
+**Features:**
+- Displays all 8 standard upper extremity muscles:
+  - DELTOID
+  - BICEPS
+  - TRICEPS
+  - WRIST EXT
+  - FINGER FLEX
+  - FINGER EXT
+  - THUMB EXT
+  - HAND INTRINSICS
+- 7-column layout: Muscle | Right Initial | Left Initial | Right Current | Left Current | R | L
+- Grouped initial values together and current values together for easier comparison
+
+**Data Parsing:**
+- Handles "Previously X, currently Y" format within individual muscle entries
+- Defaults to "5/5" for unmentioned muscles
+- Example: `{"muscle": "BICEPS", "right": "5/5", "left": "Previously 4+/5, currently 5/5"}`
+
+### 4. Lower Extremity Motor Examination Table
+
+**Features:**
+- Displays all 6 standard lower extremity muscles:
+  - ILIOPSOAS
+  - QUAD
+  - HAMSTRINGS
+  - GLUTEUS
+  - ANTERIOR TIBIALIS
+  - EXT HALLUCIS LONGUS
+- Same layout and parsing logic as upper extremity table
+
+### 5. Deep Tendon Reflexes Table
+
+**Features:**
+- Displays all 5 standard reflexes:
+  - BICEPS
+  - TRICEPS
+  - BRACHIORADIALIS
+  - PATELLAR
+  - ACHILLES
+- Same 7-column layout as motor tables
+- Defaults to "2+" (normal) for unmentioned reflexes
+
+**Special Status Logic:**
+- ✓ = Improved (returning to 2+ from abnormal)
+- ✗ = Worsened (becoming hyperreflexic 3+/4+ or hyporeflexic 0/1+)
+- → = No change
+- • = Other changes
+
+### Visual Status Indicators
+
+All tables use consistent visual indicators:
+- ✓ (green) = Improved
+- ✗ (red) = Worsened
+- → (gray) = No change
+- • (gray) = Status changed
+
+### Other Physical Examination Findings
+
+The "Other Physical Examination Findings" section now only displays:
+- Non-ROM orthopedic/special tests
+- Sensory examination findings
+- Other findings not covered by the dedicated tables
+
+This prevents duplication and provides a cleaner, more organized view of the examination results.
+
+### Benefits of the New Template Structure
+
+1. **Complete View**: All standard movements/muscles/reflexes are shown, even if not mentioned
+2. **Easy Comparison**: Side-by-side initial and current values
+3. **Visual Clarity**: Immediate identification of improvements with color-coded indicators
+4. **Professional Appearance**: Clean, medical-grade tables suitable for clinical documentation
+5. **Intelligent Defaults**: Assumes normal findings for unmentioned items (reflecting real clinical practice)
+
+### Template Location
+
+All improvements are implemented in:
+`/backend/services/pdf_service/jinja_templates/re_evaluation_template.html`

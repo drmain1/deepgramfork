@@ -146,7 +146,19 @@ def validate_firebase_token(token: str) -> str:
                         time_parts = parts[1].strip().split("<")
                         if len(time_parts) == 2:
                             server_time = int(time_parts[0].strip())
-                            token_time = int(time_parts[1].strip().rstrip("."))
+                            # Extract only the numeric part from token_time
+                            token_time_str = time_parts[1].strip()
+                            # Find the first non-digit character and extract only the number
+                            token_time_num = ""
+                            for char in token_time_str:
+                                if char.isdigit():
+                                    token_time_num += char
+                                else:
+                                    break
+                            token_time = int(token_time_num) if token_time_num else None
+                            
+                            if token_time is None:
+                                raise ValueError("Could not extract token time from error message")
                             time_diff = token_time - server_time
                             
                             # Log the clock skew for monitoring

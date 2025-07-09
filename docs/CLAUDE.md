@@ -1,60 +1,65 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. 
-
-this product uses venv on python backend, please ask human if you need backend commands. 
-
-
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-This is a multi tenat HIPAA-compliant medical transcription application that converts audio recordings into structured medical notes. The system uses speech-to-text services (Deepgram for medical, Speechmatics for multilingual) and LLM-based formatting (Google Vertex AI) to produce professional medical documentation.  This file is getting towards production if you see code that could be refactored to be improved or made shorter for maintainability please advise me. 
+This is a multi-tenant HIPAA-compliant medical transcription application that converts audio recordings into structured medical notes. The system uses speech-to-text services (Deepgram for medical, Speechmatics for multilingual) and LLM-based formatting (Google Vertex AI) to produce professional medical documentation.
 
-**Current Status**: Active migration from AWS to Google Cloud Platform (branch: `gcp-migration`) 
+**Current Status**: Active migration from AWS to Google Cloud Platform (branch: `gcp-migration`)
 
-## Quick Reference
+## Critical
 
-- **Frontend**: http://localhost:5173 (React + Vite)
-- **Backend**: http://localhost:8000 (FastAPI)
-- **Database**: Firestore (NoSQL)
-- **Storage**: Google Cloud Storage (for logos/signatures only)
-- **Auth**: Firebase Authentication
-- **Speech-to-Text**: Deepgram (medical), Speechmatics (multilingual)
-- **AI**: Google Vertex AI (Gemini models)
+this application uses a venv for all backend functions, if you want to test something please load venv on your backend console first 
 
-### Core Dependencies
+for all new functions please create using zustand with hipaa complaint data (nothing stored in browser)
 
-**Backend (Python 3.10)**:
-- FastAPI - Web framework with WebSocket support
-- Uvicorn/Gunicorn - ASGI server
-- Firebase Admin SDK - Authentication and Firestore
-- Google Cloud SDK - Storage, Vertex AI, Secret Manager
-- Deepgram SDK - Medical transcription
-- Speechmatics - Multilingual transcription
-- python-jose - JWT token handling
-- python-multipart - File upload support
-- websockets - WebSocket client/server
+If you run in to files with code that is likely extremely difficult to maintain please tell human to plan refactoring
 
-**Frontend (React 19)**:
-- Vite - Build tool and dev server
-- React Router v7 - Client-side routing
-- Zustand - State management
-- Firebase SDK - Authentication
-- Material-UI (MUI) - UI components
-- date-fns - Date manipulation
-- react-audio-voice-recorder - Audio recording
+if you run in to non hipaa complaint data transfers or other security risk alert human
 
-**Infrastructure**:
-- Google Cloud Platform (App Engine, Cloud Storage, Firestore, Vertex AI)
-- Firebase (Authentication, Firestore Database)
-- Cloudflare (CDN, DNS)
-- Google Secret Manager (API keys)
+## Architecture Overview
+
+### Backend Structure (FastAPI)
+- **main.py**: FastAPI application with WebSocket endpoints for real-time transcription
+- **firestore_endpoints.py**: Firestore-based API endpoints replacing GCS metadata
+- **deepgram_utils.py**: Deepgram WebSocket handling and audio processing
+- **gcp_utils.py**: Google Vertex AI integration for transcript polishing
+- **firestore_client.py**: Firestore database client and operations
+- **services/**: Modular services (PDF generation, user settings)
+- **middleware/**: CORS and security middleware
+- **models.py**: Pydantic models for API requests/responses
+
+### Frontend Structure (React + Vite)
+- **stores/**: Zustand stores for state management (recordings, transcripts, users, patients)
+- **hooks/**: Custom React hooks for WebSocket, audio recording, and API calls
+- **contexts/**: React contexts for Firebase auth and recordings
+- **pages/**: Main application pages (Home, Transcription, Settings, Patients)
+- **components/**: Reusable UI components
+- **services/**: API service layer for backend communication
+- **utils/**: Utility functions for formatting, dates, and business logic
+
+### Key Data Flow
+1. Audio recording → WebSocket → Deepgram → Real-time transcription
+2. Transcript polishing → Google Vertex AI → Formatted medical notes
+3. Session management → Firestore → Persistent storage
+4. PDF generation → WeasyPrint → Professional medical documents
 
 ## Development Commands
 
-Please remove all debugging once we have confirmed a feature is functional
+### Frontend (React + Vite)
+```bash
+cd my-vite-react-app
+npm run dev      # Start development server (localhost:5173)
+npm run build    # Build for production
+npm run lint     # Run ESLint
+npm run preview  # Preview production build
+```
 
-### Testing & Utilities
+### Backend (FastAPI)
+**Note**: Backend uses Python venv - ask human for specific backend commands if needed.
+
+Common testing utilities:
 ```bash
 cd backend
 python test_firestore_connection.py  # Test Firestore connection
@@ -65,31 +70,50 @@ python test_gcs_health.py           # Test GCS health
 
 ### Deployment
 ```bash
-./deploy.sh                # Deploy to GCP (App Engine + Cloud Storage)
-firebase deploy           # Deploy Firebase (Firestore rules, hosting)
-firebase deploy --only firestore  # Deploy only Firestore rules
+./deploy.sh                          # Deploy to GCP (App Engine + Cloud Storage)
+firebase deploy                      # Deploy Firebase (Firestore rules, hosting)
+firebase deploy --only firestore     # Deploy only Firestore rules
 ```
--
-refactor @recordingview 7/1/25
-1. Created reusable hooks and utilities:
-    - useTranscriptionWebSocket - Manages WebSocket
-  connections
-    - useAudioRecording - Handles audio recording logic
-    - sessionSaveUtils.js - Contains save/draft logic
-    - recordingConstants.js - All magic strings and constants
-  2. Simplified state management:
-    - Removed redundant combinedTranscript state (now computed
-   with useMemo)
-    - Combined error states from different sources
-    - Removed unnecessary refs
-  3. Cleaned up code:
-    - Removed all console.log statements
-    - Removed legacy WebSocket message handling
-    - Extracted complex functions into smaller, focused
-  utilities
-    - Used constants instead of magic strings
-  4. Improved maintainability:
-    - WebSocket logic is now encapsulated and reusable
-    - Audio recording logic is separate from UI concerns
-    - Save/draft logic is extracted and testable
-    - Constants are centralized
+
+## Core Dependencies
+
+### Backend (Python 3.10)
+- **FastAPI**: Web framework with WebSocket support
+- **Firebase Admin SDK**: Authentication and Firestore
+- **Google Cloud SDK**: Storage, Vertex AI, Secret Manager
+- **Deepgram SDK**: Medical transcription
+- **Speechmatics**: Multilingual transcription
+- **WeasyPrint**: PDF generation from HTML/CSS
+- **python-jose**: JWT token handling
+
+### Frontend (React 19)
+- **Vite**: Build tool and dev server
+- **React Router v7**: Client-side routing
+- **Zustand**: State management with persistence
+- **Firebase SDK**: Authentication
+- **Material-UI (MUI)**: UI components
+- **date-fns**: Date manipulation
+
+## State Management Architecture
+
+### Zustand Stores
+- **recordingsStore**: Audio recordings, transcripts, WebSocket state
+- **transcriptsStore**: Transcript history and management
+- **userSettingsStore**: User preferences and configuration
+- **patientsStore**: Patient data and search
+- **transcriptionSessionStore**: Active transcription sessions
+
+### Security Considerations
+- **PHI Protection**: Stores use secure storage to exclude Protected Health Information from localStorage
+- **Token Management**: Firebase JWT tokens for authenticated API calls
+- **HIPAA Compliance**: Audit logging and secure data handling
+
+## Quick Reference
+
+- **Frontend**: http://localhost:5173 (React + Vite)
+- **Backend**: http://localhost:8000 (FastAPI)
+- **Database**: Firestore (NoSQL)
+- **Storage**: Google Cloud Storage (logos/signatures only)
+- **Auth**: Firebase Authentication
+- **Speech-to-Text**: Deepgram (medical), Speechmatics (multilingual)
+- **AI**: Google Vertex AI (Gemini models)

@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { TextField, Button, Box, IconButton, Tooltip, Snackbar, Alert, CircularProgress } from '@mui/material';
-import { ContentCopy, Check, Edit as EditIcon, Save as SaveIcon } from '@mui/icons-material';
+import { TextField, Button, Box, IconButton, Tooltip, Snackbar, Alert, CircularProgress, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import { ContentCopy, Check, Edit as EditIcon, Save as SaveIcon, Code as CodeIcon, TextFields as TextIcon } from '@mui/icons-material';
 import { useServerPdfGeneration } from '../hooks/useServerPdfGeneration';
 import FormattedMedicalText from './FormattedMedicalText';
 import { useUserSettings } from '../contexts/UserSettingsContext';
+import { jsonToPlainText, plainTextToJson } from '../utils/medicalTextConversion';
 
 function EditableNote({ 
   content, 
@@ -26,6 +27,8 @@ function EditableNote({
   const [lastSyncedContent, setLastSyncedContent] = useState('');
   const [copySuccess, setCopySuccess] = useState(false);
   const [showCopyFeedback, setShowCopyFeedback] = useState(false);
+  const [editMode, setEditMode] = useState('json'); // 'json' or 'plaintext'
+  const [conversionError, setConversionError] = useState('');
   const isInitialMount = useRef(true);
   
   // Get user settings for logo
@@ -63,9 +66,27 @@ function EditableNote({
     if (onSave) {
       setIsSaving(true);
       setSaveError('');
+      setConversionError('');
+      
       try {
-        await onSave(editableContent);
-        setLastSyncedContent(editableContent);
+        let contentToSave = editableContent;
+        
+        // If in plain text mode, convert to JSON before saving
+        if (editMode === 'plaintext') {
+          try {
+            contentToSave = plainTextToJson(editableContent);
+            // Validate it's proper JSON
+            JSON.parse(contentToSave);
+          } catch (error) {
+            setConversionError('Invalid format. Please check your text and try again.');
+            setIsSaving(false);
+            return;
+          }
+        }
+        
+        await onSave(contentToSave);
+        setLastSyncedContent(contentToSave);
+        setEditableContent(contentToSave);
         setIsEditing(false);
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3000);
@@ -80,11 +101,46 @@ function EditableNote({
 
   const handleEdit = () => {
     setIsEditing(true);
+    setConversionError('');
+    // Check if content is JSON and auto-detect mode
+    try {
+      const parsed = JSON.parse(editableContent);
+      if (parsed && typeof parsed === 'object') {
+        setEditMode('json');
+      }
+    } catch (e) {
+      // Not JSON, default to plain text
+      setEditMode('plaintext');
+    }
+  };
+
+  const handleEditModeChange = (event, newMode) => {
+    if (newMode === null) return; // Prevent deselection
+    
+    setConversionError('');
+    
+    try {
+      if (newMode === 'plaintext' && editMode === 'json') {
+        // Convert from JSON to plain text
+        const plainText = jsonToPlainText(editableContent);
+        setEditableContent(plainText);
+      } else if (newMode === 'json' && editMode === 'plaintext') {
+        // Convert from plain text to JSON
+        const jsonText = plainTextToJson(editableContent);
+        setEditableContent(jsonText);
+      }
+      setEditMode(newMode);
+    } catch (error) {
+      setConversionError(error.message || 'Failed to convert format');
+      // Don't change mode if conversion fails
+    }
   };
 
   const handleCancel = () => {
     setEditableContent(lastSyncedContent);
     setIsEditing(false);
+    setConversionError('');
+    setEditMode('json'); // Reset to default mode
   };
 
   const handleContentChange = (e) => {
@@ -199,17 +255,53 @@ function EditableNote({
       minHeight: 0 
     }}>
       {isEditing ? (
-        <TextField
-          multiline
-          fullWidth
-          variant="outlined"
-          value={editableContent}
-          onChange={handleContentChange}
-          InputProps={{
-            readOnly: false,
-          }}
-          placeholder="Edit polished note..."
-          sx={{
+        <>
+          {/* Edit Mode Toggle */}
+          <Box sx={{ mb: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <ToggleButtonGroup
+              value={editMode}
+              exclusive
+              onChange={handleEditModeChange}
+              size="small"
+              sx={{ height: 32 }}
+            >
+              <ToggleButton value="plaintext" aria-label="plain text mode">
+                <TextIcon sx={{ mr: 0.5, fontSize: 18 }} />
+                Plain Text
+              </ToggleButton>
+              <ToggleButton value="json" aria-label="json mode">
+                <CodeIcon sx={{ mr: 0.5, fontSize: 18 }} />
+                JSON
+              </ToggleButton>
+            </ToggleButtonGroup>
+            
+            {/* Conversion error */}
+            {conversionError && (
+              <Alert 
+                severity="error" 
+                sx={{ 
+                  py: 0.25, 
+                  px: 1, 
+                  fontSize: '0.875rem',
+                  '& .MuiAlert-icon': { fontSize: 18 }
+                }}
+              >
+                {conversionError}
+              </Alert>
+            )}
+          </Box>
+          
+          <TextField
+            multiline
+            fullWidth
+            variant="outlined"
+            value={editableContent}
+            onChange={handleContentChange}
+            InputProps={{
+              readOnly: false,
+            }}
+            placeholder={editMode === 'plaintext' ? "Edit medical note in plain text..." : "Edit polished note..."}
+            sx={{
             flexGrow: 1,
             height: '100%',
             minHeight: 0,
@@ -248,6 +340,7 @@ function EditableNote({
             }
           }}
         />
+        </>
       ) : (
         <Box sx={{ 
           position: 'relative',

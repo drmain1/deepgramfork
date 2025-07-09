@@ -3,6 +3,9 @@
 ## Problem Summary
 The intermittent 401 error "Token used too early, 1751464256 < 1751464257" occurs when there's a clock synchronization issue between the client issuing the token and the server validating it. This 1-second difference causes Firebase Admin SDK to reject the token.
 
+### Update (January 2025)
+Firebase has updated their error message format to include additional help text: `"Token used too early, 1752034385 < 1752034386. Check that your computer's clock is set correctly"`. The parsing logic in `gcp_auth_middleware.py` has been updated to handle both old and new formats correctly.
+
 ## Solution Implementation
 
 ### 1. **Intelligent Retry Mechanism**
@@ -35,6 +38,9 @@ The intermittent 401 error "Token used too early, 1751464256 < 1751464257" occur
 
 1. **Detection**: When `verify_id_token()` fails with "Token used too early", the error is caught
 2. **Analysis**: The time difference is extracted from the error message
+   - Handles both old format: `"Token used too early, 1751464256 < 1751464257."`
+   - And new format: `"Token used too early, 1751464256 < 1751464257. Check that your computer's clock is set correctly"`
+   - Extracts only numeric portions to avoid parsing errors
 3. **Decision**: If the skew is within tolerance and retries remain, wait and retry
 4. **Retry**: Sleep for the calculated time, then attempt validation again
 5. **Success/Failure**: Either succeeds on retry or fails with user-friendly message
@@ -79,5 +85,18 @@ Run the test suite to verify the implementation:
 cd backend
 python test_clock_skew_handling.py
 ```
+
+### Parsing Fix Verification (January 2025)
+
+The error message parsing logic has been tested against multiple formats:
+- Original format: `"Token used too early, 1752034385 < 1752034386."`
+- New format with help text: `"Token used too early, 1752034385 < 1752034386. Check that your computer's clock is set correctly"`
+- Various edge cases with different time differences
+
+The implementation correctly extracts timestamp values from both formats by:
+1. Splitting on the comma to isolate the timestamp portion
+2. Splitting on the `<` to separate server and token times
+3. Extracting only numeric characters from the token time to handle trailing text
+4. Gracefully handling parsing errors by logging and rethrowing
 
 This solution provides enterprise-grade resilience against clock synchronization issues while maintaining security and providing excellent observability.
