@@ -11,17 +11,32 @@
 <body>
 
     <!-- Clinic Header -->
-    {% if data.clinic_info and data.clinic_info.name %}
+    {% if data.clinic_info %}
     <div class="clinic-header" style="text-align: right; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px;">
-        <div class="clinic-name" style="font-size: 16pt; font-weight: bold; color: #333;">{{ data.clinic_info.name }}</div>
-        {% if data.clinic_info.address %}
-        <div class="clinic-address" style="font-size: 9pt; color: #666; margin-top: 3px;">{{ data.clinic_info.address }}</div>
-        {% endif %}
-        {% if data.clinic_info.phone %}
-        <div class="clinic-contact" style="font-size: 9pt; color: #666; margin-top: 2px;">Tel: {{ data.clinic_info.phone }}</div>
-        {% endif %}
-        {% if data.clinic_info.fax %}
-        <div class="clinic-contact" style="font-size: 9pt; color: #666; margin-top: 2px;">Fax: {{ data.clinic_info.fax }}</div>
+        {% if data.clinic_info.lines %}
+            <!-- Display each line of office information as entered by user -->
+            {% for line in data.clinic_info.lines %}
+            <div class="clinic-info-line" style="font-size: {% if loop.first %}16pt{% else %}9pt{% endif %}; font-weight: {% if loop.first %}bold{% else %}normal{% endif %}; color: {% if loop.first %}#333{% else %}#666{% endif %}; margin-top: {% if loop.first %}0{% else %}3px{% endif %};">
+                {{ line }}
+            </div>
+            {% endfor %}
+        {% else %}
+            <!-- Fallback to individual fields for compatibility -->
+            {% if data.clinic_info.name %}
+            <div class="clinic-name" style="font-size: 16pt; font-weight: bold; color: #333;">{{ data.clinic_info.name }}</div>
+            {% endif %}
+            {% if data.clinic_info.address %}
+            <div class="clinic-address" style="font-size: 9pt; color: #666; margin-top: 3px;">{{ data.clinic_info.address }}</div>
+            {% endif %}
+            {% if data.clinic_info.phone %}
+            <div class="clinic-contact" style="font-size: 9pt; color: #666; margin-top: 2px;">Tel: {{ data.clinic_info.phone }}</div>
+            {% endif %}
+            {% if data.clinic_info.fax %}
+            <div class="clinic-contact" style="font-size: 9pt; color: #666; margin-top: 2px;">Fax: {{ data.clinic_info.fax }}</div>
+            {% endif %}
+            {% if data.clinic_info.email %}
+            <div class="clinic-contact" style="font-size: 9pt; color: #666; margin-top: 2px;">{{ data.clinic_info.email }}</div>
+            {% endif %}
         {% endif %}
     </div>
     {% endif %}
@@ -129,6 +144,12 @@
     {% if data.sections.vitals %}
     <h4>Vitals</h4>
     <p>{{ data.sections.vitals }}</p>
+    {% endif %}
+
+    <!-- Outcome Assessments -->
+    {% if data.sections.outcome_assessments %}
+    <h4>Outcome Assessments</h4>
+    <p>{{ data.sections.outcome_assessments }}</p>
     {% endif %}
 
     <!-- Physical Examination -->
@@ -266,12 +287,30 @@
     
     {% if data.sections.assessment_diagnosis %}
     <h4>Assessment & Diagnosis</h4>
-    <p class="diagnosis-list">{{ data.sections.assessment_diagnosis | replace('- ', '• ') | replace('\n', '<br>• ') | replace('<br>• <br>', '<br>') | safe }}</p>
+    <div class="diagnosis-list">
+        {% set diagnoses = data.sections.assessment_diagnosis.split('\n') %}
+        {% for diagnosis in diagnoses %}
+            {% if diagnosis.strip() %}
+                {% set clean_diagnosis = diagnosis.strip() %}
+                {% if clean_diagnosis.startswith('- ') %}
+                    {% set clean_diagnosis = clean_diagnosis[2:] %}
+                {% endif %}
+                {% if clean_diagnosis %}
+                    <div class="diagnosis-item">• {{ clean_diagnosis }}</div>
+                {% endif %}
+            {% endif %}
+        {% endfor %}
+    </div>
     {% endif %}
     
     {% if data.sections.plan %}
     <h4>Plan</h4>
     <p>{{ data.sections.plan }}</p>
+    {% endif %}
+
+    {% if data.sections.treatment_performed_today %}
+    <h4>Treatment Performed Today</h4>
+    <p>{{ data.sections.treatment_performed_today }}</p>
     {% endif %}
 
     <!-- Signature Section -->

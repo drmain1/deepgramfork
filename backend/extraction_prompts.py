@@ -5,198 +5,57 @@ This module contains customizable prompts for extracting structured data from me
 
 # Default findings extraction prompt for initial evaluations
 INITIAL_EVALUATION_FINDINGS_PROMPT = """
-Extract all positive clinical findings from this medical evaluation. 
-This will be used for comparison in future re-evaluations.
+Extract positive clinical findings from this medical evaluation for baseline documentation.
 
-Organize findings by body region/system.
-Include:
-- Chief complaint and symptom onset
-- Pain levels by specific body region (use numeric scale 0-10)
-- Range of motion limitations (include degrees when mentioned)
-- Positive orthopedic/special tests (list test name and result)
-- Neurological findings (reflexes, sensation, strength grades)
-- Muscle testing results (grade 0-5 scale)
-- Palpation findings (tenderness, muscle tension, trigger points)
-- Functional limitations and disabilities
-- Diagnosed conditions (ICD-10 codes if mentioned)
-- Imaging findings if mentioned
-- Patient's goals and expectations
+INSTRUCTIONS:
+1. Extract ONLY positive/abnormal findings (ignore normal findings)
+2. Use direct quotes from the transcript
+3. Each finding should appear in only ONE appropriate category
+4. Focus on objective, measurable findings
 
-Format as JSON with structure:
-{
-  PRIME DIRECTIVE: Your Role and Goal
-You are a specialized AI Clinical Data Extractor. Your single function is to analyze a medical evaluation note and create a structured JSON object containing all positive/abnormal clinical findings and any documented Outcome Assessment Tool (OAT) scores.
-This JSON will serve as a "Clinical Baseline" to be displayed to a doctor during a future re-evaluation.
-Core Logic & Rules:
-1 will be an array of strings, where each string is a direct quote of a positive finding from the note.
-This. Extract Only Positive/Abnormal Findings: For every category, you must ignore findings described as "normal," approach is:
-Comprehensive: It captures all types of findings.
-Simple to Parse: Your "negative," "full," "WNL," "unremarkable," or "within normal limits." Your output should be application can easily iterate through the arrays for each category and display them as bulleted lists in a chart.
-**Human a concise summary of what is wrong with the patient.
-Handle Missing Data: If a category of-Readable:** The findings are stored as direct quotes, which is exactly what the doctor needs to see.
-**Final, findings (e.g., Palpation) is not mentioned or has no abnormal findings, you will omit that key 30,000-Foot View Prompt
-Here is the comprehensive prompt designed to meet this final goal.
---- entirely** from the final JSON object.
-3. Copy Descriptions Verbatim: For most findings, you will
-PRIME DIRECTIVE: Your Role and Goal
-You are a specialized AI clinical data extractor. Your sole copy the exact descriptive text from the note. Do not summarize or paraphrase unless explicitly told to.
-4. Format function is to read a medical evaluation note and create a structured JSON summary of all positive (abnormal) clinical findings and any as a Single JSON Object: The final output must be one valid JSON object.
-Category-Specific Instructions:
-scored Outcome Assessment Tools (OATs).
-Core Logic & Rules:
-Extract ONLYmetadata**:
-Extract the date_of_service and visit_type (e. Positive/Abnormal Findings:** You must ignore any findings described as "normal," "negative," "full," "within normal limitsg., "Initial Examination"). This is mandatory.
-outcome_assessment_tools:
-Scan for any mention of standardized tests like "Oswestry," "Neck Disability Index (NDI)," "Roland (WNL)," "unremarkable," or otherwise non-pathological. Your output should be a concise list of the patient-Morris," etc.
-Extract the tool_name, the score, and any interpretation provided's problems.
-Quote Verbatim: For each finding, you will extract the exact descriptive text (e.g., "Severe Disability"). Structure this as an array of objects.
-pain_levels: from the note. Do not summarize or interpret the finding.
-Categorize Findings: Organize the extracted findings into
-Extract pain scores for specific body regions. If a numeric score (0-10) is given the specific categories listed in the JSON structure below.
-Handle Missing Data: If a category has no positive, use the number. If a descriptive word is used ("severe," "moderate"), use that string.
-findings, you can either omit the key entirely or use an empty array [].
-Format asrange_of_motion**:
-For each abnormal motion, create a key (e.g., JSON:** Your final output must be a single, valid JSON object.
-Required JSON Structure and Categories:
-You cervical_flexion).
-* The value will be an object with two keys:
-* will populate the following JSON structure. The value for each key (exceptoutcome_assessment_tools) will be an array of stringsstatus: Categorize the finding as "Reduced", "Painful", or "Reduced with Pain".
-* description: The exact original text from the note.
-**`palpation_findings.
-Generated json
-{
-  "outcome_assessment_tools": [
-    {
-      "tool_name": "[`**:
-    *   Create a key for each body region with abnormal palpation findings (e.g., `Name of the tool, e.g., Oswestry Disability Index]",
-      "score": "[The score, e.g.,lumbar_paraspinals`).
-    *   The value will be the verbatim description from the note (e.g., " 45% or 28/50]",
-      "interpretation": "[The interpretation if mentioned, e.gbilateral hypertonicity with trigger points").
-
-*   **`orthopedic_tests`**:
-    *   Create an., Severe Disability]"
-    }
-  ],
-  "pain_findings": [
-    "[Direct quote of pain description, e.g., 'Neck pain, severe, radiating down arm']"
-  ],
-  "range_of_ array listing the names and results of **only the positive tests**.
-    *   Format as: `["Test Name (Sidemotion_findings": [
-    "[Direct quote of ROM limitation, e.g., 'restriction in right rotation and): Result", "Straight Leg Raise (Right): Positive at 30 degrees"]`.
-
-*   **`neu extension, both eliciting pain']"
-  ],
-  "orthopedic_test_findings": [
-    "[Directrological_findings`**:
-    *   Create an object to house abnormal findings for `strength` (MMT grades quote of positive test, e.g., 'Positive Straight Leg Raise on right at 30 degrees']"
-  ],
-  "neurological_findings": [
-    "[Direct quote of neuro deficit, e.g., 'B < 5/5), `sensation` (e.g., "decreased," "numbness"), and `reflexiceps strength 4+/5 on the left']",
-    "[e.g., 'Decreased sensation in thees` (grades other than 2+).
-
-*   **`functional_limitations`**:
-    *   Create an L5 dermatome']"
-  ],
-  "palpation_findings": [
-    "[Direct quote array of strings, with each string being a specific functional limitation mentioned (e.g., "Unable to sit for more than  of palpation finding, e.g., 'Bilateral cervical and trapezius muscle spasm']",
-    "[20 minutes").
-
----
-
-### **Final JSON Structure and Example**
+Generate a JSON object with this structure:
 
 ```json
 {
-  "metadata": {
-e.g., 'Tenderness on the bilateral AC joints']"
-  ],
-  "functional_limitations": [
-    "date_of_service": "YYYY-MM-DD",
-    "visit_type": "Initial Examination"
-  },
   "outcome_assessment_tools": [
     {
-      "tool_name": "O    "[Direct quote of functional problem, e.g., 'pain while performing duties as a truck driver']",
-    "[e.g., 'insomnia']"
-  ],
-  "posture_and_gait_findings":swestry Disability Index",
-      "score": "45%",
-      "interpretation": "Severe Disability"
- [
-    "[Direct quote of postural or gait abnormality, e.g., 'Observed anterior head carriage']"
+      "tool_name": "[Name of assessment tool]",
+      "score": "[Numerical score or percentage]",
+      "interpretation": "[If provided]"
     }
   ],
-  "pain_levels": {
-    "neck": 7,
-    "lower_back": "severe"
-  },
-  "range_of_motion": {
-    "cervical_right_rotation  ]
-}
-Use code with caution.
-Json
-Example Run on Your Sample Narrative
-Input: The "Sandra Main" sample": {
-"status": "Reduced with Pain",
-"description": "restriction in right rotation, eliciting pain" note.
-Required JSON Output:
-Generated json
-{
-  "outcome_assessment_tools": [],
-  "
-    },
-    "shoulder_abduction_left": {
-      "status": "Reduced",
-      "description": "severely limited due to guarding"
-    }
-  },
-  "palpation_pain_findings": [
-    "Neck pain, severe, radiating down arm.",
-    "Thoracic pain, severe.",
-    "Right shoulder pain."
+  "pain_findings": [
+    "[Pain location, severity (0-10), and characteristics]"
   ],
   "range_of_motion_findings": [
-findings": {
-    "lumbar_paraspinals": "bilateral hypertonicity with trigger points L3-L5    "restriction in right rotation and extension, both eliciting pain"
+    "[Joint/region with degrees and pain response]"
   ],
-  "orthopedic_test_findings",
-    "right_piriformis": "exquisite tenderness"
-  },
-
-  "orthopedic_tests": [": [],
+  "orthopedic_test_findings": [
+    "[Test name: Result with details]"
+  ],
   "neurological_findings": [
-    "Biceps strength 4+/5 on the left
-    "Straight Leg Raise (Right): Positive with radiating pain at 30 degrees",
-    "Kemp's Test",
-    "Iliopsoas strength 4+/5 on the right",
-    "intermittent blurry vision (Right): Positive for local pain"
-  ],
-  "neurological_findings": {
-    "strength",
-    "difficulty reading and focusing"
+    "[Motor/sensory/reflex abnormalities with grades]"
   ],
   "palpation_findings": [
-    "Tenderness is present in the bilateral paraspinal muscles of the upper cervical spine.",
-    "Tenderness on": {
-      "biceps_left": "4+/5"
-    },
-    "sensation": {
-       the bilateral AC joints.",
-    "Bilateral cervical and trapezius muscle spasm is noted, with the spasm being worse on"L5_dermatome_right": "decreased sensation to pinprick"
-    }
-  },
-   the left side compared to the right.",
-    "Tenderness is noted on the bilateral medial elbow joint."
+    "[Location with specific finding]"
   ],
   "functional_limitations": [
-    "Unable to sit for more than 20 minutes",
-    "Difficulty sleeping"functional_limitations": [
-    "insomnia",
-    "pain while performing duties as a truck driver"
-   due to pain"
+    "[Specific activity limitations]"
+  ],
+  "posture_and_gait_findings": [
+    "[Observable abnormalities]"
   ]
 }
-}
+```
+
+Example findings:
+- Pain: "Neck pain radiating to left arm, 7/10, sharp"
+- ROM: "Cervical flexion limited to 30 degrees with pain"
+- Tests: "Straight Leg Raise positive at 45 degrees on right"
+- Neuro: "Biceps strength 4/5 on left"
+- Palpation: "Bilateral trapezius muscle spasm"
+- Function: "Unable to sit longer than 20 minutes"
+- Posture: "Forward head posture with rounded shoulders"
 """
 
 # Chiropractic-specific findings extraction

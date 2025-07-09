@@ -505,6 +505,21 @@ async def get_patient_initial_evaluation(
         logger.info(f"Most recent initial evaluation has positive_findings: {bool(most_recent.get('positive_findings'))}")
         if most_recent.get('positive_findings'):
             logger.info(f"Positive findings keys: {list(most_recent.get('positive_findings', {}).keys())}")
+            
+            # Log ROM findings format specifically
+            rom_findings = most_recent.get('positive_findings', {}).get('range_of_motion_findings', [])
+            logger.info(f"ROM findings type: {type(rom_findings)}")
+            logger.info(f"ROM findings count: {len(rom_findings) if isinstance(rom_findings, list) else 'N/A'}")
+            
+            if isinstance(rom_findings, list) and len(rom_findings) > 0:
+                # Check format of first finding
+                first_finding = rom_findings[0]
+                if isinstance(first_finding, dict):
+                    logger.info(f"ROM format: NEW (dict) - Keys: {list(first_finding.keys())}")
+                    logger.info(f"First ROM finding: {first_finding}")
+                else:
+                    logger.info(f"ROM format: OLD (string)")
+                    logger.info(f"First ROM finding: {first_finding}")
         
         # Log PHI access for HIPAA compliance
         AuditLogger.log_data_access(
@@ -743,7 +758,11 @@ async def extract_transcript_findings(
         specialty = user_settings.get('medicalSpecialty', 'general') if user_settings else 'general'
         
         # Use enhanced extraction prompt that generates both JSON and markdown
+        logger.info(f"Extracting findings for transcript {transcript_id}")
+        logger.info(f"User specialty: {specialty}")
         extraction_prompt = get_enhanced_extraction_prompt(specialty=specialty)
+        logger.info(f"Using extraction prompt type: enhanced")
+        logger.info(f"Extraction prompt length: {len(extraction_prompt)} characters")
         
         # Run the synchronous function in an executor
         # Use lightweight model for findings extraction
@@ -778,6 +797,16 @@ async def extract_transcript_findings(
                     try:
                         findings = json.loads(json_match.group(1))
                         logger.info(f"Successfully parsed JSON findings: {list(findings.keys())}")
+                        
+                        # Log the ROM findings format
+                        if 'range_of_motion_findings' in findings:
+                            rom_findings = findings['range_of_motion_findings']
+                            logger.info(f"ROM findings type: {type(rom_findings)}")
+                            if isinstance(rom_findings, list) and len(rom_findings) > 0:
+                                logger.info(f"ROM findings count: {len(rom_findings)}")
+                                logger.info(f"First ROM finding sample: {rom_findings[0]}")
+                            else:
+                                logger.info(f"ROM findings content: {rom_findings}")
                     except Exception as e:
                         logger.error(f"Failed to parse JSON: {e}")
                         findings = {"raw_findings": json_match.group(1)}

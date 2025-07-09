@@ -1,6 +1,7 @@
 import io
 import os
 import re
+import html
 from pathlib import Path
 from typing import Dict, Any, Optional
 from weasyprint import HTML, CSS
@@ -205,45 +206,34 @@ class WeasyPrintMedicalPDFGenerator:
             # Parse office information into structured clinic info
             clinic_info = {}
             if office_info:
-                # Office info is stored as a list of strings, parse them
+                # Office info is now stored as a list of individual lines
+                # Each line is a separate piece of information added by the user
+                clinic_lines = []
                 for info_line in office_info:
-                    if isinstance(info_line, str):
-                        # Try to parse structured information first
-                        if 'name:' in info_line.lower():
-                            clinic_info['name'] = info_line.split(':', 1)[1].strip()
-                        elif 'address:' in info_line.lower():
-                            clinic_info['address'] = info_line.split(':', 1)[1].strip()
-                        elif 'phone:' in info_line.lower():
-                            clinic_info['phone'] = info_line.split(':', 1)[1].strip()
-                        elif 'fax:' in info_line.lower():
-                            clinic_info['fax'] = info_line.split(':', 1)[1].strip()
-                        elif not clinic_info.get('name') and len(info_line.strip()) > 0:
-                            # If no structured data, treat entire line as clinic name/address
-                            # This handles cases like "Efficient Chiropractic 1234 Main St Los Angeles, CA 90024"
-                            clinic_info['name'] = info_line.strip()
+                    if isinstance(info_line, str) and info_line.strip():
+                        clinic_lines.append(info_line.strip())
                 
-                # If we have a name that contains address info, try to parse it
-                if clinic_info.get('name') and not clinic_info.get('address'):
-                    full_info = clinic_info['name']
-                    # Split into lines for better display in PDF
-                    if len(full_info) > 50:  # Long line, likely contains address
-                        # Try to separate clinic name from address
-                        words = full_info.split()
-                        if len(words) > 3:
-                            # Look for patterns that suggest address starts
-                            address_start = None
-                            for i, word in enumerate(words):
-                                if (word.isdigit() or 
-                                    any(word.lower().startswith(street) for street in ['street', 'st', 'avenue', 'ave', 'boulevard', 'blvd', 'road', 'rd', 'drive', 'dr', 'lane', 'ln'])):
-                                    address_start = i
-                                    break
-                            
-                            if address_start:
-                                clinic_info['name'] = ' '.join(words[:address_start])
-                                clinic_info['address'] = ' '.join(words[address_start:])
-                            else:
-                                # No clear address pattern, keep as single name
-                                clinic_info['name'] = full_info
+                # Store all lines for display in template
+                if clinic_lines:
+                    clinic_info['lines'] = clinic_lines
+                    # For compatibility, also set individual fields if we can detect them
+                    for line in clinic_lines:
+                        line_lower = line.lower()
+                        if '@' in line and '.' in line and not clinic_info.get('email'):
+                            # Detect email addresses
+                            clinic_info['email'] = line.strip()
+                        elif any(word in line_lower for word in ['phone', 'tel', 'call']) and not clinic_info.get('phone'):
+                            # Detect phone numbers
+                            clinic_info['phone'] = line.strip()
+                        elif any(word in line_lower for word in ['fax']) and not clinic_info.get('fax'):
+                            # Detect fax numbers
+                            clinic_info['fax'] = line.strip()
+                        elif not clinic_info.get('name'):
+                            # First non-email/phone line is likely the clinic name
+                            clinic_info['name'] = line.strip()
+                        elif not clinic_info.get('address') and any(word in line_lower for word in ['street', 'st', 'avenue', 'ave', 'boulevard', 'blvd', 'road', 'rd', 'drive', 'dr', 'lane', 'ln']) or any(char.isdigit() for char in line):
+                            # Lines with street indicators or numbers are likely addresses
+                            clinic_info['address'] = line.strip()
                 
                 # Log what we extracted
                 logger.info(f"Extracted clinic info: {clinic_info}")
@@ -392,6 +382,276 @@ class WeasyPrintMedicalPDFGenerator:
         
         return html_content
     
+    def _generate_multi_visit_html(self, visits_data: list, patient_name: str) -> str:
+        """Generate multi-visit HTML using new Jinja2 template system"""
+        # Sort visits by date (oldest first)
+        sorted_visits = self._sort_visits_by_date(visits_data)
+        
+        html_parts = []
+        
+        # HTML document start
+        html_parts.append(self._get_html_header())
+        
+        # Patient header for multi-visit document
+        html_parts.append(f'<div class="patient-header"><h1>Medical Records for {html.escape(patient_name)}</h1></div>\n')
+        
+        visit_counters = {'follow_up': 0, 're_evaluation': 0}
+        section_headers_added = {'follow_up': False, 're_evaluation': False}
+        
+        for i, visit_data in enumerate(sorted_visits):
+            # Convert to dict if needed
+            data = visit_data.model_dump() if hasattr(visit_data, 'model_dump') else visit_data
+            
+            # Extract visit date and type information
+            visit_date = self._extract_visit_date(data)
+            visit_type = self._determine_visit_type(data)
+            
+            # Add section headers for different visit types
+            if visit_type == 'follow_up' and not section_headers_added['follow_up']:
+                html_parts.append('<div class="follow-up-header"><h2>FOLLOW-UP VISITS</h2></div>')
+                section_headers_added['follow_up'] = True
+            elif visit_type == 're_evaluation' and not section_headers_added['re_evaluation']:
+                html_parts.append('<div class="re-evaluation-header"><h2>RE-EVALUATIONS</h2></div>')
+                section_headers_added['re_evaluation'] = True
+            
+            # Count visits by type
+            if visit_type in visit_counters:
+                visit_counters[visit_type] += 1
+            
+            # Start visit container
+            html_parts.append('<div class="visit-container">')
+            
+            # Visit date header with proper formatting - only for visits that don't have their own headers
+            # Skip date header for initial exams and re-evaluations when using Jinja2 templates (they include their own)
+            should_add_date_header = True
+            if visit_type == 'initial' and self.jinja_env:
+                should_add_date_header = False  # Jinja2 initial template has its own header
+            elif visit_type == 're_evaluation' and self.jinja_env:
+                should_add_date_header = False  # Jinja2 re-evaluation template has its own header
+            
+            if should_add_date_header and visit_date:
+                count = visit_counters.get(visit_type, 1)
+                date_header = self._format_visit_date(visit_date, visit_type, count)
+                html_parts.append(f'<div class="visit-date-header"><h3>{date_header}</h3></div>')
+            
+            # Generate visit content based on type and template availability
+            if visit_type == 'follow_up':
+                # Use legacy template for follow-up visits (narrative content)
+                html_parts.append(self._generate_follow_up_content(data))
+            elif visit_type == 're_evaluation' and self.jinja_env:
+                # Use Jinja2 re-evaluation template
+                try:
+                    # Remove clinic info to avoid duplication in multi-visit
+                    data_without_clinic = {k: v for k, v in data.items() if k != 'clinic_info'}
+                    html_parts.append(self._generate_re_evaluation_content_for_multi_visit(data_without_clinic))
+                except Exception as e:
+                    logger.error(f"Error generating re-evaluation content: {e}, falling back to legacy")
+                    html_parts.append(self._generate_legacy_visit_content(data))
+            elif visit_type == 'initial' and self.jinja_env:
+                # Use Jinja2 initial exam template
+                try:
+                    # For initial visits, only include clinic info if it's the first visit
+                    if i == 0:
+                        html_parts.append(self._generate_initial_exam_content_for_multi_visit(data))
+                    else:
+                        # Remove clinic info to avoid duplication
+                        data_without_clinic = {k: v for k, v in data.items() if k != 'clinic_info'}
+                        html_parts.append(self._generate_initial_exam_content_for_multi_visit(data_without_clinic))
+                except Exception as e:
+                    logger.error(f"Error generating initial exam content: {e}, falling back to legacy")
+                    html_parts.append(self._generate_legacy_visit_content(data))
+            else:
+                # Fallback to legacy template
+                html_parts.append(self._generate_legacy_visit_content(data))
+            
+            # End visit container
+            html_parts.append('</div>')
+            
+            # Add page break only between different initial visits
+            if i < len(sorted_visits) - 1:
+                next_visit_data = sorted_visits[i + 1]
+                next_data = next_visit_data.model_dump() if hasattr(next_visit_data, 'model_dump') else next_visit_data
+                next_visit_type = self._determine_visit_type(next_data)
+                
+                if visit_type == 'initial' and next_visit_type == 'initial':
+                    html_parts.append('<div class="page-break"></div>')
+        
+        # HTML document end
+        html_parts.append(self._get_html_footer())
+        
+        return ''.join(html_parts)
+    
+    def _generate_initial_exam_content_for_multi_visit(self, data: Dict[str, Any]) -> str:
+        """Generate initial exam content for multi-visit PDF using Jinja2 template"""
+        if not self.jinja_env:
+            raise Exception("Jinja2 environment not initialized")
+        
+        # Load the initial exam template
+        template = self.jinja_env.get_template('initial_exam_template.html')
+        
+        # Get CSS content for embedding in template
+        besley_font_path = self._get_besley_font_path()
+        css_styles = get_medical_document_css(besley_font_path)
+        
+        # Render just the body content (no full HTML document structure)
+        html_content = template.render(
+            data=data,
+            css_styles=css_styles
+        )
+        
+        # Extract only the body content (remove html, head, body tags)
+        import re
+        body_match = re.search(r'<body[^>]*>(.*?)</body>', html_content, re.DOTALL)
+        if body_match:
+            return body_match.group(1)
+        else:
+            return html_content
+    
+    def _generate_re_evaluation_content_for_multi_visit(self, data: Dict[str, Any]) -> str:
+        """Generate re-evaluation content for multi-visit PDF using Jinja2 template"""
+        if not self.jinja_env:
+            raise Exception("Jinja2 environment not initialized")
+        
+        # Load the re-evaluation template
+        template = self.jinja_env.get_template('re_evaluation_template.html')
+        
+        # Get CSS content for embedding in template
+        besley_font_path = self._get_besley_font_path()
+        css_styles = get_re_evaluation_css(besley_font_path)
+        
+        # Render just the body content (no full HTML document structure)
+        html_content = template.render(
+            data=data,
+            css_styles=css_styles
+        )
+        
+        # Extract only the body content (remove html, head, body tags)
+        import re
+        body_match = re.search(r'<body[^>]*>(.*?)</body>', html_content, re.DOTALL)
+        if body_match:
+            return body_match.group(1)
+        else:
+            return html_content
+    
+    def _generate_follow_up_content(self, data: Dict[str, Any]) -> str:
+        """Generate follow-up content (narrative style)"""
+        sections = data.get('sections', {})
+        content_html = ''
+        
+        # For follow-up visits, render narrative content without section headers
+        for section_key, section_content in sections.items():
+            if isinstance(section_content, str) and section_content.strip():
+                # Format as narrative paragraphs
+                paragraphs = section_content.split('\n\n')
+                for para in paragraphs:
+                    if para.strip():
+                        content_html += f'<p class="narrative-content">{html.escape(para.strip())}</p>\n'
+        
+        return content_html
+    
+    def _generate_legacy_visit_content(self, data: Dict[str, Any]) -> str:
+        """Generate visit content using legacy HTML template system"""
+        # Use the legacy HTML template system as fallback
+        sections = data.get('sections', {})
+        content_html = ''
+        
+        # Process sections in standard order
+        for section_key, section_content in sections.items():
+            if isinstance(section_content, str) and section_content.strip():
+                # Format section title
+                display_title = section_key.replace('_', ' ').upper()
+                content_html += f'<div class="section">\n'
+                content_html += f'<h2 class="section-header">{html.escape(display_title)}:</h2>\n'
+                content_html += f'<p class="section-content">{html.escape(section_content)}</p>\n'
+                content_html += '</div>\n'
+        
+        return content_html
+    
+    # Helper methods for multi-visit processing
+    def _sort_visits_by_date(self, visits_data: list) -> list:
+        """Sort visits by date (oldest first)"""
+        def get_visit_date(visit_data):
+            # Convert to dict if needed
+            data = visit_data.model_dump() if hasattr(visit_data, 'model_dump') else visit_data
+            
+            # Try to extract date from patient_info
+            if patient_info := data.get('patient_info'):
+                date_str = patient_info.get('date_of_treatment') or patient_info.get('date_of_service')
+                if date_str:
+                    try:
+                        # Try different date formats
+                        from datetime import datetime
+                        for fmt in ['%B %d, %Y', '%m/%d/%Y', '%Y-%m-%d', '%d/%m/%Y']:
+                            try:
+                                return datetime.strptime(date_str, fmt)
+                            except ValueError:
+                                continue
+                    except:
+                        pass
+            
+            # Fallback: return a very old date to put at beginning
+            from datetime import datetime
+            return datetime(1900, 1, 1)
+        
+        return sorted(visits_data, key=get_visit_date)
+    
+    def _extract_visit_date(self, data: dict) -> str:
+        """Extract visit date from medical data"""
+        if patient_info := data.get('patient_info'):
+            return patient_info.get('date_of_treatment') or patient_info.get('date_of_service')
+        return None
+    
+    def _determine_visit_type(self, data: dict) -> str:
+        """Determine visit type using explicit evaluation_type field"""
+        # Check for explicit evaluation_type field (most reliable)
+        evaluation_type = data.get('evaluation_type')
+        if evaluation_type in ['initial', 'follow_up', 're_evaluation', 'final']:
+            return evaluation_type
+        
+        # Fallback: look for indicators in content (for backward compatibility)
+        sections = data.get('sections', {})
+        for section_content in sections.values():
+            if isinstance(section_content, str):
+                content_lower = section_content.lower()
+                if 'follow' in content_lower and 'up' in content_lower:
+                    return 'follow_up'
+                elif 'previously:' in content_lower and 'currently:' in content_lower:
+                    return 're_evaluation'
+        return 'initial'
+    
+    def _format_visit_date(self, date_str: str, visit_type: str, visit_count: int) -> str:
+        """Format visit date with visit number and type"""
+        if visit_type == 'initial':
+            return f"{date_str} - Initial Examination"
+        elif visit_type == 'follow_up':
+            return f"{date_str} - Follow-up Visit #{visit_count}"
+        elif visit_type == 're_evaluation':
+            return f"{date_str} - Re-evaluation"
+        elif visit_type == 'final':
+            return f"{date_str} - Final Examination"
+        else:
+            return f"{date_str} - Visit #{visit_count}"
+    
+    def _get_html_header(self) -> str:
+        """Return HTML document header with meta tags"""
+        return '''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medical Document</title>
+</head>
+<body>
+    <div class="page">
+'''
+    
+    def _get_html_footer(self) -> str:
+        """Return HTML document footer"""
+        return '''
+    </div>
+</body>
+</html>'''
+    
     async def generate_from_transcript(self, transcript: str, format_type: str = "markdown", user_id: Optional[str] = None) -> bytes:
         """Generate PDF from transcript text"""
         if format_type == "structured":
@@ -476,8 +736,8 @@ class WeasyPrintMedicalPDFGenerator:
         else:
             logger.warning("No user_id provided for multi-visit PDF generation")
         
-        # Generate combined HTML content for all visits
-        combined_html_content = self.html_template.generate_multi_visit_html(visits_data, patient_name)
+        # Generate combined HTML content for all visits using new template system
+        combined_html_content = self._generate_multi_visit_html(visits_data, patient_name)
         
         # Get font path for CSS
         besley_font_path = self._get_besley_font_path()

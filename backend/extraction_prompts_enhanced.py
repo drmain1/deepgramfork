@@ -5,48 +5,46 @@ This provides structured data for system use AND readable format for UI display.
 
 # Enhanced initial evaluation findings extraction
 ENHANCED_INITIAL_EVALUATION_PROMPT = """
-Extract ALL positive clinical findings from this initial evaluation for baseline documentation.
+Extract clinical findings from this initial evaluation to establish a baseline for future comparison.
 
-IMPORTANT: Generate TWO outputs in the exact format specified below.
+CRITICAL INSTRUCTIONS:
+1. Extract ONLY positive/abnormal findings (ignore normal findings)
+2. Use direct quotes from the transcript
+3. Focus on objective, measurable findings
+4. Avoid redundancy - each finding should appear only once in the most appropriate category
+5. Be concise and clinically relevant
 
-Part 1: Markdown Summary
-Create a well-formatted clinical summary using proper markdown formatting.
-- Use ### for main title
-- Use #### for category headers
-- Use - for bullet points
-- Focus on clarity and readability
+Generate TWO outputs in this EXACT format:
 
-Part 2: JSON Data
-Create a structured JSON object with categorized findings.
-Each finding should be a verbatim quote from the transcript.
-
-FORMAT YOUR RESPONSE EXACTLY AS:
 ```markdown
 ### Clinical Baseline Summary
 
 #### Pain Findings
-- [List each pain finding]
+- [Primary pain complaint with location, severity (0-10), and characteristics]
+- [Additional pain areas if present]
 
 #### Range of Motion Findings
-- [List each ROM limitation]
+- [Body part/region: restriction level (if specified: mild/moderate/severe), with/without pain]
 
 #### Neurological Findings
-- [List each neurological finding]
+- [Motor weakness with specific grades (0-5)]
+- [Sensory deficits with dermatome/distribution]
+- [Reflex abnormalities with grades]
 
 #### Palpation Findings
-- [List each palpation finding]
+- [Specific anatomical location with finding (e.g., tenderness, spasm, trigger points)]
 
 #### Orthopedic Test Findings
-- [List each positive test]
+- [Test name: Result (positive/negative with details)]
 
 #### Functional Limitations
-- [List each functional limitation]
+- [Specific activity limitations or disabilities]
 
 #### Posture and Gait Findings
-- [List each postural/gait abnormality]
+- [Observable postural deviations or gait abnormalities]
 
 #### Outcome Assessment Tools
-- [List each assessment tool with score]
+- [Tool name: Score (numerical or percentage)]
 
 *Initial evaluation performed on [Date if available]*
 ```
@@ -55,41 +53,65 @@ FORMAT YOUR RESPONSE EXACTLY AS:
 {
   "outcome_assessment_tools": [
     {
-      "tool_name": "[Name of the tool]",
-      "score": "[The score]",
-      "interpretation": "[The interpretation if mentioned]"
+      "tool_name": "[e.g., Neck Disability Index]",
+      "score": "[e.g., 31/50 or 62%]",
+      "interpretation": "[if provided]"
     }
   ],
   "pain_findings": [
-    "[Direct quote of pain description]"
+    "[e.g., Neck pain radiating to left arm, 7/10, sharp and constant]"
   ],
   "range_of_motion_findings": [
-    "[Direct quote of ROM limitation]"
+    {
+      "body_part": "[e.g., cervical spine right rotation]",
+      "restriction": "[e.g., restricted/mild/moderate/severe]",
+      "pain": true/false
+    }
   ],
   "orthopedic_test_findings": [
-    "[Direct quote of positive test]"
+    "[e.g., Straight Leg Raise positive at 30 degrees on right]"
   ],
   "neurological_findings": [
-    "[Direct quote of neuro deficit]"
+    "[e.g., Biceps strength 4/5 on left]",
+    "[e.g., Decreased sensation L5 dermatome]"
   ],
   "palpation_findings": [
-    "[Direct quote of palpation finding]"
+    "[e.g., Bilateral cervical paraspinal muscle spasm]",
+    "[e.g., Tenderness at L4-L5 facet joints]"
   ],
   "functional_limitations": [
-    "[Direct quote of functional problem]"
+    "[e.g., Unable to sit for more than 20 minutes]",
+    "[e.g., Difficulty with overhead reaching]"
   ],
   "posture_and_gait_findings": [
-    "[Direct quote of postural or gait abnormality]"
+    "[e.g., Forward head posture]",
+    "[e.g., Antalgic gait favoring right side]"
   ]
 }
 ```
 
-EXTRACTION RULES:
-1. Only include POSITIVE/ABNORMAL findings
-2. Use exact quotes from the transcript
-3. If a category has no findings, use empty array []
-4. Include all relevant clinical details
-5. Maintain professional medical terminology
+IMPORTANT RULES:
+- DO NOT duplicate findings across categories
+- DO NOT include subjective complaints in neurological findings
+- DO NOT include pain descriptions in range of motion findings
+- DO NOT include normal findings
+- Each finding should be concise and clinically relevant
+
+RANGE OF MOTION SPECIFIC RULES:
+- Extract body part/region including spine AND extremities (e.g., "cervical spine right rotation", "right shoulder extension", "left hip flexion")
+- Note restriction as "restricted" or severity if specified (mild/moderate/severe)
+- Note presence of pain as boolean (true/false)
+- Examples:
+  - Input: "Neck examination reveals a bit of restriction on right rotation and a little restriction towards extension, both with pain"
+    Output: [
+      {"body_part": "cervical spine right rotation", "restriction": "restricted", "pain": true},
+      {"body_part": "cervical spine extension", "restriction": "restricted", "pain": true}
+    ]
+  - Input: "Right shoulder decreased in extension and abduction with pain"
+    Output: [
+      {"body_part": "right shoulder extension", "restriction": "restricted", "pain": true},
+      {"body_part": "right shoulder abduction", "restriction": "restricted", "pain": true}
+    ]
 """
 
 # Enhanced chiropractic-specific prompt
@@ -241,12 +263,23 @@ def get_enhanced_extraction_prompt(specialty: str = "general") -> str:
     Returns:
         Enhanced extraction prompt string
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     specialty = specialty.lower() if specialty else "general"
+    logger.info(f"get_enhanced_extraction_prompt called with specialty: {specialty}")
     
     if "chiro" in specialty:
+        logger.info("Returning ENHANCED_CHIROPRACTIC_PROMPT")
         return ENHANCED_CHIROPRACTIC_PROMPT
     # Add more specialties as needed
     else:
+        logger.info("Returning ENHANCED_INITIAL_EVALUATION_PROMPT")
+        # Log a sample of the ROM section to verify format
+        import re
+        rom_section = re.search(r'RANGE OF MOTION SPECIFIC RULES:.*?(?=\n""")', ENHANCED_INITIAL_EVALUATION_PROMPT, re.DOTALL)
+        if rom_section:
+            logger.info(f"ROM extraction rules preview: {rom_section.group(0)[:200]}...")
         return ENHANCED_INITIAL_EVALUATION_PROMPT
 
 # Prompt for comparing evaluations

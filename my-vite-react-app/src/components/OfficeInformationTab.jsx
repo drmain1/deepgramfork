@@ -656,29 +656,32 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
       {/* Office Locations Section */}
       <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
-          Office Locations
+          Office Information
+        </Typography>
+        
+        <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+          Add your office information line by line. Each line will appear separately on your PDFs.
         </Typography>
 
         <Paper elevation={1} sx={{ p: 2, mb: 3, display: 'flex', alignItems: 'center' }}>
           <TextField 
             fullWidth 
-            label="New Office Location" 
+            label="Office Information Line (e.g., Clinic Name, Address, Phone, Email)" 
             value={newOfficeText} 
             onChange={handleInputChange} 
             variant="outlined" 
             size="small" 
-            multiline
-            minRows={3}
             sx={{ mr: 2 }}
+            placeholder="Enter one line of office information"
           />
           <Button variant="contained" color="primary" onClick={handleAddOffice} disabled={settingsLoading}>
-            Add
+            + Add Line
           </Button>
         </Paper>
 
-        <Typography variant="subtitle1" gutterBottom sx={{ mt: 3, mb: 1 }}>Current Office Locations</Typography>
+        <Typography variant="subtitle1" gutterBottom sx={{ mt: 3, mb: 1 }}>Current Office Information</Typography>
         {(!officeInformation || officeInformation.length === 0) ? (
-          <Typography>No office locations added yet.</Typography>
+          <Typography>No office information added yet.</Typography>
         ) : (
           <List>
             {officeInformation.map((office, index) => (
@@ -690,11 +693,30 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
                     </IconButton>
                   }
                 >
-                  <ListItemText primary={office} />
+                  <ListItemText 
+                    primary={office}
+                    sx={{ 
+                      whiteSpace: 'pre-wrap',
+                      '& .MuiListItemText-primary': {
+                        whiteSpace: 'pre-wrap'
+                      }
+                    }} 
+                  />
                 </ListItem>
               </Paper>
             ))}
           </List>
+        )}
+        
+        {officeInformation && officeInformation.length > 0 && (
+          <Paper elevation={1} sx={{ p: 2, mt: 2, backgroundColor: '#f5f5f5' }}>
+            <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold' }}>
+              PDF Preview:
+            </Typography>
+            <Typography variant="body2" sx={{ whiteSpace: 'pre-line', fontFamily: 'monospace' }}>
+              {officeInformation.join('\n')}
+            </Typography>
+          </Paper>
         )}
       </Paper>
     </Box>

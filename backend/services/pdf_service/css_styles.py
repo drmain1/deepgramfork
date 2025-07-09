@@ -30,7 +30,7 @@ def get_medical_document_css(besley_font_path: str = None) -> str:
 /* Page setup */
 @page {
     size: letter;
-    margin: 0.5in 0.75in; /* Reduced top/bottom margin to give more space */
+    margin: 0.5in 0.5in; /* Reduced margins to give more horizontal space */
     @bottom-center {
         content: "Page " counter(page) " of " counter(pages);
         font-family: 'Besley', 'Times New Roman', Times, serif;
@@ -126,7 +126,7 @@ def get_medical_document_css(besley_font_path: str = None) -> str:
 
 body {
     font-family: 'Besley', 'Times New Roman', Times, serif;
-    font-size: 11pt;
+    font-size: 10pt;
     line-height: 1.4;
     color: #000000;
     background-color: #fcfcfa;
@@ -147,21 +147,27 @@ body {
     border-bottom: 1px solid #e9ecef;
 }
 
+.clinic-info-line {
+    display: block;
+    margin: 0;
+    padding: 0;
+}
+
 .clinic-name {
-    font-size: 16pt;
+    font-size: 14pt;
     font-weight: bold;
-    margin-bottom: 8pt;
+    margin-bottom: 6pt;
     color: #000000;
-    letter-spacing: 0.5pt;
+    letter-spacing: 0.3pt;
 }
 
 .clinic-address {
-    font-size: 11pt;
-    margin-bottom: 4pt;
+    font-size: 9pt;
+    margin-bottom: 3pt;
 }
 
 .clinic-contact {
-    font-size: 11pt;
+    font-size: 9pt;
     color: #333333;
 }
 
@@ -173,7 +179,7 @@ body {
 
 .patient-info p {
     margin-bottom: 4pt;
-    font-size: 11pt;
+    font-size: 10pt;
 }
 
 .patient-info strong {
@@ -195,7 +201,7 @@ body {
 }
 
 .section-content {
-    font-size: 11pt;
+    font-size: 10pt;
     line-height: 1.6;
     margin-bottom: 8pt;
     text-align: left;
@@ -208,7 +214,7 @@ body {
 }
 
 .numbered-list li {
-    font-size: 11pt;
+    font-size: 10pt;
     line-height: 1.6;
     margin-bottom: 6pt;
     text-align: left;
@@ -222,7 +228,7 @@ body {
 }
 
 .bulleted-list li {
-    font-size: 11pt;
+    font-size: 10pt;
     line-height: 1.6;
     margin-bottom: 6pt;
     text-align: left;
@@ -345,10 +351,13 @@ h3 {
 /* Re-evaluation specific styles */
 .patient-bar { 
     background-color: #f0f8ff; 
-    padding: 10pt; 
+    padding: 8pt 10pt; 
     margin: 1em 0; 
     border-left: 5pt solid #004466; 
-    font-size: 11pt;
+    font-size: 9pt;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Subjective Section */
@@ -409,8 +418,15 @@ table td:nth-child(3) {
 
 /* Diagnosis formatting */
 .diagnosis-list { 
-    white-space: pre-wrap; /* Preserves newlines from JSON */
+    margin-left: 0;
+    margin-bottom: 10pt;
+}
+
+.diagnosis-item {
+    font-size: 10pt;
     line-height: 1.6;
+    margin-bottom: 4pt;
+    margin-left: 10pt;
 }
 
 /* Headers for re-evaluation sections */

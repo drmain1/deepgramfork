@@ -14,6 +14,8 @@
 - ✅ **Date Validation**: Prevents initial/re-evaluation conflicts on same day
 - ✅ **Error Handling**: Comprehensive error handling and user feedback
 - ✅ **Performance**: Optimized with fast model selection and efficient data flow
+- ✅ **PDF Generation**: Re-evaluation template with progress bars and comparison tables
+- ✅ **Findings Extraction**: Enhanced prompts for cleaner, non-redundant findings
 
 ### Recent Fixes Completed:
 1. **React infinite loop issues** - Memoized components and added initialization guards
@@ -21,12 +23,21 @@
 3. **Save session errors** - Resolved datetime import conflicts
 4. **Date validation** - Added business rule enforcement for evaluation dates
 5. **Model compatibility** - Updated to use stable `gemini-2.5-flash` model
+6. **Re-evaluation PDF Template** (July 8, 2025):
+   - Fixed CSS escaping issue in Jinja2 templates (autoescape=True was breaking CSS)
+   - Updated LLM instructions for proper formatting with pipe separators
+   - Enhanced findings extraction to eliminate redundancy
+7. **LLM Instruction Improvements** (July 8, 2025):
+   - Updated re-evaluation formatting for chief complaints, outcome assessments, and physical findings
+   - Added comprehensive examples and edge cases
+   - Fixed format inconsistencies causing PDF rendering issues
 
 ### Next Steps for Testing:
 1. Test complete re-evaluation workflow from patient selection to save
 2. Verify date validation prevents same-day evaluations
 3. Confirm findings extraction works with new model
-4. Optional: Add frontend validation for better UX (currently only backend validation)
+4. Test re-evaluation PDF generation with proper formatting
+5. Optional: Add frontend validation for better UX (currently only backend validation)
 
 ## Overview
 The re-evaluation functionality allows healthcare practitioners to perform comprehensive re-evaluations by comparing current examination findings with previous initial evaluations. The system automatically retrieves and displays previous positive findings, with optional AI-assisted comparison during transcription.
@@ -222,8 +233,13 @@ main.py (FastAPI Application)
 │   ├── get_patient_initial_evaluation()
 │   │   └── Retrieves most recent initial evaluation
 │   │
-│   └── get_patient_reevaluation_status()
-│       └── Calculates if re-evaluation is due
+│   ├── get_patient_reevaluation_status()
+│   │   └── Calculates if re-evaluation is due
+│   │
+│   └── extract_transcript_findings()
+│       ├── POST /api/v1/transcripts/{transcript_id}/extract-findings
+│       ├── Imports both extraction_prompts modules
+│       └── Uses get_enhanced_extraction_prompt() (extraction_prompts_enhanced.py)
 │
 ├── firestore_endpoints.py
 │   ├── save_session_data_firestore()
@@ -240,6 +256,16 @@ main.py (FastAPI Application)
 │   ├── Direct Firestore operations
 │   └── get_patient_transcripts()
 │       └── Queries with evaluation_type filter
+│
+├── extraction_prompts_enhanced.py
+│   ├── ENHANCED_INITIAL_EVALUATION_PROMPT - Primary extraction prompt (USED)
+│   ├── ENHANCED_CHIROPRACTIC_PROMPT - Specialty-specific prompt
+│   └── get_enhanced_extraction_prompt() - Returns appropriate prompt
+│
+├── extraction_prompts.py
+│   ├── INITIAL_EVALUATION_FINDINGS_PROMPT - Legacy prompt (NOT USED)
+│   ├── get_extraction_prompt() - Imported but not called
+│   └── NOTE: This file is imported but extraction_prompts_enhanced.py is preferred
 │
 └── gcp_utils.py
     └── polish_transcript_with_gemini()
@@ -450,6 +476,32 @@ if (needsReExtraction) {
      - Prevents same-day conflicts between initial and re-evaluation types
      - Returns clear error messages for date conflicts
    - **Files Modified**: `firestore_endpoints.py`
+
+9. **Re-evaluation PDF Template Issues (Fixed July 8, 2025)**
+   - **Issue**: PDF template not displaying progress bars, comparison tables, or proper formatting
+   - **Root Causes**:
+     - CSS being HTML-escaped in Jinja2 templates (quotes converted to `&#39;` and `&#34;`)
+     - LLM output format didn't match template expectations for pipe separators
+     - Incorrect capitalization in outcome assessments
+   - **Fixes**:
+     - Updated LLM instructions to use proper format:
+       - Chief complaints: `"Previously X | Currently Y"`
+       - Outcome assessments: `"Previously 31/50, currently 25/50"` (lowercase "currently")
+       - Physical findings: `"Test: Previously X | Currently Y"` (capital "Currently")
+     - May need to add `| safe` filter to CSS in templates if autoescape issues persist
+   - **Files Modified**:
+     - `/my-vite-react-app/src/templates/llm-instructions/chiropractic-reevaluation.js`
+     - `/backend/extraction_prompts_enhanced.py`
+     - `/backend/extraction_prompts.py`
+
+10. **Findings Extraction Redundancy (Fixed July 8, 2025)**
+    - **Issue**: Extracted findings had duplicate entries across categories
+    - **Root Cause**: Unclear extraction prompts leading to misclassification
+    - **Fixes**:
+      - Simplified extraction prompts with clear rules
+      - Added explicit "DO NOT" instructions for each category
+      - Focused on objective, measurable findings only
+    - **Note**: The system uses `extraction_prompts_enhanced.py` (not `extraction_prompts.py`)
 
 ## Future Enhancements
 

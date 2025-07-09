@@ -11,18 +11,33 @@
 <body>
 
     <!-- Clinic Header -->
-    {% if data.clinic_info and data.clinic_info.name %}
+    {% if data.clinic_info %}
     <div class="clinic-header" style="text-align: right; margin-bottom: 20px;">
-        <h1 style="margin: 0; font-size: 18pt; color: #333;">{{ data.clinic_info.name }}</h1>
-        {% if data.clinic_info.address %}
-        <div class="clinic-address" style="font-size: 10pt; color: #666; margin-top: 5px;">{{ data.clinic_info.address }}</div>
-        {% endif %}
-        {% if data.clinic_info.phone or data.clinic_info.fax %}
-        <div class="clinic-contact" style="font-size: 10pt; color: #666; margin-top: 2px;">
-            {% if data.clinic_info.phone %}Tel: {{ data.clinic_info.phone }}{% endif %}
-            {% if data.clinic_info.phone and data.clinic_info.fax %} | {% endif %}
-            {% if data.clinic_info.fax %}Fax: {{ data.clinic_info.fax }}{% endif %}
-        </div>
+        {% if data.clinic_info.lines %}
+            <!-- Display each line of office information as entered by user -->
+            {% for line in data.clinic_info.lines %}
+            <div class="clinic-info-line" style="font-size: {% if loop.first %}18pt{% else %}10pt{% endif %}; font-weight: {% if loop.first %}bold{% else %}normal{% endif %}; color: {% if loop.first %}#333{% else %}#666{% endif %}; margin-top: {% if loop.first %}0{% else %}5px{% endif %};">
+                {{ line }}
+            </div>
+            {% endfor %}
+        {% else %}
+            <!-- Fallback to individual fields for compatibility -->
+            {% if data.clinic_info.name %}
+            <h1 style="margin: 0; font-size: 18pt; color: #333;">{{ data.clinic_info.name }}</h1>
+            {% endif %}
+            {% if data.clinic_info.address %}
+            <div class="clinic-address" style="font-size: 10pt; color: #666; margin-top: 5px;">{{ data.clinic_info.address }}</div>
+            {% endif %}
+            {% if data.clinic_info.phone or data.clinic_info.fax %}
+            <div class="clinic-contact" style="font-size: 10pt; color: #666; margin-top: 2px;">
+                {% if data.clinic_info.phone %}Tel: {{ data.clinic_info.phone }}{% endif %}
+                {% if data.clinic_info.phone and data.clinic_info.fax %} | {% endif %}
+                {% if data.clinic_info.fax %}Fax: {{ data.clinic_info.fax }}{% endif %}
+            </div>
+            {% endif %}
+            {% if data.clinic_info.email %}
+            <div class="clinic-contact" style="font-size: 10pt; color: #666; margin-top: 2px;">{{ data.clinic_info.email }}</div>
+            {% endif %}
         {% endif %}
     </div>
     {% endif %}
@@ -104,101 +119,123 @@
     <h4>Visual Progress Dashboard</h4>
     {% set outcome_text = data.sections.outcome_assessments %}
     
-    <!-- Try to parse the assessment data -->
-    {% set ns = namespace(parsed_successfully=false) %}
+    <!-- Split by periods to handle multiple assessments -->
+    {% set assessments = [] %}
+    {% if '. ' in outcome_text %}
+        {% set assessments = outcome_text.split('. ') %}
+    {% else %}
+        {% set assessments = [outcome_text] %}
+    {% endif %}
     
-    <!-- Parse format: "Neck Disability Index: Previously 31/50, currently 25/50" -->
-    {% if ":" in outcome_text %}
-        {% set parts = outcome_text.split(':', 1) %}
-        {% set assessment_name = parts[0].strip() %}
-        {% set values_part = parts[1].strip() if parts|length > 1 else "" %}
-        
-        {% set initial_score = "" %}
-        {% set current_score = "" %}
-        {% set initial_percentage = 0 %}
-        {% set current_percentage = 0 %}
-        {% set improvement_percentage = 0 %}
-        
-        <!-- Parse "Previously 31/50, currently 25/50" or "Previously 31/50 | Current: 25/50" formats -->
-        {% if "Previously" in values_part and ("currently" in values_part or "Current:" in values_part) %}
-            {% if "currently" in values_part %}
-                {% set prev_part = values_part.split('currently')[0].replace('Previously', '').strip().rstrip(',') %}
-                {% set curr_part = values_part.split('currently')[1].strip() %}
-            {% elif "Current:" in values_part %}
-                {% set prev_part = values_part.split('|')[0].replace('Previously', '').strip() if '|' in values_part else values_part.replace('Previously', '').strip() %}
-                {% set curr_part = values_part.split('Current:')[1].strip() if 'Current:' in values_part else "" %}
-            {% endif %}
+    <!-- Process each assessment (up to 3) -->
+    {% for assessment_text in assessments[:3] %}
+        {% if assessment_text.strip() %}
+            <!-- Try to parse the assessment data -->
+            {% set ns = namespace(parsed_successfully=false) %}
             
-            <!-- Extract scores like "31/50" from potentially complex text like "31/50 (62%)" -->
-            {% if "/" in prev_part %}
-                <!-- Extract just the fraction part before any parentheses -->
-                {% set fraction_match = prev_part.split('(')[0].strip() %}
-                {% set prev_nums = fraction_match.split('/') %}
-                {% if prev_nums|length >= 2 and prev_nums[0].strip().isdigit() and prev_nums[1].strip().isdigit() %}
-                    {% set initial_numerator = prev_nums[0].strip()|int %}
-                    {% set initial_denominator = prev_nums[1].strip()|int %}
-                    {% if initial_denominator > 0 %}
-                        {% set initial_score = initial_numerator|string + "/" + initial_denominator|string %}
-                        {% set initial_percentage = ((initial_numerator / initial_denominator) * 100)|round|int %}
+            <!-- Clean up the assessment text (remove trailing periods) -->
+            {% set assessment_text = assessment_text.strip().rstrip('.') %}
+            
+            <!-- Parse format: "Neck Disability Index: Previously 31/50, currently 25/50" -->
+            {% if ":" in assessment_text %}
+                {% set parts = assessment_text.split(':', 1) %}
+                {% set assessment_name = parts[0].strip() %}
+                {% set values_part = parts[1].strip() if parts|length > 1 else "" %}
+                
+                {% set initial_score = "" %}
+                {% set current_score = "" %}
+                {% set initial_percentage = 0 %}
+                {% set current_percentage = 0 %}
+                {% set improvement_percentage = 0 %}
+                
+                <!-- Parse "Previously 31/50, currently 25/50" or "Previously 31/50 | Current: 25/50" formats -->
+                {% if "Previously" in values_part and ("currently" in values_part or "Current:" in values_part) %}
+                    {% if "currently" in values_part %}
+                        {% set prev_part = values_part.split('currently')[0].replace('Previously', '').strip().rstrip(',') %}
+                        {% set curr_part = values_part.split('currently')[1].strip() %}
+                    {% elif "Current:" in values_part %}
+                        {% set prev_part = values_part.split('|')[0].replace('Previously', '').strip() if '|' in values_part else values_part.replace('Previously', '').strip() %}
+                        {% set curr_part = values_part.split('Current:')[1].strip() if 'Current:' in values_part else "" %}
+                    {% endif %}
+                    
+                    <!-- Extract scores like "31/50" from potentially complex text like "31/50 (62%)" -->
+                    {% if "/" in prev_part %}
+                        <!-- Extract just the fraction part before any parentheses -->
+                        {% set fraction_match = prev_part.split('(')[0].strip() %}
+                        {% set prev_nums = fraction_match.split('/') %}
+                        {% if prev_nums|length >= 2 and prev_nums[0].strip().isdigit() and prev_nums[1].strip().isdigit() %}
+                            {% set initial_numerator = prev_nums[0].strip()|int %}
+                            {% set initial_denominator = prev_nums[1].strip()|int %}
+                            {% if initial_denominator > 0 %}
+                                {% set initial_score = initial_numerator|string + "/" + initial_denominator|string %}
+                                {% set initial_percentage = ((initial_numerator / initial_denominator) * 100)|round|int %}
+                            {% endif %}
+                        {% endif %}
+                    {% endif %}
+                    
+                    {% if "/" in curr_part %}
+                        <!-- Extract just the fraction part before any parentheses -->
+                        {% set fraction_match = curr_part.split('(')[0].strip() %}
+                        {% set curr_nums = fraction_match.split('/') %}
+                        {% if curr_nums|length >= 2 and curr_nums[0].strip().isdigit() and curr_nums[1].strip().isdigit() %}
+                            {% set current_numerator = curr_nums[0].strip()|int %}
+                            {% set current_denominator = curr_nums[1].strip()|int %}
+                            {% if current_denominator > 0 %}
+                                {% set current_score = current_numerator|string + "/" + current_denominator|string %}
+                                {% set current_percentage = ((current_numerator / current_denominator) * 100)|round|int %}
+                            {% endif %}
+                        {% endif %}
+                    {% endif %}
+                    
+                    <!-- Calculate improvement percentage -->
+                    {% if initial_percentage > 0 and current_percentage >= 0 %}
+                        {% set improvement_percentage = ((initial_percentage - current_percentage) / initial_percentage * 100)|round|int %}
                     {% endif %}
                 {% endif %}
-            {% endif %}
-            
-            {% if "/" in curr_part %}
-                <!-- Extract just the fraction part before any parentheses -->
-                {% set fraction_match = curr_part.split('(')[0].strip() %}
-                {% set curr_nums = fraction_match.split('/') %}
-                {% if curr_nums|length >= 2 and curr_nums[0].strip().isdigit() and curr_nums[1].strip().isdigit() %}
-                    {% set current_numerator = curr_nums[0].strip()|int %}
-                    {% set current_denominator = curr_nums[1].strip()|int %}
-                    {% if current_denominator > 0 %}
-                        {% set current_score = current_numerator|string + "/" + current_denominator|string %}
-                        {% set current_percentage = ((current_numerator / current_denominator) * 100)|round|int %}
+                
+                <div class="dashboard-item" style="margin-bottom: 15px;">
+                    <strong>{{ assessment_name }}: 
+                    {% if improvement_percentage > 0 %}
+                    <span class="improvement-text">{{ improvement_percentage }}% Improvement</span>
+                    {% elif improvement_percentage < 0 %}
+                    <span class="improvement-text" style="color: #dc3545;">{{ -improvement_percentage }}% Worsened</span>
+                    {% elif initial_score and current_score and initial_percentage == current_percentage %}
+                    <span class="improvement-text" style="color: #6c757d;">No Change</span>
                     {% endif %}
-                {% endif %}
-            {% endif %}
-            
-            <!-- Calculate improvement percentage -->
-            {% if initial_percentage > 0 and current_percentage >= 0 %}
-                {% set improvement_percentage = ((initial_percentage - current_percentage) / initial_percentage * 100)|round|int %}
+                    </strong>
+                    
+                    {% if initial_score and initial_percentage >= 0 %}
+                    <p style="margin: 2px 0; font-size: 9pt;">Initial: {{ initial_score }} ({{ initial_percentage }}% Disabled)</p>
+                    <div class="progress-bar-container" style="background-color: #e9ecef; border-radius: 4pt; height: 18pt; margin-top: 4pt; margin-bottom: 8pt;">
+                        <div class="progress-bar" style="background-color: #ced4da; height: 100%; border-radius: 4pt; width: {{ initial_percentage }}%;"></div>
+                    </div>
+                    {% endif %}
+                    
+                    {% if current_score and current_percentage >= 0 %}
+                    <p style="margin: 2px 0; font-size: 9pt;">Current: {{ current_score }} ({{ current_percentage }}% Disabled)</p>
+                    <div class="progress-bar-container" style="background-color: #e9ecef; border-radius: 4pt; height: 18pt; margin-top: 4pt; margin-bottom: 8pt;">
+                        <div class="progress-bar current" style="background-color: #28a745; height: 100%; border-radius: 4pt; width: {{ current_percentage }}%;"></div>
+                    </div>
+                    {% endif %}
+                    
+                    <!-- Mark as successfully parsed if we have at least one score -->
+                    {% if initial_score or current_score %}
+                        {% set ns.parsed_successfully = true %}
+                    {% endif %}
+                    
+                    <!-- If parsing failed for this assessment, show the raw text -->
+                    {% if not ns.parsed_successfully %}
+                        <p style="margin-left: 20px;">{{ values_part }}</p>
+                    {% endif %}
+                </div>
+            {% else %}
+                <!-- No colon found, just display the text -->
+                <div class="dashboard-item" style="margin-bottom: 15px;">
+                    <p>{{ assessment_text }}</p>
+                </div>
             {% endif %}
         {% endif %}
-        
-        <div class="dashboard-item">
-            <strong>{{ assessment_name }}: 
-            {% if improvement_percentage > 0 %}
-            <span class="improvement-text">{{ improvement_percentage }}% Improvement</span>
-            {% endif %}
-            </strong>
-            
-            {% if initial_score and initial_percentage >= 0 %}
-            <p style="margin: 2px 0; font-size: 9pt;">Initial: {{ initial_score }} ({{ initial_percentage }}% Disabled)</p>
-            <div class="progress-bar-container" style="background-color: #e9ecef; border-radius: 4pt; height: 18pt; margin-top: 4pt; margin-bottom: 8pt;">
-                <div class="progress-bar" style="background-color: #ced4da; height: 100%; border-radius: 4pt; width: {{ initial_percentage }}%;"></div>
-            </div>
-            {% endif %}
-            
-            {% if current_score and current_percentage >= 0 %}
-            <p style="margin: 2px 0; font-size: 9pt;">Current: {{ current_score }} ({{ current_percentage }}% Disabled)</p>
-            <div class="progress-bar-container" style="background-color: #e9ecef; border-radius: 4pt; height: 18pt; margin-top: 4pt; margin-bottom: 8pt;">
-                <div class="progress-bar current" style="background-color: #28a745; height: 100%; border-radius: 4pt; width: {{ current_percentage }}%;"></div>
-            </div>
-            {% endif %}
-            
-            <!-- Mark as successfully parsed if we have at least one score -->
-            {% if initial_score or current_score %}
-                {% set ns.parsed_successfully = true %}
-            {% endif %}
-        </div>
-    {% endif %}
-    
-    <!-- If parsing failed, show the raw text in a styled format -->
-    {% if not ns.parsed_successfully %}
-        <div class="dashboard-item">
-            <p><strong>{{ outcome_text.split(':')[0].strip() if ':' in outcome_text else 'Assessment' }}:</strong></p>
-            <p style="margin-left: 20px;">{{ outcome_text.split(':', 1)[1].strip() if ':' in outcome_text else outcome_text }}</p>
-        </div>
-    {% endif %}
+    {% endfor %}
     
     {% endif %}
 

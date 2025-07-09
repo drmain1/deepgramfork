@@ -63,14 +63,14 @@ class MedicalDocumentHTMLTemplate:
                                  'family_history', 'allergies', 'social_history', 'review_of_other_systems']
             
             # Objective sections (before tables)
-            objective_sections_before = ['duties_under_duress', 'vitals', 'physical_examination', 
+            objective_sections_before = ['duties_under_duress', 'vitals', 'outcome_assessments', 'physical_examination', 
                                        'cervico_thoracic', 'lumbopelvic', 'extremity']
             
             # Objective sections (after tables)
             objective_sections_after = ['sensory_examination']
             
             # Assessment and Plan
-            assessment_plan_sections = ['assessment_diagnosis', 'plan']
+            assessment_plan_sections = ['assessment_diagnosis', 'plan', 'treatment_performed_today']
             
             # Process subjective sections
             for section_key in subjective_sections:
@@ -136,6 +136,13 @@ class MedicalDocumentHTMLTemplate:
         # HTML document start
         html_parts.append(self._get_html_header())
         
+        # Add clinic header at the top of multi-visit documents
+        if sorted_visits:
+            # Get clinic info from the first visit
+            first_visit_data = sorted_visits[0].model_dump() if hasattr(sorted_visits[0], 'model_dump') else sorted_visits[0]
+            if clinic_info := first_visit_data.get('clinic_info'):
+                html_parts.append(self._create_clinic_header(clinic_info))
+        
         # Patient header for multi-visit document
         html_parts.append(f'<div class="patient-header"><h1>Medical Records for {html.escape(patient_name)}</h1></div>\n')
         
@@ -199,14 +206,14 @@ class MedicalDocumentHTMLTemplate:
                                          'family_history', 'allergies', 'social_history', 'review_of_other_systems']
                     
                     # Objective sections (before tables)
-                    objective_sections_before = ['duties_under_duress', 'vitals', 'physical_examination', 
+                    objective_sections_before = ['duties_under_duress', 'vitals', 'outcome_assessments', 'physical_examination', 
                                                'cervico_thoracic', 'lumbopelvic', 'extremity']
                     
                     # Objective sections (after tables)
                     objective_sections_after = ['sensory_examination']
                     
                     # Assessment and Plan
-                    assessment_plan_sections = ['assessment_diagnosis', 'plan']
+                    assessment_plan_sections = ['assessment_diagnosis', 'plan', 'treatment_performed_today']
                     
                     # Process subjective sections
                     for section_key in subjective_sections:
@@ -365,22 +372,34 @@ class MedicalDocumentHTMLTemplate:
     
     def _create_clinic_header(self, clinic_info: Dict[str, str]) -> str:
         """Create clinic header section"""
-        header_html = '<div class="clinic-header">\n'
+        header_html = '<div class="clinic-header" style="text-align: center; margin-bottom: 20px; border-bottom: 1px solid #e9ecef; padding-bottom: 10px;">\n'
         
-        if name := clinic_info.get('name'):
-            header_html += f'<h1 class="clinic-name">{html.escape(name)}</h1>\n'
-        
-        if address := clinic_info.get('address'):
-            header_html += f'<p class="clinic-address">{html.escape(address)}</p>\n'
-        
-        contact_parts = []
-        if phone := clinic_info.get('phone'):
-            contact_parts.append(f'Phone: {html.escape(phone)}')
-        if fax := clinic_info.get('fax'):
-            contact_parts.append(f'Fax: {html.escape(fax)}')
-        
-        if contact_parts:
-            header_html += f'<p class="clinic-contact">{" | ".join(contact_parts)}</p>\n'
+        # Check if we have the lines format (used by OfficeInformationTab)
+        if lines := clinic_info.get('lines'):
+            # Display each line of office information as entered by user
+            for i, line in enumerate(lines):
+                if i == 0:
+                    # First line is the clinic name - larger and bold
+                    header_html += f'<div class="clinic-info-line" style="display: block; font-size: 14pt; font-weight: bold; color: #000; margin-bottom: 6pt;">{html.escape(line)}</div>\n'
+                else:
+                    # Other lines are smaller
+                    header_html += f'<div class="clinic-info-line" style="display: block; font-size: 9pt; color: #333; margin-top: 2px;">{html.escape(line)}</div>\n'
+        else:
+            # Fallback to individual fields for compatibility
+            if name := clinic_info.get('name'):
+                header_html += f'<h1 class="clinic-name">{html.escape(name)}</h1>\n'
+            
+            if address := clinic_info.get('address'):
+                header_html += f'<p class="clinic-address">{html.escape(address)}</p>\n'
+            
+            contact_parts = []
+            if phone := clinic_info.get('phone'):
+                contact_parts.append(f'Phone: {html.escape(phone)}')
+            if fax := clinic_info.get('fax'):
+                contact_parts.append(f'Fax: {html.escape(fax)}')
+            
+            if contact_parts:
+                header_html += f'<p class="clinic-contact">{" | ".join(contact_parts)}</p>\n'
         
         header_html += '</div>\n'
         return header_html
