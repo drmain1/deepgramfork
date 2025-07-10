@@ -106,7 +106,8 @@ class TranscriptDocument(BaseModel):
     
     # Evaluation tracking
     evaluation_type: Optional[EvaluationType] = None
-    initial_evaluation_id: Optional[str] = None  # Link to initial evaluation for re-evaluations
+    initial_evaluation_id: Optional[str] = None  # Link to initial evaluation for re-evaluations (backward compatibility)
+    previous_evaluation_id: Optional[str] = None  # Link to most recent previous evaluation (initial or re-evaluation)
     positive_findings: Optional[Dict[str, Any]] = None  # Extracted findings for display
     positive_findings_markdown: Optional[str] = None  # Markdown formatted findings for better UI display
     

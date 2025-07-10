@@ -131,7 +131,7 @@ const PreviousFindingsEnhanced = ({ findings, onClose, isOpen, patientName }) =>
             Previous Findings
           </Typography>
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-            Initial evaluation • {patientName || 'Patient'}
+            Previous evaluation • {patientName || 'Patient'}
           </Typography>
         </Box>
         <IconButton
@@ -267,7 +267,7 @@ const PreviousFindingsEnhanced = ({ findings, onClose, isOpen, patientName }) =>
 
         {activeTab === 1 && (
           <Alert severity="info">
-            Comparison mode will be available during re-evaluation recordings to show changes from this initial evaluation.
+            Comparison mode will be available during re-evaluation recordings to show changes from the previous evaluation.
           </Alert>
         )}
       </Box>

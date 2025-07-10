@@ -368,6 +368,7 @@ async def save_session_data_firestore(
         # Handle evaluation type
         evaluation_type = request_data.get('evaluation_type')
         initial_evaluation_id = request_data.get('initial_evaluation_id')
+        previous_evaluation_id = request_data.get('previous_evaluation_id', initial_evaluation_id)
         previous_findings = request_data.get('previous_findings')
         
         # Auto-detect evaluation type if not provided
@@ -442,7 +443,8 @@ async def save_session_data_firestore(
             'date_of_service': original_date_of_service,  # Store the original service date if provided
             'is_dictation': bool(original_date_of_service),  # Flag to identify dictation mode transcripts
             'evaluation_type': evaluation_type,
-            'initial_evaluation_id': initial_evaluation_id
+            'initial_evaluation_id': initial_evaluation_id,  # Keep for backward compatibility
+            'previous_evaluation_id': previous_evaluation_id
             # Note: positive_findings will be extracted later, not copied from previous evaluation
         }
         
@@ -464,7 +466,8 @@ async def save_session_data_firestore(
                 'duration_seconds': transcript_data.get('duration_seconds'),
                 'status': transcript_data['status'],
                 'evaluation_type': transcript_data.get('evaluation_type'),
-                'initial_evaluation_id': transcript_data.get('initial_evaluation_id'),
+                'initial_evaluation_id': transcript_data.get('initial_evaluation_id'),  # Keep for backward compatibility
+                'previous_evaluation_id': transcript_data.get('previous_evaluation_id'),
                 'positive_findings': transcript_data.get('positive_findings'),
                 'date_of_service': transcript_data.get('date_of_service'),
                 'is_dictation': transcript_data.get('is_dictation'),

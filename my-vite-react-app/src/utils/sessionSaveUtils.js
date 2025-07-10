@@ -23,6 +23,7 @@ export const buildSaveSessionPayload = ({
   dateOfService,
   evaluationType,
   initialEvaluationId,
+  previousEvaluationId,
   includePreviousFindingsInPrompt,
   previousFindings
 }) => {
@@ -48,6 +49,7 @@ export const buildSaveSessionPayload = ({
     date_of_service: (isDictationMode && dateOfService && dateOfService.trim()) ? dateOfService : null,
     evaluation_type: evaluationType || null,
     initial_evaluation_id: initialEvaluationId || null,
+    previous_evaluation_id: previousEvaluationId || initialEvaluationId || null,
     previous_findings: (includePreviousFindingsInPrompt && previousFindings) ? previousFindings : null
   };
 };

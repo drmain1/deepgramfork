@@ -24,6 +24,7 @@ const useTranscriptionSessionStore = create(
     // Evaluation Information
     evaluationType: '',
     initialEvaluationId: null,
+    previousEvaluationId: null,
     previousFindings: null,
     includePreviousFindingsInPrompt: true, // Default to true for backwards compatibility
     
@@ -52,6 +53,7 @@ const useTranscriptionSessionStore = create(
       // Clear evaluation type when patient changes
       evaluationType: '',
       initialEvaluationId: null,
+      previousEvaluationId: null,
       previousFindings: null,
       includePreviousFindingsInPrompt: true // Reset to default
     }),
@@ -73,6 +75,7 @@ const useTranscriptionSessionStore = create(
     // Actions - Evaluation
     setEvaluationType: (type) => set({ evaluationType: type }),
     setInitialEvaluationId: (id) => set({ initialEvaluationId: id }),
+    setPreviousEvaluationId: (id) => set({ previousEvaluationId: id }),
     setPreviousFindings: (findings) => set({ 
       previousFindings: findings,
       // Automatically show sidebar when findings are loaded for re-evaluation
@@ -139,6 +142,7 @@ const useTranscriptionSessionStore = create(
           patientDetails: '',
           evaluationType: '',
           initialEvaluationId: null,
+          previousEvaluationId: null,
           previousFindings: null
         });
         return;
@@ -173,6 +177,7 @@ const useTranscriptionSessionStore = create(
       patientContext: '',
       evaluationType: '',
       initialEvaluationId: null,
+      previousEvaluationId: null,
       previousFindings: null,
       isDictationMode: false,
       dateOfService: ''
@@ -205,6 +210,7 @@ const useTranscriptionSessionStore = create(
       dateOfService: '',
       evaluationType: '',
       initialEvaluationId: null,
+      previousEvaluationId: null,
       previousFindings: null,
       includePreviousFindingsInPrompt: true, // Reset to default
       currentView: 'setup',

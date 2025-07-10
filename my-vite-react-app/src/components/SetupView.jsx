@@ -40,6 +40,8 @@ function SetupView({ userSettings, settingsLoading, error, onStartEncounter }) {
     setEvaluationType,
     initialEvaluationId,
     setInitialEvaluationId,
+    previousEvaluationId,
+    setPreviousEvaluationId,
     previousFindings,
     setPreviousFindings,
     initializeSettings
@@ -75,7 +77,7 @@ function SetupView({ userSettings, settingsLoading, error, onStartEncounter }) {
     try {
       const token = await getToken();
       const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      const response = await fetch(`${API_BASE_URL}/api/v1/patients/${selectedPatient.id}/initial-evaluation`, {
+      const response = await fetch(`${API_BASE_URL}/api/v1/patients/${selectedPatient.id}/previous-evaluation`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -86,7 +88,7 @@ function SetupView({ userSettings, settingsLoading, error, onStartEncounter }) {
         console.log('Initial evaluation response:', evaluation);
         console.log('Positive findings:', evaluation.positive_findings);
         console.log('Positive findings markdown:', evaluation.positive_findings_markdown);
-        setInitialEvaluationId(evaluation.id);
+        setPreviousEvaluationId(evaluation.id);
         
         // Extract findings if not already done
         if (evaluation.positive_findings && Object.keys(evaluation.positive_findings).length > 0) {
@@ -168,7 +170,7 @@ function SetupView({ userSettings, settingsLoading, error, onStartEncounter }) {
         }
       } else if (response.status === 404) {
         console.error('404: No initial evaluation found');
-        alert('No initial evaluation found for this patient. Please ensure this patient has a completed initial evaluation before attempting re-evaluation.');
+        alert('No previous evaluation found for this patient. Please ensure this patient has a completed evaluation before attempting re-evaluation.');
       } else {
         console.error('Failed to load initial evaluation:', response.status, response.statusText);
       }

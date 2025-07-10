@@ -540,6 +540,74 @@ async def get_patient_initial_evaluation(
         raise HTTPException(status_code=500, detail="Failed to get initial evaluation")
 
 
+async def get_patient_previous_evaluation(
+    patient_id: str = Path(..., description="Patient ID"),
+    current_user_id: str = Depends(get_user_id),
+    request: Request = None
+):
+    """Get the most recent evaluation (initial or re-evaluation) for a patient"""
+    try:
+        from firestore_client import firestore_client
+        from firestore_models import EvaluationType
+        
+        # Verify the patient belongs to this user
+        patient = await firestore_client.get_patient(patient_id, current_user_id)
+        if not patient:
+            raise HTTPException(status_code=404, detail="Patient not found")
+        
+        # Get all transcripts for this patient
+        transcripts = await firestore_client.get_patient_transcripts(patient_id, current_user_id)
+        
+        # Filter for evaluations (both initial and re-evaluation types)
+        evaluations = [
+            t for t in transcripts 
+            if t.get('evaluation_type') in [EvaluationType.INITIAL, EvaluationType.RE_EVALUATION]
+        ]
+        
+        # Debug logging
+        logger.info(f"Total transcripts found: {len(transcripts)}")
+        logger.info(f"Evaluations (initial + re-evaluation) found: {len(evaluations)}")
+        if transcripts:
+            logger.info(f"Sample transcript evaluation_type: {transcripts[0].get('evaluation_type')}")
+            logger.info(f"Sample transcript encounter_type: {transcripts[0].get('encounter_type')}")
+        
+        if not evaluations:
+            raise HTTPException(status_code=404, detail="No previous evaluation found for this patient")
+        
+        # Sort by date and get the most recent
+        evaluations.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+        most_recent = evaluations[0]
+        
+        # Debug log the findings
+        logger.info(f"Most recent evaluation has positive_findings: {bool(most_recent.get('positive_findings'))}")
+        logger.info(f"Most recent evaluation type: {most_recent.get('evaluation_type')}")
+        if most_recent.get('positive_findings'):
+            logger.info(f"Positive findings keys: {list(most_recent.get('positive_findings', {}).keys())}")
+            
+            # Log ROM findings format specifically
+            rom_findings = most_recent.get('positive_findings', {}).get('range_of_motion_findings', [])
+            logger.info(f"ROM findings type: {type(rom_findings)}")
+            logger.info(f"ROM findings count: {len(rom_findings) if isinstance(rom_findings, list) else 'N/A'}")
+        
+        # Log PHI access for HIPAA compliance
+        AuditLogger.log_data_access(
+            user_id=current_user_id,
+            operation="READ",
+            data_type="previous_evaluation",
+            resource_id=most_recent.get('id'),
+            request=request,
+            success=True
+        )
+        
+        return most_recent
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting previous evaluation for patient {patient_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get previous evaluation")
+
+
 async def get_re_evaluation_status(
     patient_id: str = Path(..., description="Patient ID"),
     current_user_id: str = Depends(get_user_id),

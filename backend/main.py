@@ -553,6 +553,7 @@ from patient_endpoints import (
     get_patient_transcripts,
     generate_patient_billing,
     get_patient_initial_evaluation,
+    get_patient_previous_evaluation,
     get_re_evaluation_status,
     get_patient_evaluations,
     extract_transcript_findings
@@ -624,6 +625,14 @@ async def get_patient_initial_evaluation_endpoint(
     request: Request = None
 ):
     return await get_patient_initial_evaluation(patient_id, current_user_id, request)
+
+@app.get("/api/v1/patients/{patient_id}/previous-evaluation")
+async def get_patient_previous_evaluation_endpoint(
+    patient_id: str = Path(..., description="Patient ID"),
+    current_user_id: str = Depends(get_user_id),
+    request: Request = None
+):
+    return await get_patient_previous_evaluation(patient_id, current_user_id, request)
 
 @app.get("/api/v1/patients/{patient_id}/re-evaluation-status")
 async def get_re_evaluation_status_endpoint(

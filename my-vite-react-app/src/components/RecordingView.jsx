@@ -57,6 +57,7 @@ function RecordingView({
     dateOfService,
     evaluationType,
     initialEvaluationId,
+    previousEvaluationId,
     previousFindings,
     includePreviousFindingsInPrompt,
     showPreviousFindingsSidebar,
@@ -317,6 +318,7 @@ function RecordingView({
         dateOfService,
         evaluationType,
         initialEvaluationId,
+        previousEvaluationId,
         includePreviousFindingsInPrompt,
         previousFindings
       });
