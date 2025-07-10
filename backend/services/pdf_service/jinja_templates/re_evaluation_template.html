@@ -87,7 +87,7 @@
                             {% endif %}
                             
                             <p class="complaint-current"><strong>{{ complaint_name }}:</strong> {{ curr_text }}</p>
-                            <p class="complaint-initial">(Initial: {{ prev_text }})</p>
+                            <p class="complaint-initial">(Previous: {{ prev_text }})</p>
                         {% else %}
                             <!-- Fallback if no colon found -->
                             <p class="complaint-current">{{ clean_line }}</p>
@@ -103,9 +103,9 @@
         <p>No chief complaints documented.</p>
     {% endif %}
 
-    <!-- History of Present Illness -->
+    <!-- Discussion -->
     {% if data.sections.history_of_present_illness %}
-    <h3>History of Present Illness</h3>
+    <h3>Discussion</h3>
     <p>{{ data.sections.history_of_present_illness }}</p>
     {% endif %}
 
@@ -205,7 +205,7 @@
                     </strong>
                     
                     {% if initial_score and initial_percentage >= 0 %}
-                    <p style="margin: 2px 0; font-size: 9pt;">Initial: {{ initial_score }} ({{ initial_percentage }}% Disabled)</p>
+                    <p style="margin: 2px 0; font-size: 9pt;">Previous: {{ initial_score }} ({{ initial_percentage }}% Disabled)</p>
                     <div class="progress-bar-container" style="background-color: #e9ecef; border-radius: 4pt; height: 18pt; margin-top: 4pt; margin-bottom: 8pt;">
                         <div class="progress-bar" style="background-color: #ced4da; height: 100%; border-radius: 4pt; width: {{ initial_percentage }}%;"></div>
                     </div>
@@ -279,7 +279,7 @@
             <thead>
                 <tr style="background-color: #f8f9fa;">
                     <th style="width: 30%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Movement</th>
-                    <th style="width: 25%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Initial</th>
+                    <th style="width: 25%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Previous</th>
                     <th style="width: 25%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Current</th>
                     <th style="width: 20%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Status</th>
                 </tr>
@@ -383,7 +383,7 @@
             <thead>
                 <tr style="background-color: #f8f9fa;">
                     <th style="width: 30%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Movement</th>
-                    <th style="width: 25%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Initial</th>
+                    <th style="width: 25%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Previous</th>
                     <th style="width: 25%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Current</th>
                     <th style="width: 20%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Status</th>
                 </tr>
@@ -474,8 +474,8 @@
             <thead>
                 <tr style="background-color: #f8f9fa;">
                     <th style="width: 25%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Muscle</th>
-                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Right Initial</th>
-                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Left Initial</th>
+                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Right Previous</th>
+                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Left Previous</th>
                     <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Right Current</th>
                     <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Left Current</th>
                     <th style="width: 7.5%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">R</th>
@@ -596,8 +596,8 @@
             <thead>
                 <tr style="background-color: #f8f9fa;">
                     <th style="width: 25%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Muscle</th>
-                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Right Initial</th>
-                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Left Initial</th>
+                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Right Previous</th>
+                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Left Previous</th>
                     <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Right Current</th>
                     <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Left Current</th>
                     <th style="width: 7.5%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">R</th>
@@ -717,8 +717,8 @@
             <thead>
                 <tr style="background-color: #f8f9fa;">
                     <th style="width: 25%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Reflex</th>
-                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Right Initial</th>
-                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Left Initial</th>
+                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Right Previous</th>
+                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Left Previous</th>
                     <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Right Current</th>
                     <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Left Current</th>
                     <th style="width: 7.5%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">R</th>
@@ -862,7 +862,7 @@
             <tr style="background-color: #f8f9fa;">
                 <th style="width: 20%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Category</th>
                 <th style="width: 30%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Finding</th>
-                <th style="width: 20%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Initial State</th>
+                <th style="width: 20%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Previous State</th>
                 <th style="width: 20%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Current State</th>
                 <th style="width: 10%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Status</th>
             </tr>

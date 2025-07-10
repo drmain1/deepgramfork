@@ -21,10 +21,7 @@ secrets = {
         "description": "Deepgram API key for medical transcription",
         "value": "PLACEHOLDER_DEEPGRAM_API_KEY"  # Replace with actual key
     },
-    "speechmatics-api-key": {
-        "description": "Speechmatics API key for multilingual transcription",
-        "value": "PLACEHOLDER_SPEECHMATICS_API_KEY"  # Replace with actual key
-    },
+# speechmatics-api-key removed - using Deepgram for all transcription
     "firebase-api-key": {
         "description": "Firebase API key for authentication",
         "value": "AIzaSyBLRq3spaL-8fG9BIi-91F_Wrr3Yjk7Zqk"
@@ -113,7 +110,7 @@ def main():
     print("Secret setup complete!")
     print("\nIMPORTANT: Replace placeholder values with actual secrets:")
     print("- deepgram-api-key")
-    print("- speechmatics-api-key")
+# print("- speechmatics-api-key")  # removed
     print("- firebase-service-account (upload actual service account JSON)")
     print("- iap-expected-audience (set after configuring IAP)")
     

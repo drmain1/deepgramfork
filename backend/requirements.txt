@@ -3,7 +3,7 @@ uvicorn[standard]
 python-dotenv
 websockets
 deepgram-sdk
-speechmatics-python
+# speechmatics-python removed
 httpx
 
 # Google Cloud dependencies

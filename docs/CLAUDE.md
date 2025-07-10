@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a multi-tenant HIPAA-compliant medical transcription application that converts audio recordings into structured medical notes. The system uses speech-to-text services (Deepgram for medical, Speechmatics for multilingual) and LLM-based formatting (Google Vertex AI) to produce professional medical documentation.
+This is a multi-tenant HIPAA-compliant medical transcription application that converts audio recordings into structured medical notes. The system uses Deepgram speech-to-text service (including multilingual support) and LLM-based formatting (Google Vertex AI) to produce professional medical documentation.
 
 **Current Status**: Active migration from AWS to Google Cloud Platform (branch: `gcp-migration`)
 
@@ -82,7 +82,7 @@ firebase deploy --only firestore     # Deploy only Firestore rules
 - **Firebase Admin SDK**: Authentication and Firestore
 - **Google Cloud SDK**: Storage, Vertex AI, Secret Manager
 - **Deepgram SDK**: Medical transcription
-- **Speechmatics**: Multilingual transcription
+- **Deepgram**: Medical and multilingual transcription
 - **WeasyPrint**: PDF generation from HTML/CSS
 - **python-jose**: JWT token handling
 
@@ -115,5 +115,5 @@ firebase deploy --only firestore     # Deploy only Firestore rules
 - **Database**: Firestore (NoSQL)
 - **Storage**: Google Cloud Storage (logos/signatures only)
 - **Auth**: Firebase Authentication
-- **Speech-to-Text**: Deepgram (medical), Speechmatics (multilingual)
+- **Speech-to-Text**: Deepgram (medical and multilingual)
 - **AI**: Google Vertex AI (Gemini models)

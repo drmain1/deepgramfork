@@ -100,7 +100,7 @@ echo -e "${GREEN}Post-deployment tasks:${NC}"
 echo "1. Update DNS records to point to load balancer IP"
 echo "2. Update Secret Manager with production API keys:"
 echo "   - gcloud secrets versions add deepgram-api-key --data-file=-"
-echo "   - gcloud secrets versions add speechmatics-api-key --data-file=-"
+# echo "   - gcloud secrets versions add speechmatics-api-key --data-file=-"  # removed
 echo "3. Test the application at https://scribe.medlegaldoc.com"
 echo "4. Monitor logs:"
 echo "   - gcloud app logs tail -s default"

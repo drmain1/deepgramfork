@@ -51,8 +51,7 @@ from deepgram_utils import handle_deepgram_websocket
 # Import routers
 from routers import image_router, pdf_router
 
-# Import the new Speechmatics handler for multilingual support
-from speechmatics_utils import handle_speechmatics_websocket
+# Speechmatics removed - using Deepgram for all transcription including multilingual
 
 # GCP utilities are imported above
 
@@ -205,13 +204,13 @@ async def websocket_stream_endpoint(websocket: WebSocket, token: str = Query(...
 
 @app.websocket("/stream/multilingual")
 async def websocket_multilingual_stream_endpoint(websocket: WebSocket, token: str = Query(...)):
-    """Handles WebSocket streaming for Speechmatics multilingual transcription."""
+    """Multilingual transcription now handled by Deepgram - redirect to main endpoint."""
     await WebSocketAuthWrapper.handle_authenticated_websocket(
         websocket=websocket,
         token=token,
-        handler_func=handle_speechmatics_websocket,
+        handler_func=handle_deepgram_websocket,
         get_user_settings_func=lambda user_id: user_settings_service.get_user_settings(user_id),
-        connection_type="SPEECHMATICS"
+        connection_type="DEEPGRAM"
     )
 
 

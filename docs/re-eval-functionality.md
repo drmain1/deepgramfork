@@ -116,7 +116,7 @@ Start Recording ──────────────> RecordingView.jsx
                                │   - evaluation_type             │
                                │   - initial_evaluation_id       │
                                │                                 │
-Stream Audio ─────────────────> Forward to WebSocket ───────────> Process with Deepgram/Speechmatics
+Stream Audio ─────────────────> Forward to WebSocket ───────────> Process with Deepgram
                                │                                 │
                                └─> Display live transcript <─────┘
 ```

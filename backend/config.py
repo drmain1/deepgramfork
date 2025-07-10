@@ -31,11 +31,7 @@ class Config:
             "DEEPGRAM_API_KEY",
             ""
         )
-        self.speechmatics_api_key = secret_manager.get_secret_or_env(
-            "speechmatics-api-key",
-            "SPEECHMATICS_API_KEY",
-            ""
-        )
+# Speechmatics API key removed - using Deepgram for all transcription
         
         # Security Settings
         self.allowed_origins = os.getenv(
@@ -71,8 +67,7 @@ class Config:
         if self.is_production:
             if not self.deepgram_api_key:
                 raise ValueError("DEEPGRAM_API_KEY is required in production")
-            if not self.speechmatics_api_key:
-                raise ValueError("SPEECHMATICS_API_KEY is required in production")
+# Speechmatics validation removed
             if not self.firebase_credentials:
                 raise ValueError("Firebase credentials are required in production")
 

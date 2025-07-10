@@ -351,9 +351,10 @@ class WeasyPrintMedicalPDFGenerator:
         logger.info(f"WeasyPrint PDF generation started with data keys: {list(data.keys())}")
         
         # Automatically fetch and inject clinic info if user_id is provided
-        if user_id and not data.get('clinic_info'):
+        if user_id:
             clinic_info = await self._get_clinic_info_from_database(user_id)
             if clinic_info:
+                # Always overwrite the clinic_info with the properly parsed one from database
                 data['clinic_info'] = clinic_info
                 logger.info(f"Injected clinic info from database: {clinic_info}")
             else:

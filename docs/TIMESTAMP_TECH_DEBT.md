@@ -24,7 +24,7 @@ Recording timestamps were displaying incorrectly and updating to the current tim
 ## Solution Implemented (June 26, 2025)
 
 ### Backend Changes
-1. **UTC Session IDs**: Modified `deepgram_utils.py` and `speechmatics_utils.py` to generate session IDs using UTC:
+1. **UTC Session IDs**: Modified `deepgram_utils.py` to generate session IDs using UTC:
    ```python
    session_id = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
    ```
