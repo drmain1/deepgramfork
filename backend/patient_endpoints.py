@@ -626,12 +626,24 @@ async def get_re_evaluation_status(
         
         # Get all transcripts for this patient
         transcripts = await firestore_client.get_patient_transcripts(patient_id, current_user_id)
+        logger.info(f"Found {len(transcripts)} total transcripts for patient {patient_id}")
+        
+        # Debug: Log evaluation types
+        eval_types_in_data = [t.get('evaluation_type') for t in transcripts]
+        logger.info(f"Evaluation types in transcripts: {eval_types_in_data}")
+        logger.info(f"Looking for types: {[EvaluationType.INITIAL, EvaluationType.RE_EVALUATION]}")
+        logger.info(f"EvaluationType.INITIAL value: {EvaluationType.INITIAL}, type: {type(EvaluationType.INITIAL)}")
         
         # Filter for evaluations only (initial and re-evaluations)
+        # Convert enum values to strings for comparison
+        valid_eval_types = [EvaluationType.INITIAL.value, EvaluationType.RE_EVALUATION.value]
+        logger.info(f"Valid evaluation type values: {valid_eval_types}")
+        
         evaluations = [
             t for t in transcripts 
-            if t.get('evaluation_type') in [EvaluationType.INITIAL, EvaluationType.RE_EVALUATION]
+            if t.get('evaluation_type') in valid_eval_types
         ]
+        logger.info(f"Found {len(evaluations)} evaluation transcripts after filtering")
         
         if not evaluations:
             # Count all sessions as they're all "since" a non-existent evaluation
@@ -648,13 +660,105 @@ async def get_re_evaluation_status(
                 "patient_name": f"{patient['last_name']}, {patient['first_name']}"
             }
         
-        # Filter out evaluations without created_at timestamp
-        valid_evaluations = [e for e in evaluations if e.get('created_at')]
+        # Helper function to get timestamp with fallbacks
+        def get_timestamp(transcript):
+            """Get timestamp from transcript with fallbacks"""
+            # Try created_at first
+            if transcript.get('created_at'):
+                try:
+                    created_at = transcript['created_at']
+                    logger.debug(f"Trying created_at: {created_at} (type: {type(created_at)})")
+                    if isinstance(created_at, str):
+                        # Handle ISO format with timezone
+                        return datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                    elif hasattr(created_at, '_seconds'):
+                        # Handle Firestore timestamp
+                        return datetime.fromtimestamp(created_at._seconds, tz=timezone.utc)
+                    elif isinstance(created_at, datetime):
+                        # Already a datetime object
+                        return created_at
+                except Exception as e:
+                    logger.warning(f"Failed to parse created_at: {e}")
+            
+            # Try updated_at as fallback
+            if transcript.get('updated_at'):
+                try:
+                    updated_at = transcript['updated_at']
+                    logger.debug(f"Trying updated_at: {updated_at} (type: {type(updated_at)})")
+                    if isinstance(updated_at, str):
+                        # Handle ISO format with timezone
+                        return datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
+                    elif hasattr(updated_at, '_seconds'):
+                        # Handle Firestore timestamp
+                        return datetime.fromtimestamp(updated_at._seconds, tz=timezone.utc)
+                    elif isinstance(updated_at, datetime):
+                        # Already a datetime object
+                        return updated_at
+                except Exception as e:
+                    logger.warning(f"Failed to parse updated_at: {e}")
+            
+            # Try parsing from session_id
+            session_id = transcript.get('session_id', transcript.get('id', ''))
+            logger.debug(f"Trying to parse from session_id/id: {session_id}")
+            try:
+                # Check if it's a timestamp format (YYYYMMDDHHMMSSSSSSSS)
+                if session_id and len(session_id) >= 14 and session_id[:14].isdigit():
+                    year = int(session_id[0:4])
+                    month = int(session_id[4:6])
+                    day = int(session_id[6:8])
+                    hour = int(session_id[8:10])
+                    minute = int(session_id[10:12])
+                    second = int(session_id[12:14])
+                    
+                    parsed_date = datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
+                    logger.info(f"Successfully parsed date from session_id: {parsed_date}")
+                    return parsed_date
+                
+                # Try underscore-separated format
+                parts = session_id.split('_')
+                logger.debug(f"Session ID parts: {parts}")
+                if len(parts) >= 3:
+                    date_part = parts[-3]  # YYYYMMDD
+                    time_part = parts[-2]  # HHMMSS
+                    
+                    year = int(date_part[:4])
+                    month = int(date_part[4:6])
+                    day = int(date_part[6:8])
+                    hour = int(time_part[:2])
+                    minute = int(time_part[2:4])
+                    second = int(time_part[4:6])
+                    
+                    parsed_date = datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
+                    logger.info(f"Successfully parsed date from session_id: {parsed_date}")
+                    return parsed_date
+            except Exception as e:
+                logger.debug(f"Failed to parse from session_id: {e}")
+            
+            return None
         
-        if not valid_evaluations:
-            # If no evaluations have timestamps, count all sessions
+        # Get evaluations with valid timestamps (using fallbacks)
+        evaluations_with_dates = []
+        logger.info(f"Processing {len(evaluations)} evaluations for patient {patient_id}")
+        
+        for idx, eval in enumerate(evaluations):
+            logger.info(f"Evaluation {idx}: session_type={eval.get('session_type')}, "
+                       f"created_at={eval.get('created_at')}, "
+                       f"updated_at={eval.get('updated_at')}, "
+                       f"session_id={eval.get('session_id')}, "
+                       f"id={eval.get('id')}")
+            
+            timestamp = get_timestamp(eval)
+            if timestamp:
+                eval['_parsed_timestamp'] = timestamp
+                evaluations_with_dates.append(eval)
+                logger.info(f"Successfully parsed timestamp: {timestamp}")
+            else:
+                logger.warning(f"Failed to parse timestamp for evaluation {idx}")
+        
+        if not evaluations_with_dates:
+            # If no evaluations have valid timestamps even with fallbacks
             all_sessions = len(transcripts)
-            logger.warning(f"Found {len(evaluations)} evaluations but none have created_at timestamps")
+            logger.warning(f"Found {len(evaluations)} evaluations but none have valid timestamps")
             return {
                 "status": "no_evaluation",
                 "days_since_last": None,
@@ -667,33 +771,40 @@ async def get_re_evaluation_status(
                 "patient_name": f"{patient['last_name']}, {patient['first_name']}"
             }
         
-        # Sort valid evaluations by date (newest first)
-        valid_evaluations.sort(key=lambda x: x.get('created_at', ''), reverse=True)
-        last_evaluation = valid_evaluations[0]
+        # Sort evaluations by date (newest first)
+        evaluations_with_dates.sort(key=lambda x: x['_parsed_timestamp'], reverse=True)
+        last_evaluation = evaluations_with_dates[0]
+        last_eval_date = last_evaluation['_parsed_timestamp']
         
         # Calculate days since last evaluation
-        created_at = last_evaluation.get('created_at')
-        last_eval_date = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
         days_since = (datetime.now(timezone.utc) - last_eval_date).days
         
         # Count sessions SINCE the last evaluation (initial or re-evaluation)
-        # Sort all transcripts by date
-        transcripts_with_dates = [t for t in transcripts if t.get('created_at')]
-        transcripts_with_dates.sort(key=lambda x: x.get('created_at', ''), reverse=False)
+        # Get timestamps for all transcripts
+        transcripts_with_timestamps = []
+        transcripts_without_timestamps = []
         
-        # Find sessions that occurred after the last evaluation
+        for transcript in transcripts:
+            timestamp = get_timestamp(transcript)
+            if timestamp:
+                transcript['_parsed_timestamp'] = timestamp
+                transcripts_with_timestamps.append(transcript)
+            else:
+                transcripts_without_timestamps.append(transcript)
+        
+        # Sort transcripts by date
+        transcripts_with_timestamps.sort(key=lambda x: x['_parsed_timestamp'], reverse=False)
+        
+        # Count sessions that occurred after the last evaluation
         sessions_since_evaluation = 0
-        for transcript in transcripts_with_dates:
-            transcript_created_at = transcript.get('created_at')
-            transcript_date = datetime.fromisoformat(transcript_created_at.replace('Z', '+00:00'))
-            if transcript_date > last_eval_date:
+        for transcript in transcripts_with_timestamps:
+            if transcript['_parsed_timestamp'] > last_eval_date:
                 sessions_since_evaluation += 1
-                
-        # Also count transcripts without dates (they might be newer)
-        transcripts_without_dates = len([t for t in transcripts if not t.get('created_at')])
-        if transcripts_without_dates > 0:
-            logger.warning(f"Found {transcripts_without_dates} transcripts without created_at timestamps")
-            sessions_since_evaluation += transcripts_without_dates
+        
+        # Log warning if there are transcripts without timestamps
+        if transcripts_without_timestamps:
+            logger.warning(f"Found {len(transcripts_without_timestamps)} transcripts without valid timestamps")
+            # Don't count them as they could be old or new
         
         # Determine status color based on sessions since last evaluation
         # Green: 0-30 days AND less than 12 sessions
@@ -722,12 +833,15 @@ async def get_re_evaluation_status(
             success=True
         )
         
+        # Get the evaluation date in ISO format for frontend
+        eval_date_iso = last_eval_date.isoformat() if last_eval_date else last_evaluation.get('created_at')
+        
         return {
             "status": "evaluated",
             "days_since_last": days_since,
             "session_count": len(transcripts),  # Total sessions for patient
             "sessions_since_evaluation": sessions_since_evaluation,  # Sessions since last eval
-            "last_evaluation_date": last_evaluation.get('created_at'),
+            "last_evaluation_date": eval_date_iso,
             "last_evaluation_type": last_evaluation.get('evaluation_type'),
             "color": color,
             "message": message,

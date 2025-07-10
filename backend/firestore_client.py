@@ -549,6 +549,9 @@ class FirestoreClient:
                 # Format the transcript data to match RecordingInfo model
                 recording_info = {
                     'id': doc.id,
+                    'session_id': transcript_data.get('session_id', doc.id),  # Include session_id for timestamp parsing
+                    'created_at': transcript_data.get('created_at'),  # Include raw created_at
+                    'updated_at': transcript_data.get('updated_at'),  # Include raw updated_at
                     'name': transcript_data.get('patient_name', 'Unknown Patient'),
                     'date': created_at,
                     'status': transcript_data.get('status', 'saved'),

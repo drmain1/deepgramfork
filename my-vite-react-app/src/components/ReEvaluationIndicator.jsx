@@ -131,14 +131,14 @@ function ReEvaluationIndicator({ patient }) {
             </>
           ) : status.status === 'no_evaluation' ? (
             <>
-              {status.sessions_since_evaluation} visit{status.sessions_since_evaluation !== 1 ? 's' : ''}
+              {status.sessions_since_evaluation} visit{status.sessions_since_evaluation !== 1 ? 's' : ''} - {status.message.includes('No valid evaluation dates') ? 'Dates missing' : 'No eval'}
             </>
           ) : status.sessions_since_evaluation > 0 ? (
             <>
-              {status.sessions_since_evaluation} visit{status.sessions_since_evaluation !== 1 ? 's' : ''} since {status.last_evaluation_type === 're_evaluation' ? 're-evaluation' : 'initial eval'}
+              {status.sessions_since_evaluation} visit{status.sessions_since_evaluation !== 1 ? 's' : ''} since last {status.last_evaluation_type === 're_evaluation' ? 're-eval' : 'eval'}
             </>
           ) : (
-            'Re-evaluation Status'
+            'Re-evaluation current'
           )}
         </span>
         {/* Pulse animation for yellow/red status */}
@@ -188,9 +188,16 @@ function ReEvaluationIndicator({ patient }) {
               <span className={`material-icons text-2xl ${getStatusColor()}`}>
                 {getStatusIcon()}
               </span>
-              <p className="text-sm font-medium text-gray-800">
-                {status.message}
-              </p>
+              <div>
+                <p className="text-sm font-medium text-gray-800">
+                  {status.message}
+                </p>
+                {status.last_evaluation_type === 're_evaluation' && (
+                  <p className="text-xs text-gray-600 mt-1">
+                    Tracking from most recent re-evaluation
+                  </p>
+                )}
+              </div>
             </div>
 
             {/* Progress indicators */}

@@ -2,6 +2,7 @@ import io
 import os
 import re
 import html
+import json
 from pathlib import Path
 from typing import Dict, Any, Optional
 from weasyprint import HTML, CSS
@@ -636,7 +637,20 @@ class WeasyPrintMedicalPDFGenerator:
         # For follow-up visits, render narrative content without section headers
         for section_key, section_content in sections.items():
             if isinstance(section_content, str) and section_content.strip():
-                # Format as narrative paragraphs
+                # Check if the content is JSON with Chiropractic_note
+                try:
+                    json_data = json.loads(section_content)
+                    if isinstance(json_data, dict) and 'Chiropractic_note' in json_data:
+                        # Extract just the chiropractic note text
+                        note_text = json_data.get('Chiropractic_note', '')
+                        if note_text:
+                            content_html += f'<p class="narrative-content">{html.escape(note_text)}</p>\n'
+                        continue
+                except (json.JSONDecodeError, ValueError):
+                    # Not JSON, process as regular text
+                    pass
+                
+                # Format as narrative paragraphs for non-JSON content
                 paragraphs = section_content.split('\n\n')
                 for para in paragraphs:
                     if para.strip():
