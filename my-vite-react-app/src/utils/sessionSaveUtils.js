@@ -25,7 +25,8 @@ export const buildSaveSessionPayload = ({
   initialEvaluationId,
   previousEvaluationId,
   includePreviousFindingsInPrompt,
-  previousFindings
+  previousFindings,
+  recordingStartTime
 }) => {
   const activeProfile = userSettings.transcriptionProfiles?.find(p => p.id === currentProfileId);
   const llmTemplate = activeProfile ? activeProfile.name : 'General Summary';
@@ -50,7 +51,8 @@ export const buildSaveSessionPayload = ({
     evaluation_type: evaluationType || null,
     initial_evaluation_id: initialEvaluationId || null,
     previous_evaluation_id: previousEvaluationId || initialEvaluationId || null,
-    previous_findings: (includePreviousFindingsInPrompt && previousFindings) ? previousFindings : null
+    previous_findings: (includePreviousFindingsInPrompt && previousFindings) ? previousFindings : null,
+    recording_start_time: recordingStartTime ? new Date(recordingStartTime).toISOString() : new Date().toISOString()
   };
 };
 
@@ -91,6 +93,7 @@ export const saveDraftToBackend = async ({
   user,
   isDictationMode,
   dateOfService,
+  recordingStartTime,
   accessToken,
   apiBaseUrl
 }) => {
@@ -108,7 +111,8 @@ export const saveDraftToBackend = async ({
       patient_name: patientDetails || 'Untitled Session',
       profile_id: currentProfileId,
       user_id: user.uid || user.sub,
-      date_of_service: (isDictationMode && dateOfService && dateOfService.trim()) ? dateOfService : null
+      date_of_service: (isDictationMode && dateOfService && dateOfService.trim()) ? dateOfService : null,
+      recording_start_time: recordingStartTime ? new Date(recordingStartTime).toISOString() : null
     }),
   });
 

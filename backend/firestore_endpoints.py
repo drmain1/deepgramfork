@@ -79,10 +79,34 @@ async def get_user_recordings_firestore(
             # Parse the date string - use created_at as primary timestamp (when recording was made)
             # Only fall back to updated_at if created_at is missing
             date_str = transcript.get('created_at', transcript.get('updated_at', ''))
-            try:
-                date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00')) if date_str else datetime.now(timezone.utc)
-            except:
-                date_obj = datetime.now(timezone.utc)
+            
+            # Try to parse timestamp from session_id if created_at is missing
+            if not date_str and transcript.get('session_id'):
+                session_id = transcript.get('session_id')
+                if len(session_id) >= 14 and session_id[:14].isdigit():
+                    try:
+                        # Session ID format: YYYYMMDDHHMMSSxxxxxx
+                        date_obj = datetime.strptime(session_id[:14], "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
+                        logger.info(f"Parsed date from session_id {session_id}: {date_obj}")
+                    except ValueError:
+                        logger.warning(f"Could not parse date from session_id: {session_id}")
+                        date_obj = datetime.now(timezone.utc)
+                else:
+                    date_obj = datetime.now(timezone.utc)
+            else:
+                try:
+                    date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00')) if date_str else datetime.now(timezone.utc)
+                except:
+                    # If parsing fails, try to extract from session_id
+                    session_id = transcript.get('session_id', '')
+                    if len(session_id) >= 14 and session_id[:14].isdigit():
+                        try:
+                            date_obj = datetime.strptime(session_id[:14], "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
+                            logger.info(f"Parsed date from session_id after date parse failed: {session_id}")
+                        except:
+                            date_obj = datetime.now(timezone.utc)
+                    else:
+                        date_obj = datetime.now(timezone.utc)
             
             # For dictation mode recordings, use the date_of_service instead of created_at
             if transcript.get('date_of_service'):
@@ -298,8 +322,18 @@ async def save_session_data_firestore(
         logger.warning("date_of_service NOT found in request data!")
     
     try:
-        # Parse created_at from session_id if it's a timestamp format
-        created_at = datetime.now(timezone.utc)
+        # Use recording_start_time if provided, otherwise parse from session_id or use current time
+        recording_start_time = request_data.get('recording_start_time')
+        
+        if recording_start_time:
+            # Frontend sends ISO format timestamp
+            created_at = datetime.fromisoformat(recording_start_time.replace('Z', '+00:00'))
+            logger.info(f"Using recording_start_time from frontend: {created_at.isoformat()}")
+        else:
+            # Fallback: Parse created_at from session_id if it's a timestamp format
+            created_at = datetime.now(timezone.utc)
+            logger.info(f"No recording_start_time provided, using current time: {created_at.isoformat()}")
+        
         logger.info(f"Processing session_id: {session_id} (length: {len(session_id)})")
         
         # Check if date_of_service is provided (dictation mode)
@@ -790,15 +824,24 @@ async def save_draft_firestore(
                 
             await firestore_client.update_transcript(session_id, update_data)
         else:
-            # Parse created_at from session_id if it's a timestamp format
-            created_at = datetime.now(timezone.utc)
-            if len(session_id) >= 14 and session_id[:14].isdigit():
+            # Use recording_start_time if provided, otherwise parse from session_id or use current time
+            recording_start_time = request_data.get('recording_start_time')
+            
+            if recording_start_time:
+                # Frontend sends ISO format timestamp
+                created_at = datetime.fromisoformat(recording_start_time.replace('Z', '+00:00'))
+                logger.info(f"Draft: Using recording_start_time from frontend: {created_at.isoformat()}")
+            elif len(session_id) >= 14 and session_id[:14].isdigit():
                 try:
                     # Session ID format: YYYYMMDDHHMMSSxxxxxx (generated in UTC)
                     created_at = datetime.strptime(session_id[:14], "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
                     logger.info(f"Draft: Parsed recording start time from session_id: {created_at.isoformat()}")
                 except ValueError:
                     logger.warning(f"Draft: Could not parse timestamp from session_id: {session_id}")
+                    created_at = datetime.now(timezone.utc)
+            else:
+                created_at = datetime.now(timezone.utc)
+                logger.info(f"Draft: No recording_start_time provided, using current time: {created_at.isoformat()}")
             
             # Create new draft transcript
             transcript_data = {

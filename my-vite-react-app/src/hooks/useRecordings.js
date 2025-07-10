@@ -38,60 +38,30 @@ export function useRecordings() {
 
   // Load transcript when selection changes
   useEffect(() => {
-    console.log('[useRecordings] Transcript loading effect triggered:', {
-      selectedRecordingId,
-      hasCurrentUser: !!currentUser,
-      currentUserId: currentUser?.uid
-    });
     if (selectedRecordingId && currentUser) {
       loadSelectedTranscript(currentUser, getToken);
     }
   }, [selectedRecordingId, currentUser, loadSelectedTranscript, getToken]);
 
-  // Poll for recordings with 'saving' or 'processing' status
+  // Add explicit refresh on mount for fresh data
   useEffect(() => {
-    if (!currentUser?.uid) return;
-
-    const hasProcessingRecordings = recordings.some(rec => 
-      rec.status === 'saving' || rec.status === 'processing'
-    );
-    if (!hasProcessingRecordings) return;
-
-    console.log('Detected recordings with saving/processing status, setting up periodic refresh...');
-    
-    const intervalId = setInterval(() => {
-      console.log('Checking for completed recordings...');
+    if (currentUser?.uid && !authLoading) {
       fetchUserRecordings(currentUser, getToken);
-    }, 30000); // Temporarily increased to 30 seconds to reduce log spam
+    }
+  }, [currentUser, authLoading]); // Note: removed fetchUserRecordings from deps to avoid loops
 
-    return () => {
-      console.log('Clearing periodic refresh interval');
-      clearInterval(intervalId);
-    };
-  }, [recordings, currentUser, fetchUserRecordings, getToken]);
-
-  // Poll when selected transcript is processing
+  // Poll only when selected transcript is processing (reduced frequency)
   useEffect(() => {
     if (!currentUser?.uid || !selectedRecordingId || selectedTranscriptError !== 'PROCESSING') return;
-
-    console.log('Selected transcript is processing, setting up polling...');
     
     const intervalId = setInterval(() => {
-      console.log('Retrying to load processing transcript...');
       loadSelectedTranscript(currentUser, getToken);
-    }, 3000); // Poll every 3 seconds
-
-    // Also fetch recordings to update status
-    const recordingsIntervalId = setInterval(() => {
-      fetchUserRecordings(currentUser, getToken);
-    }, 5000); // Poll recordings every 5 seconds
+    }, 10000); // Reduced to every 10 seconds to minimize resource usage
 
     return () => {
-      console.log('Clearing transcript processing poll');
       clearInterval(intervalId);
-      clearInterval(recordingsIntervalId);
     };
-  }, [selectedTranscriptError, selectedRecordingId, currentUser, loadSelectedTranscript, fetchUserRecordings, getToken]);
+  }, [selectedTranscriptError, selectedRecordingId, currentUser, loadSelectedTranscript, getToken]);
 
   // Return compatible API
   return {

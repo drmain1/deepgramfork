@@ -4,9 +4,12 @@ import { useAuth } from '../contexts/FirebaseAuthContext';
 import { useState, useEffect } from 'react';
 
 function Sidebar() {
-  const { recordings, deletePersistedRecording, isFetchingRecordings, selectRecording, selectedRecordingId } = useRecordings();
+  const { recordings, deletePersistedRecording, isFetchingRecordings, selectRecording, selectedRecordingId, fetchUserRecordings, selectedTranscriptError } = useRecordings();
   const navigate = useNavigate();
   const { isAuthenticated, isLoading, user, logout } = useAuth();
+  
+  // Track backend connection status
+  const [isBackendAvailable, setIsBackendAvailable] = useState(true);
   
   // State for delete confirmation modal
   const [deleteConfirmation, setDeleteConfirmation] = useState({
@@ -19,6 +22,11 @@ function Sidebar() {
   // State for search
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+  
+  // Update backend availability based on errors
+  useEffect(() => {
+    setIsBackendAvailable(!selectedTranscriptError || selectedTranscriptError === 'PROCESSING');
+  }, [selectedTranscriptError]);
 
   // Keyboard shortcut for search (Cmd/Ctrl + K)
   useEffect(() => {
@@ -132,6 +140,8 @@ function Sidebar() {
   const groupRecordingsByDate = (recordings) => {
     const groups = {};
     const now = new Date();
+    
+    // Get today and yesterday at midnight in local timezone
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
@@ -139,14 +149,28 @@ function Sidebar() {
     recordings.forEach(recording => {
       // Use the backend date as the source of truth
       const recordingDate = new Date(recording.date);
-      if (!recordingDate || isNaN(recordingDate.getTime())) return;
+      if (!recording.date || !recordingDate || isNaN(recordingDate.getTime())) {
+        console.error(`Recording ${recording.id} has invalid date:`, recording.date);
+        return; // Skip this recording
+      }
       
-      // Get date at midnight in local timezone for comparison
+      // Get the recording date at midnight in the user's local timezone
+      // This correctly handles timezone conversion from UTC to local
       const recordingDay = new Date(
         recordingDate.getFullYear(),
         recordingDate.getMonth(),
         recordingDate.getDate()
       );
+      
+      // Debug logging to see date issues
+      console.log('Recording date analysis:', {
+        name: recording.name,
+        originalDate: recording.date,
+        recordingDateLocal: recordingDate.toLocaleString(),
+        recordingDay: recordingDay.toDateString(),
+        today: today.toDateString(),
+        isToday: recordingDay.getTime() === today.getTime()
+      });
       
       let groupKey;
       if (recordingDay.getTime() === today.getTime()) {
@@ -259,7 +283,15 @@ function Sidebar() {
       <div className="flex-1 px-4 overflow-hidden flex flex-col">
         <div className="flex items-center justify-between mb-3">
           <h3 className="section-header px-2 mb-0">Recent Recordings</h3>
-          <button
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => fetchUserRecordings()}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800"
+              title="Refresh recordings"
+            >
+              <span className="material-icons text-xl">refresh</span>
+            </button>
+            <button
             onClick={() => setIsSearchExpanded(!isSearchExpanded)}
             className={`p-1.5 rounded-lg transition-all group relative ${
               isSearchExpanded 
@@ -275,7 +307,16 @@ function Sidebar() {
               </span>
             )}
           </button>
+          </div>
         </div>
+        
+        {/* Backend Status Indicator */}
+        {!isBackendAvailable && (
+          <div className="px-4 py-2 bg-red-600/20 border border-red-600 rounded mx-4 mb-2">
+            <p className="text-sm text-red-400">Unable to connect to server</p>
+          </div>
+        )}
+        
         <nav className="space-y-4 overflow-y-auto flex-1 pr-2 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
           {isFetchingRecordings && recordings.length === 0 && (
             <div className="text-center py-8">

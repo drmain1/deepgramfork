@@ -61,7 +61,8 @@ function RecordingView({
     previousFindings,
     includePreviousFindingsInPrompt,
     showPreviousFindingsSidebar,
-    setShowPreviousFindingsSidebar
+    setShowPreviousFindingsSidebar,
+    recordingStartTime
   } = useTranscriptionSessionStore();
   const { user, getToken } = useAuth();
   const { startPendingRecording, updateRecording, removeRecording, fetchUserRecordings, selectRecording } = useRecordings();
@@ -320,7 +321,16 @@ function RecordingView({
         initialEvaluationId,
         previousEvaluationId,
         includePreviousFindingsInPrompt,
-        previousFindings
+        previousFindings,
+        recordingStartTime
+      });
+      
+      // Debug logging for recording time
+      console.log('[RECORDING TIME DEBUG] Saving with:', {
+        recordingStartTime,
+        recordingStartTimeISO: recordingStartTime ? new Date(recordingStartTime).toISOString() : null,
+        recordingStartTimeLocal: recordingStartTime ? new Date(recordingStartTime).toLocaleString() : null,
+        payloadRecordingTime: payload.recording_start_time
       });
       
       // Debug logging for dictation mode
@@ -422,6 +432,7 @@ function RecordingView({
           user,
           isDictationMode,
           dateOfService,
+          recordingStartTime,
           accessToken,
           apiBaseUrl: API_BASE_URL
         });

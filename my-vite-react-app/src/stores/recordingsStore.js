@@ -1,50 +1,12 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
 import { subscribeWithSelector } from 'zustand/middleware';
 
-// Custom storage that excludes PHI (Protected Health Information)
-const secureStorage = {
-  getItem: (name) => {
-    const str = localStorage.getItem(name);
-    if (!str) return null;
-    
-    try {
-      const data = JSON.parse(str);
-      // Return only non-PHI data (IDs and statuses)
-      return JSON.stringify({
-        recordingMetadata: data.recordingMetadata || {},
-        lastSync: data.lastSync
-      });
-    } catch {
-      return null;
-    }
-  },
-  setItem: (name, value) => {
-    try {
-      const state = JSON.parse(value);
-      // Store only non-PHI metadata
-      const secureData = {
-        recordingMetadata: state.recordingMetadata || {},
-        lastSync: new Date().toISOString()
-      };
-      localStorage.setItem(name, JSON.stringify(secureData));
-    } catch (error) {
-      console.error('Error saving to secure storage:', error);
-    }
-  },
-  removeItem: (name) => {
-    localStorage.removeItem(name);
-  }
-};
 
 const useRecordingsStore = create(
   subscribeWithSelector(
-    persist(
-      (set, get) => ({
-        // State
-        recordings: [],
-        recordingMetadata: {}, // Only stores { id: { status, lastUpdated } }
-        patientNameCache: {}, // In-memory only, never persisted
+    (set, get) => ({
+      // State
+      recordings: [],
         isLoading: false,
         isFetchingRecordings: false,
         error: null,
@@ -65,22 +27,7 @@ const useRecordingsStore = create(
         initialize: async (currentUser, getToken) => {
           if (!currentUser?.uid) return;
           
-          const { recordingMetadata } = get();
-          
-          // Set initial loading state with metadata statuses
-          if (Object.keys(recordingMetadata).length > 0) {
-            set({ 
-              recordings: Object.entries(recordingMetadata).map(([id, meta]) => ({
-                id,
-                name: `Loading...`,
-                status: meta.status,
-                // Don't set date here - let it come from backend
-                lastUpdated: meta.lastUpdated
-              }))
-            });
-          }
-          
-          // Fetch full data from backend
+          // Just fetch fresh data from backend
           await get().fetchUserRecordings(currentUser, getToken);
         },
 
@@ -156,95 +103,16 @@ const useRecordingsStore = create(
           }
         },
 
-        // Complex merge logic from RecordingsContext
+        // Simplified merge - just replace with backend data
         mergeRecordings: (backendRecordings) => {
-          const { recordings: localRecordings, patientNameCache } = get();
-          const gcsMap = new Map(backendRecordings.map(r => [r.id, { ...r }]));
-          const merged = [];
-          const newMetadata = {};
-          
-          // First, handle local recordings
-          localRecordings.forEach(localRec => {
-            const gcsVersion = gcsMap.get(localRec.id);
-            if (gcsVersion) {
-              // Preserve patient names logic
-              const localHasRealName = localRec.name && 
-                !localRec.name.startsWith('Transcript ') && 
-                !localRec.name.startsWith('Session ') &&
-                !localRec.name.startsWith('Tx @ ');
-              const gcsHasTimestampName = gcsVersion.name && 
-                (gcsVersion.name.startsWith('Transcript ') || 
-                 gcsVersion.name.startsWith('Session ') ||
-                 gcsVersion.name.startsWith('Tx @ '));
-              
-              if (localHasRealName && gcsHasTimestampName) {
-                let patientName = localRec.name;
-                if (patientName.startsWith('Processing: ')) {
-                  patientName = patientName.substring('Processing: '.length);
-                } else if (patientName.startsWith('Failed: ')) {
-                  patientName = patientName.substring('Failed: '.length);
-                }
-                gcsVersion.name = patientName;
-                patientNameCache[localRec.id] = patientName;
-              } else if (gcsHasTimestampName && patientNameCache[localRec.id]) {
-                gcsVersion.name = patientNameCache[localRec.id];
-              }
-              
-              // Preserve the earlier date (recording start time) between local and backend
-              // Only preserve local date if it exists and is valid
-              if (localRec.date) {
-                const localDate = new Date(localRec.date);
-                const backendDate = new Date(gcsVersion.date);
-                if (localDate < backendDate) {
-                  gcsVersion.date = localRec.date;
-                  console.log(`[Recording Merge] Preserving local recording start time for ${gcsVersion.id}: ${localRec.date}`);
-                }
-              }
-              
-              merged.push(gcsVersion);
-              newMetadata[gcsVersion.id] = {
-                status: gcsVersion.status || 'saved',
-                lastUpdated: new Date().toISOString()
-              };
-              gcsMap.delete(localRec.id);
-            } else {
-              // Keep local-only recordings if recent
-              if (localRec.status !== 'pending' || 
-                  (Date.now() - new Date(localRec.lastUpdated || localRec.date).getTime() < 60000)) {
-                merged.push(localRec);
-                newMetadata[localRec.id] = {
-                  status: localRec.status,
-                  lastUpdated: new Date().toISOString()
-                };
-              }
-            }
-          });
-          
-          // Add remaining backend recordings
-          gcsMap.forEach((gcsRec) => {
-            if (gcsRec.name && gcsRec.name.startsWith('Transcript ') && patientNameCache[gcsRec.id]) {
-              gcsRec.name = patientNameCache[gcsRec.id];
-            }
-            merged.push(gcsRec);
-            newMetadata[gcsRec.id] = {
-              status: gcsRec.status || 'saved',
-              lastUpdated: new Date().toISOString()
-            };
-          });
-          
           // Sort by date descending (newest first)
-          // Ensure valid dates before sorting
-          merged.sort((a, b) => {
+          const sorted = backendRecordings.sort((a, b) => {
             const dateA = new Date(a.date || 0);
             const dateB = new Date(b.date || 0);
             return dateB - dateA;
           });
           
-          set({ 
-            recordings: merged,
-            recordingMetadata: newMetadata,
-            patientNameCache 
-          });
+          set({ recordings: sorted });
         },
 
         // Start a pending recording
@@ -259,14 +127,7 @@ const useRecordingsStore = create(
           };
           
           set(state => ({
-            recordings: [newRecording, ...state.recordings.filter(r => r.id !== sessionId)],
-            recordingMetadata: {
-              ...state.recordingMetadata,
-              [sessionId]: {
-                status: 'pending',
-                lastUpdated: now.toISOString()
-              }
-            }
+            recordings: [newRecording, ...state.recordings.filter(r => r.id !== sessionId)]
           }));
         },
 
@@ -275,47 +136,19 @@ const useRecordingsStore = create(
           // PHI-safe logging: only log sessionId and status, not patient names
           console.log(`[updateRecording] Updating recording ${sessionId}, status: ${updates.status || 'unchanged'}`);
           
-          // Cache patient names in memory
-          if (updates.name && 
-              !updates.name.startsWith('Transcript ') && 
-              !updates.name.startsWith('Session ') &&
-              !updates.name.startsWith('Pending ') &&
-              !updates.name.startsWith('Tx @ ')) {
-            const cleanName = updates.name.replace('Processing: ', '').replace('Failed: ', '');
-            set(state => ({
-              patientNameCache: {
-                ...state.patientNameCache,
-                [sessionId]: cleanName
-              }
-            }));
-          }
-          
           set(state => ({
             recordings: state.recordings.map(rec =>
               rec.id === sessionId 
                 ? { ...rec, ...updates, date: rec.date || updates.date, lastUpdated: updates.lastUpdated || rec.lastUpdated || new Date().toISOString() } 
                 : rec
-            ),
-            recordingMetadata: {
-              ...state.recordingMetadata,
-              [sessionId]: {
-                status: updates.status || state.recordingMetadata[sessionId]?.status || 'pending',
-                lastUpdated: updates.lastUpdated || state.recordingMetadata[sessionId]?.lastUpdated || new Date().toISOString()
-              }
-            }
+            )
           }));
         },
 
         // Remove recording
         removeRecording: (sessionId) => {
           set(state => ({
-            recordings: state.recordings.filter(rec => rec.id !== sessionId),
-            recordingMetadata: Object.fromEntries(
-              Object.entries(state.recordingMetadata).filter(([id]) => id !== sessionId)
-            ),
-            patientNameCache: Object.fromEntries(
-              Object.entries(state.patientNameCache).filter(([id]) => id !== sessionId)
-            )
+            recordings: state.recordings.filter(rec => rec.id !== sessionId)
           }));
         },
 
@@ -327,14 +160,7 @@ const useRecordingsStore = create(
                 const dateA = new Date(a.date || 0);
                 const dateB = new Date(b.date || 0);
                 return dateB - dateA;
-              }),
-            recordingMetadata: {
-              ...state.recordingMetadata,
-              [recording.id]: {
-                status: recording.status || 'saved',
-                lastUpdated: recording.date
-              }
-            }
+              })
           }));
         },
 
@@ -589,24 +415,13 @@ const useRecordingsStore = create(
         clearStore: () => {
           set({
             recordings: [],
-            recordingMetadata: {},
-            patientNameCache: {},
             selectedRecordingId: null,
             originalTranscriptContent: null,
             polishedTranscriptContent: null,
             error: null
           });
-          localStorage.removeItem(`recordings-${get().currentUserId}`);
         }
-      }),
-      {
-        name: 'recordings-storage',
-        storage: createJSONStorage(() => secureStorage),
-        partialize: (state) => ({
-          recordingMetadata: state.recordingMetadata
-        })
-      }
-    )
+    })
   )
 );
 

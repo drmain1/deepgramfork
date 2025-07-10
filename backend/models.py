@@ -57,6 +57,7 @@ class SaveSessionRequest(BaseModel):
     evaluation_type: Optional[str] = None
     initial_evaluation_id: Optional[str] = None
     previous_findings: Optional[Dict[str, Any]] = None
+    recording_start_time: Optional[str] = None
 
 
 class SaveDraftRequest(BaseModel):
@@ -66,6 +67,7 @@ class SaveDraftRequest(BaseModel):
     patient_name: str
     profile_id: Optional[str] = None
     user_id: str
+    recording_start_time: Optional[str] = None
 
 
 class RecordingInfo(BaseModel):
