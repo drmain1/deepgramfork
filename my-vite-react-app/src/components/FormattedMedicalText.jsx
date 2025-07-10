@@ -108,21 +108,98 @@ const FormattedMedicalText = ({ content, sx = {}, ...props }) => {
                 </Typography>
                 <TableContainer component={Paper} sx={{ mb: 2 }}>
                   <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>MUSCLE GROUP</TableCell>
-                        <TableCell align="center">RIGHT</TableCell>
-                        <TableCell align="center">LEFT</TableCell>
-                      </TableRow>
-                    </TableHead>
+                    {(() => {
+                      // Check if this is a re-evaluation by looking for pipe characters
+                      const isReEval = structuredData.motor_exam.upper_extremity.some(exam => 
+                        (exam.right && exam.right.includes('|')) || (exam.left && exam.left.includes('|'))
+                      );
+                      
+                      if (isReEval) {
+                        return (
+                          <>
+                            <TableHead>
+                              <TableRow>
+                                <TableCell>MUSCLE GROUP</TableCell>
+                                <TableCell align="center" colSpan={2}>RIGHT</TableCell>
+                                <TableCell align="center" colSpan={2}>LEFT</TableCell>
+                              </TableRow>
+                              <TableRow>
+                                <TableCell></TableCell>
+                                <TableCell align="center" sx={{ fontSize: '0.75rem' }}>Previous</TableCell>
+                                <TableCell align="center" sx={{ fontSize: '0.75rem' }}>Current</TableCell>
+                                <TableCell align="center" sx={{ fontSize: '0.75rem' }}>Previous</TableCell>
+                                <TableCell align="center" sx={{ fontSize: '0.75rem' }}>Current</TableCell>
+                              </TableRow>
+                            </TableHead>
+                          </>
+                        );
+                      } else {
+                        return (
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>MUSCLE GROUP</TableCell>
+                              <TableCell align="center">RIGHT</TableCell>
+                              <TableCell align="center">LEFT</TableCell>
+                            </TableRow>
+                          </TableHead>
+                        );
+                      }
+                    })()}
                     <TableBody>
-                      {structuredData.motor_exam.upper_extremity.map((exam, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell>{exam.muscle}</TableCell>
-                          <TableCell align="center">{exam.right}</TableCell>
-                          <TableCell align="center">{exam.left}</TableCell>
-                        </TableRow>
-                      ))}
+                      {structuredData.motor_exam.upper_extremity.map((exam, idx) => {
+                        // Check if this is a re-evaluation
+                        const isReEval = (exam.right && exam.right.includes('|')) || (exam.left && exam.left.includes('|'));
+                        
+                        if (isReEval) {
+                          // Parse for re-evaluation format
+                          let rightPrev = 'Not performed';
+                          let rightCurr = 'Not performed';
+                          if (exam.right && exam.right.includes('|')) {
+                            const parts = exam.right.split('|');
+                            rightPrev = parts[0].replace('Previously', '').trim();
+                            rightCurr = parts[1].replace('Currently', '').trim();
+                          }
+                          
+                          let leftPrev = 'Not performed';
+                          let leftCurr = 'Not performed';
+                          if (exam.left && exam.left.includes('|')) {
+                            const parts = exam.left.split('|');
+                            leftPrev = parts[0].replace('Previously', '').trim();
+                            leftCurr = parts[1].replace('Currently', '').trim();
+                          }
+                          
+                          return (
+                            <TableRow key={idx}>
+                              <TableCell>{exam.muscle}</TableCell>
+                              <TableCell align="center" sx={{ fontSize: '0.875rem', color: 'text.secondary' }}>
+                                {rightPrev}
+                              </TableCell>
+                              <TableCell align="center" sx={{ fontSize: '0.875rem', fontWeight: 'bold' }}>
+                                {rightCurr}
+                              </TableCell>
+                              <TableCell align="center" sx={{ fontSize: '0.875rem', color: 'text.secondary' }}>
+                                {leftPrev}
+                              </TableCell>
+                              <TableCell align="center" sx={{ fontSize: '0.875rem', fontWeight: 'bold' }}>
+                                {leftCurr}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        } else {
+                          // Initial evaluation format - simple values only
+                          return (
+                            <TableRow key={idx}>
+                              <TableCell>{exam.muscle}</TableCell>
+                              <TableCell align="center" sx={{ fontSize: '0.875rem' }}>
+                                {exam.right || 'Not performed'}
+                              </TableCell>
+                              <TableCell align="center" sx={{ fontSize: '0.875rem' }}>
+                                {exam.left || 'Not performed'}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        }
+                      })}
                     </TableBody>
                   </Table>
                 </TableContainer>
@@ -136,21 +213,98 @@ const FormattedMedicalText = ({ content, sx = {}, ...props }) => {
                 </Typography>
                 <TableContainer component={Paper} sx={{ mb: 2 }}>
                   <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>MUSCLE GROUP</TableCell>
-                        <TableCell align="center">RIGHT</TableCell>
-                        <TableCell align="center">LEFT</TableCell>
-                      </TableRow>
-                    </TableHead>
+                    {(() => {
+                      // Check if this is a re-evaluation by looking for pipe characters
+                      const isReEval = structuredData.motor_exam.lower_extremity.some(exam => 
+                        (exam.right && exam.right.includes('|')) || (exam.left && exam.left.includes('|'))
+                      );
+                      
+                      if (isReEval) {
+                        return (
+                          <>
+                            <TableHead>
+                              <TableRow>
+                                <TableCell>MUSCLE GROUP</TableCell>
+                                <TableCell align="center" colSpan={2}>RIGHT</TableCell>
+                                <TableCell align="center" colSpan={2}>LEFT</TableCell>
+                              </TableRow>
+                              <TableRow>
+                                <TableCell></TableCell>
+                                <TableCell align="center" sx={{ fontSize: '0.75rem' }}>Previous</TableCell>
+                                <TableCell align="center" sx={{ fontSize: '0.75rem' }}>Current</TableCell>
+                                <TableCell align="center" sx={{ fontSize: '0.75rem' }}>Previous</TableCell>
+                                <TableCell align="center" sx={{ fontSize: '0.75rem' }}>Current</TableCell>
+                              </TableRow>
+                            </TableHead>
+                          </>
+                        );
+                      } else {
+                        return (
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>MUSCLE GROUP</TableCell>
+                              <TableCell align="center">RIGHT</TableCell>
+                              <TableCell align="center">LEFT</TableCell>
+                            </TableRow>
+                          </TableHead>
+                        );
+                      }
+                    })()}
                     <TableBody>
-                      {structuredData.motor_exam.lower_extremity.map((exam, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell>{exam.muscle}</TableCell>
-                          <TableCell align="center">{exam.right}</TableCell>
-                          <TableCell align="center">{exam.left}</TableCell>
-                        </TableRow>
-                      ))}
+                      {structuredData.motor_exam.lower_extremity.map((exam, idx) => {
+                        // Check if this is a re-evaluation
+                        const isReEval = (exam.right && exam.right.includes('|')) || (exam.left && exam.left.includes('|'));
+                        
+                        if (isReEval) {
+                          // Parse for re-evaluation format
+                          let rightPrev = 'Not performed';
+                          let rightCurr = 'Not performed';
+                          if (exam.right && exam.right.includes('|')) {
+                            const parts = exam.right.split('|');
+                            rightPrev = parts[0].replace('Previously', '').trim();
+                            rightCurr = parts[1].replace('Currently', '').trim();
+                          }
+                          
+                          let leftPrev = 'Not performed';
+                          let leftCurr = 'Not performed';
+                          if (exam.left && exam.left.includes('|')) {
+                            const parts = exam.left.split('|');
+                            leftPrev = parts[0].replace('Previously', '').trim();
+                            leftCurr = parts[1].replace('Currently', '').trim();
+                          }
+                          
+                          return (
+                            <TableRow key={idx}>
+                              <TableCell>{exam.muscle}</TableCell>
+                              <TableCell align="center" sx={{ fontSize: '0.875rem', color: 'text.secondary' }}>
+                                {rightPrev}
+                              </TableCell>
+                              <TableCell align="center" sx={{ fontSize: '0.875rem', fontWeight: 'bold' }}>
+                                {rightCurr}
+                              </TableCell>
+                              <TableCell align="center" sx={{ fontSize: '0.875rem', color: 'text.secondary' }}>
+                                {leftPrev}
+                              </TableCell>
+                              <TableCell align="center" sx={{ fontSize: '0.875rem', fontWeight: 'bold' }}>
+                                {leftCurr}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        } else {
+                          // Initial evaluation format - simple values only
+                          return (
+                            <TableRow key={idx}>
+                              <TableCell>{exam.muscle}</TableCell>
+                              <TableCell align="center" sx={{ fontSize: '0.875rem' }}>
+                                {exam.right || 'Not performed'}
+                              </TableCell>
+                              <TableCell align="center" sx={{ fontSize: '0.875rem' }}>
+                                {exam.left || 'Not performed'}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        }
+                      })}
                     </TableBody>
                   </Table>
                 </TableContainer>

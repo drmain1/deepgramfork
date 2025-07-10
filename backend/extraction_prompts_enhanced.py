@@ -86,7 +86,47 @@ Generate TWO outputs in this EXACT format:
   "posture_and_gait_findings": [
     "[e.g., Forward head posture]",
     "[e.g., Antalgic gait favoring right side]"
-  ]
+  ],
+  "comprehensive_exam_data": {
+    "motor_strength": {
+      "performed": true/false,
+      "upper_extremity_all_normal": true/false,
+      "upper_extremity": [
+        {
+          "muscle": "[e.g., DELTOID]",
+          "right": "[e.g., 5/5 or 4/5 or Not tested]",
+          "left": "[e.g., 5/5 or 4/5 or Not tested]"
+        }
+      ],
+      "lower_extremity": [
+        {
+          "muscle": "[e.g., QUAD]",
+          "right": "[e.g., 5/5 or 4/5 or Not tested]",
+          "left": "[e.g., 5/5 or 4/5 or Not tested]"
+        }
+      ]
+    },
+    "reflexes": {
+      "performed": true/false,
+      "deep_tendon": [
+        {
+          "reflex": "[e.g., BICEPS]",
+          "right": "[e.g., 2+ or 1+ or Not tested]",
+          "left": "[e.g., 2+ or 1+ or Not tested]"
+        }
+      ]
+    },
+    "range_of_motion": {
+      "performed": true/false,
+      "findings": [
+        {
+          "body_part": "[e.g., cervical spine flexion]",
+          "status": "[e.g., Normal/Full range or Restricted or Limited to X degrees]",
+          "pain": true/false
+        }
+      ]
+    }
+  }
 }
 ```
 
@@ -94,8 +134,18 @@ IMPORTANT RULES:
 - DO NOT duplicate findings across categories
 - DO NOT include subjective complaints in neurological findings
 - DO NOT include pain descriptions in range of motion findings
-- DO NOT include normal findings
+- DO NOT include normal findings in the main findings sections
 - Each finding should be concise and clinically relevant
+
+COMPREHENSIVE EXAM DATA RULES:
+- The "comprehensive_exam_data" section captures ALL tested values (normal AND abnormal)
+- Set "performed": true if the examination was done, false if not mentioned
+- For motor strength: Include ALL tested muscles with their grades (5/5 for normal)
+- Set "upper_extremity_all_normal": true ONLY if ALL upper extremity muscles tested are 5/5 bilaterally
+- Set "upper_extremity_all_normal": false if ANY muscle shows weakness (less than 5/5) or if not all muscles were tested
+- For reflexes: Include ALL tested reflexes with their grades (2+ for normal)
+- Use "Not tested" only for individual muscles/reflexes not tested during an otherwise performed exam
+- This data is for re-evaluation comparison only and won't appear in the Previous Findings sidebar
 
 RANGE OF MOTION SPECIFIC RULES:
 - Extract body part/region including spine AND extremities (e.g., "cervical spine right rotation", "right shoulder extension", "left hip flexion")

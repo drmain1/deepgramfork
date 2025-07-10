@@ -487,11 +487,15 @@
                     {% set muscle_item = motor_data.get(muscle_name) %}
                     
                     <!-- Parse right side -->
-                    {% set right_prev = "5/5" %}
-                    {% set right_curr = "5/5" %}
+                    {% set right_prev = "Not performed" %}
+                    {% set right_curr = "Not performed" %}
                     {% set right_status = "unchanged" %}
                     {% if muscle_item and muscle_item.right %}
-                        {% if "Previously" in muscle_item.right and "currently" in muscle_item.right %}
+                        {% if "|" in muscle_item.right %}
+                            {% set parts = muscle_item.right.split("|") %}
+                            {% set right_prev = parts[0].replace("Previously", "").strip() %}
+                            {% set right_curr = parts[1].replace("Currently", "").strip() %}
+                        {% elif "Previously" in muscle_item.right and "currently" in muscle_item.right %}
                             {% set parts = muscle_item.right.split("currently") %}
                             {% set right_prev = parts[0].replace("Previously", "").replace(",", "").strip() %}
                             {% set right_curr = parts[1].strip() %}
@@ -501,7 +505,9 @@
                         {% endif %}
                         
                         <!-- Determine right status -->
-                        {% if right_curr == "5/5" and right_prev != "5/5" %}
+                        {% if "not performed" in right_prev.lower() and right_curr == "5/5" %}
+                            {% set right_status = "new" %}
+                        {% elif right_curr == "5/5" and right_prev != "5/5" and "not performed" not in right_prev.lower() %}
                             {% set right_status = "improved" %}
                         {% elif right_curr == right_prev %}
                             {% set right_status = "unchanged" %}
@@ -513,11 +519,15 @@
                     {% endif %}
                     
                     <!-- Parse left side -->
-                    {% set left_prev = "5/5" %}
-                    {% set left_curr = "5/5" %}
+                    {% set left_prev = "Not performed" %}
+                    {% set left_curr = "Not performed" %}
                     {% set left_status = "unchanged" %}
                     {% if muscle_item and muscle_item.left %}
-                        {% if "Previously" in muscle_item.left and "currently" in muscle_item.left %}
+                        {% if "|" in muscle_item.left %}
+                            {% set parts = muscle_item.left.split("|") %}
+                            {% set left_prev = parts[0].replace("Previously", "").strip() %}
+                            {% set left_curr = parts[1].replace("Currently", "").strip() %}
+                        {% elif "Previously" in muscle_item.left and "currently" in muscle_item.left %}
                             {% set parts = muscle_item.left.split("currently") %}
                             {% set left_prev = parts[0].replace("Previously", "").replace(",", "").strip() %}
                             {% set left_curr = parts[1].strip() %}
@@ -527,7 +537,9 @@
                         {% endif %}
                         
                         <!-- Determine left status -->
-                        {% if left_curr == "5/5" and left_prev != "5/5" %}
+                        {% if "not performed" in left_prev.lower() and left_curr == "5/5" %}
+                            {% set left_status = "new" %}
+                        {% elif left_curr == "5/5" and left_prev != "5/5" and "not performed" not in left_prev.lower() %}
                             {% set left_status = "improved" %}
                         {% elif left_curr == left_prev %}
                             {% set left_status = "unchanged" %}
@@ -609,11 +621,15 @@
                     {% set muscle_item = motor_data.get(muscle_name) %}
                     
                     <!-- Parse right side -->
-                    {% set right_prev = "5/5" %}
-                    {% set right_curr = "5/5" %}
+                    {% set right_prev = "Not performed" %}
+                    {% set right_curr = "Not performed" %}
                     {% set right_status = "unchanged" %}
                     {% if muscle_item and muscle_item.right %}
-                        {% if "Previously" in muscle_item.right and "currently" in muscle_item.right %}
+                        {% if "|" in muscle_item.right %}
+                            {% set parts = muscle_item.right.split("|") %}
+                            {% set right_prev = parts[0].replace("Previously", "").strip() %}
+                            {% set right_curr = parts[1].replace("Currently", "").strip() %}
+                        {% elif "Previously" in muscle_item.right and "currently" in muscle_item.right %}
                             {% set parts = muscle_item.right.split("currently") %}
                             {% set right_prev = parts[0].replace("Previously", "").replace(",", "").strip() %}
                             {% set right_curr = parts[1].strip() %}
@@ -623,7 +639,9 @@
                         {% endif %}
                         
                         <!-- Determine right status -->
-                        {% if right_curr == "5/5" and right_prev != "5/5" %}
+                        {% if "not performed" in right_prev.lower() and right_curr == "5/5" %}
+                            {% set right_status = "new" %}
+                        {% elif right_curr == "5/5" and right_prev != "5/5" and "not performed" not in right_prev.lower() %}
                             {% set right_status = "improved" %}
                         {% elif right_curr == right_prev %}
                             {% set right_status = "unchanged" %}
@@ -635,11 +653,15 @@
                     {% endif %}
                     
                     <!-- Parse left side -->
-                    {% set left_prev = "5/5" %}
-                    {% set left_curr = "5/5" %}
+                    {% set left_prev = "Not performed" %}
+                    {% set left_curr = "Not performed" %}
                     {% set left_status = "unchanged" %}
                     {% if muscle_item and muscle_item.left %}
-                        {% if "Previously" in muscle_item.left and "currently" in muscle_item.left %}
+                        {% if "|" in muscle_item.left %}
+                            {% set parts = muscle_item.left.split("|") %}
+                            {% set left_prev = parts[0].replace("Previously", "").strip() %}
+                            {% set left_curr = parts[1].replace("Currently", "").strip() %}
+                        {% elif "Previously" in muscle_item.left and "currently" in muscle_item.left %}
                             {% set parts = muscle_item.left.split("currently") %}
                             {% set left_prev = parts[0].replace("Previously", "").replace(",", "").strip() %}
                             {% set left_curr = parts[1].strip() %}
@@ -649,7 +671,9 @@
                         {% endif %}
                         
                         <!-- Determine left status -->
-                        {% if left_curr == "5/5" and left_prev != "5/5" %}
+                        {% if "not performed" in left_prev.lower() and left_curr == "5/5" %}
+                            {% set left_status = "new" %}
+                        {% elif left_curr == "5/5" and left_prev != "5/5" and "not performed" not in left_prev.lower() %}
                             {% set left_status = "improved" %}
                         {% elif left_curr == left_prev %}
                             {% set left_status = "unchanged" %}
@@ -667,7 +691,9 @@
                         <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt; text-align: center; font-weight: bold;">{{ right_curr }}</td>
                         <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt; text-align: center; font-weight: bold;">{{ left_curr }}</td>
                         <td style="padding: 6px; border: 1px solid #dee2e6; text-align: center; font-size: 9pt;">
-                            {% if right_status == "improved" %}
+                            {% if right_status == "new" %}
+                                <span style="color: #28a745;">✓</span>
+                            {% elif right_status == "improved" %}
                                 <span style="color: #28a745;">✓</span>
                             {% elif right_status == "worsened" %}
                                 <span style="color: #dc3545;">✗</span>
@@ -678,7 +704,9 @@
                             {% endif %}
                         </td>
                         <td style="padding: 6px; border: 1px solid #dee2e6; text-align: center; font-size: 9pt;">
-                            {% if left_status == "improved" %}
+                            {% if left_status == "new" %}
+                                <span style="color: #28a745;">✓</span>
+                            {% elif left_status == "improved" %}
                                 <span style="color: #28a745;">✓</span>
                             {% elif left_status == "worsened" %}
                                 <span style="color: #dc3545;">✗</span>
