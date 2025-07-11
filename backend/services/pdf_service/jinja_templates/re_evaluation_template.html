@@ -494,24 +494,36 @@
                         {% if "|" in muscle_item.right %}
                             {% set parts = muscle_item.right.split("|") %}
                             {% set right_prev = parts[0].replace("Previously", "").strip() %}
-                            {% set right_curr = parts[1].replace("Currently", "").strip() %}
+                            {% set right_curr_raw = parts[1].replace("Currently", "").strip() %}
+                            <!-- Extract just the number from format like "5/5" -->
+                            {% if "/" in right_curr_raw %}
+                                {% set right_curr = right_curr_raw.split("/")[0].strip() %}
+                            {% else %}
+                                {% set right_curr = right_curr_raw %}
+                            {% endif %}
                         {% elif "Previously" in muscle_item.right and "currently" in muscle_item.right %}
                             {% set parts = muscle_item.right.split("currently") %}
                             {% set right_prev = parts[0].replace("Previously", "").replace(",", "").strip() %}
-                            {% set right_curr = parts[1].strip() %}
+                            {% set right_curr_raw = parts[1].strip() %}
+                            <!-- Extract just the number from format like "5/5" -->
+                            {% if "/" in right_curr_raw %}
+                                {% set right_curr = right_curr_raw.split("/")[0].strip() %}
+                            {% else %}
+                                {% set right_curr = right_curr_raw %}
+                            {% endif %}
                         {% else %}
                             {% set right_curr = muscle_item.right %}
                             {% set right_prev = muscle_item.right %}
                         {% endif %}
                         
                         <!-- Determine right status -->
-                        {% if "not performed" in right_prev.lower() and right_curr == "5/5" %}
+                        {% if "not performed" in right_prev.lower() and right_curr == "5" %}
                             {% set right_status = "new" %}
-                        {% elif right_curr == "5/5" and right_prev != "5/5" and "not performed" not in right_prev.lower() %}
+                        {% elif right_curr == "5" and right_prev != "5/5" and "not performed" not in right_prev.lower() %}
                             {% set right_status = "improved" %}
                         {% elif right_curr == right_prev %}
                             {% set right_status = "unchanged" %}
-                        {% elif right_curr != "5/5" and right_prev == "5/5" %}
+                        {% elif right_curr != "5" and right_prev == "5/5" %}
                             {% set right_status = "worsened" %}
                         {% else %}
                             {% set right_status = "changed" %}
@@ -526,24 +538,36 @@
                         {% if "|" in muscle_item.left %}
                             {% set parts = muscle_item.left.split("|") %}
                             {% set left_prev = parts[0].replace("Previously", "").strip() %}
-                            {% set left_curr = parts[1].replace("Currently", "").strip() %}
+                            {% set left_curr_raw = parts[1].replace("Currently", "").strip() %}
+                            <!-- Extract just the number from format like "5/5" -->
+                            {% if "/" in left_curr_raw %}
+                                {% set left_curr = left_curr_raw.split("/")[0].strip() %}
+                            {% else %}
+                                {% set left_curr = left_curr_raw %}
+                            {% endif %}
                         {% elif "Previously" in muscle_item.left and "currently" in muscle_item.left %}
                             {% set parts = muscle_item.left.split("currently") %}
                             {% set left_prev = parts[0].replace("Previously", "").replace(",", "").strip() %}
-                            {% set left_curr = parts[1].strip() %}
+                            {% set left_curr_raw = parts[1].strip() %}
+                            <!-- Extract just the number from format like "5/5" -->
+                            {% if "/" in left_curr_raw %}
+                                {% set left_curr = left_curr_raw.split("/")[0].strip() %}
+                            {% else %}
+                                {% set left_curr = left_curr_raw %}
+                            {% endif %}
                         {% else %}
                             {% set left_curr = muscle_item.left %}
                             {% set left_prev = muscle_item.left %}
                         {% endif %}
                         
                         <!-- Determine left status -->
-                        {% if "not performed" in left_prev.lower() and left_curr == "5/5" %}
+                        {% if "not performed" in left_prev.lower() and left_curr == "5" %}
                             {% set left_status = "new" %}
-                        {% elif left_curr == "5/5" and left_prev != "5/5" and "not performed" not in left_prev.lower() %}
+                        {% elif left_curr == "5" and left_prev != "5/5" and "not performed" not in left_prev.lower() %}
                             {% set left_status = "improved" %}
                         {% elif left_curr == left_prev %}
                             {% set left_status = "unchanged" %}
-                        {% elif left_curr != "5/5" and left_prev == "5/5" %}
+                        {% elif left_curr != "5" and left_prev == "5/5" %}
                             {% set left_status = "worsened" %}
                         {% else %}
                             {% set left_status = "changed" %}
@@ -628,24 +652,36 @@
                         {% if "|" in muscle_item.right %}
                             {% set parts = muscle_item.right.split("|") %}
                             {% set right_prev = parts[0].replace("Previously", "").strip() %}
-                            {% set right_curr = parts[1].replace("Currently", "").strip() %}
+                            {% set right_curr_raw = parts[1].replace("Currently", "").strip() %}
+                            <!-- Extract just the number from format like "5/5" -->
+                            {% if "/" in right_curr_raw %}
+                                {% set right_curr = right_curr_raw.split("/")[0].strip() %}
+                            {% else %}
+                                {% set right_curr = right_curr_raw %}
+                            {% endif %}
                         {% elif "Previously" in muscle_item.right and "currently" in muscle_item.right %}
                             {% set parts = muscle_item.right.split("currently") %}
                             {% set right_prev = parts[0].replace("Previously", "").replace(",", "").strip() %}
-                            {% set right_curr = parts[1].strip() %}
+                            {% set right_curr_raw = parts[1].strip() %}
+                            <!-- Extract just the number from format like "5/5" -->
+                            {% if "/" in right_curr_raw %}
+                                {% set right_curr = right_curr_raw.split("/")[0].strip() %}
+                            {% else %}
+                                {% set right_curr = right_curr_raw %}
+                            {% endif %}
                         {% else %}
                             {% set right_curr = muscle_item.right %}
                             {% set right_prev = muscle_item.right %}
                         {% endif %}
                         
                         <!-- Determine right status -->
-                        {% if "not performed" in right_prev.lower() and right_curr == "5/5" %}
+                        {% if "not performed" in right_prev.lower() and right_curr == "5" %}
                             {% set right_status = "new" %}
-                        {% elif right_curr == "5/5" and right_prev != "5/5" and "not performed" not in right_prev.lower() %}
+                        {% elif right_curr == "5" and right_prev != "5/5" and "not performed" not in right_prev.lower() %}
                             {% set right_status = "improved" %}
                         {% elif right_curr == right_prev %}
                             {% set right_status = "unchanged" %}
-                        {% elif right_curr != "5/5" and right_prev == "5/5" %}
+                        {% elif right_curr != "5" and right_prev == "5/5" %}
                             {% set right_status = "worsened" %}
                         {% else %}
                             {% set right_status = "changed" %}
@@ -660,24 +696,36 @@
                         {% if "|" in muscle_item.left %}
                             {% set parts = muscle_item.left.split("|") %}
                             {% set left_prev = parts[0].replace("Previously", "").strip() %}
-                            {% set left_curr = parts[1].replace("Currently", "").strip() %}
+                            {% set left_curr_raw = parts[1].replace("Currently", "").strip() %}
+                            <!-- Extract just the number from format like "5/5" -->
+                            {% if "/" in left_curr_raw %}
+                                {% set left_curr = left_curr_raw.split("/")[0].strip() %}
+                            {% else %}
+                                {% set left_curr = left_curr_raw %}
+                            {% endif %}
                         {% elif "Previously" in muscle_item.left and "currently" in muscle_item.left %}
                             {% set parts = muscle_item.left.split("currently") %}
                             {% set left_prev = parts[0].replace("Previously", "").replace(",", "").strip() %}
-                            {% set left_curr = parts[1].strip() %}
+                            {% set left_curr_raw = parts[1].strip() %}
+                            <!-- Extract just the number from format like "5/5" -->
+                            {% if "/" in left_curr_raw %}
+                                {% set left_curr = left_curr_raw.split("/")[0].strip() %}
+                            {% else %}
+                                {% set left_curr = left_curr_raw %}
+                            {% endif %}
                         {% else %}
                             {% set left_curr = muscle_item.left %}
                             {% set left_prev = muscle_item.left %}
                         {% endif %}
                         
                         <!-- Determine left status -->
-                        {% if "not performed" in left_prev.lower() and left_curr == "5/5" %}
+                        {% if "not performed" in left_prev.lower() and left_curr == "5" %}
                             {% set left_status = "new" %}
-                        {% elif left_curr == "5/5" and left_prev != "5/5" and "not performed" not in left_prev.lower() %}
+                        {% elif left_curr == "5" and left_prev != "5/5" and "not performed" not in left_prev.lower() %}
                             {% set left_status = "improved" %}
                         {% elif left_curr == left_prev %}
                             {% set left_status = "unchanged" %}
-                        {% elif left_curr != "5/5" and left_prev == "5/5" %}
+                        {% elif left_curr != "5" and left_prev == "5/5" %}
                             {% set left_status = "worsened" %}
                         {% else %}
                             {% set left_status = "changed" %}
@@ -747,8 +795,7 @@
                     <th style="width: 25%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Reflex</th>
                     <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Right Previous</th>
                     <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Left Previous</th>
-                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Right Current</th>
-                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Left Current</th>
+                    <th colspan="2" style="width: 30%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Current</th>
                     <th style="width: 7.5%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">R</th>
                     <th style="width: 7.5%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">L</th>
                 </tr>
@@ -765,7 +812,13 @@
                         {% if "Previously" in reflex_item.right and "currently" in reflex_item.right %}
                             {% set parts = reflex_item.right.split("currently") %}
                             {% set right_prev = parts[0].replace("Previously", "").replace(",", "").strip() %}
-                            {% set right_curr = parts[1].strip() %}
+                            {% set right_curr_raw = parts[1].strip() %}
+                            <!-- Extract just the number from format like "5/5" -->
+                            {% if "/" in right_curr_raw %}
+                                {% set right_curr = right_curr_raw.split("/")[0].strip() %}
+                            {% else %}
+                                {% set right_curr = right_curr_raw %}
+                            {% endif %}
                         {% else %}
                             {% set right_curr = reflex_item.right %}
                             {% set right_prev = reflex_item.right %}
@@ -793,7 +846,13 @@
                         {% if "Previously" in reflex_item.left and "currently" in reflex_item.left %}
                             {% set parts = reflex_item.left.split("currently") %}
                             {% set left_prev = parts[0].replace("Previously", "").replace(",", "").strip() %}
-                            {% set left_curr = parts[1].strip() %}
+                            {% set left_curr_raw = parts[1].strip() %}
+                            <!-- Extract just the number from format like "5/5" -->
+                            {% if "/" in left_curr_raw %}
+                                {% set left_curr = left_curr_raw.split("/")[0].strip() %}
+                            {% else %}
+                                {% set left_curr = left_curr_raw %}
+                            {% endif %}
                         {% else %}
                             {% set left_curr = reflex_item.left %}
                             {% set left_prev = reflex_item.left %}
@@ -817,8 +876,7 @@
                         <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt;">{{ reflex_name }}</td>
                         <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt; text-align: center;">{{ right_prev }}</td>
                         <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt; text-align: center;">{{ left_prev }}</td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt; text-align: center; font-weight: bold;">{{ right_curr }}</td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt; text-align: center; font-weight: bold;">{{ left_curr }}</td>
+                        <td colspan="2" style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt; text-align: center; font-weight: bold;">{{ right_curr if right_curr == left_curr else "" }}</td>
                         <td style="padding: 6px; border: 1px solid #dee2e6; text-align: center; font-size: 9pt;">
                             {% if right_status == "improved" %}
                                 <span style="color: #28a745;">✓</span>
