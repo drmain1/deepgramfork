@@ -131,7 +131,8 @@ class AuditLogger:
         data_type: str,
         resource_id: str,
         request: Request,
-        success: bool = True
+        success: bool = True,
+        additional_data: Optional[Dict[str, Any]] = None
     ):
         """
         Log data access events.
@@ -143,13 +144,15 @@ class AuditLogger:
             resource_id: Specific resource identifier
             request: FastAPI request object
             success: Whether the operation succeeded
+            additional_data: Additional details to log
         """
         AuditLogger.log_access(
             user_id=user_id,
             action=f"DATA_{operation}",
             resource=f"{data_type}/{resource_id}",
             request=request,
-            success=success
+            success=success,
+            details=additional_data
         )
     
     @staticmethod

@@ -189,7 +189,19 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
 
   // Optimized handlers using functional updates
   const handleFormChange = useCallback((field) => (e) => {
-    setFormData(prev => ({ ...prev, [field]: e.target.value }));
+    let value = e.target.value;
+    
+    // For date fields, validate the year is not more than 4 digits
+    if ((field === 'date_of_birth' || field === 'date_of_accident') && value) {
+      const parts = value.split('-');
+      if (parts.length > 0 && parts[0].length > 4) {
+        // Truncate year to 4 digits
+        parts[0] = parts[0].substring(0, 4);
+        value = parts.join('-');
+      }
+    }
+    
+    setFormData(prev => ({ ...prev, [field]: value }));
   }, []);
 
   const handleAddPatient = useCallback(async () => {
@@ -484,6 +496,10 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
               required
               fullWidth
               InputLabelProps={{ shrink: true }}
+              inputProps={{
+                max: '9999-12-31',
+                min: '1900-01-01'
+              }}
             />
             <TextField
               label="Date of Accident (Optional)"
@@ -492,6 +508,10 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
               onChange={handleFormChange('date_of_accident')}
               fullWidth
               InputLabelProps={{ shrink: true }}
+              inputProps={{
+                max: '9999-12-31',
+                min: '1900-01-01'
+              }}
             />
             <TextField
               label="Private Notes (Not shared with AI)"

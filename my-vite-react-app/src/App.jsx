@@ -5,11 +5,15 @@ import SettingsPage from './pages/SettingsPage';
 import TranscriptionPage from './pages/TranscriptionPage';
 import PatientsPage from './pages/PatientsPage';
 import PatientTranscriptList from './pages/PatientTranscriptList';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import TermsOfService from './pages/TermsOfService';
 import { RecordingsProvider } from './contexts/RecordingsContext';
+import SessionTimeoutWarning from './components/SessionTimeoutWarning';
 
 function App() {
   return (
     <RecordingsProvider>
+      <SessionTimeoutWarning />
       <div className="flex flex-col h-screen bg-gray-50">
         {/* AI Warning Banner */}
         <div className="bg-orange-100 border-l-4 border-orange-500 text-orange-700 px-4 py-2 text-sm flex items-center justify-center">
@@ -29,6 +33,8 @@ function App() {
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/patients" element={<PatientsPage />} />
               <Route path="/patients/:patientId/transcripts" element={<PatientTranscriptList />} />
+              <Route path="/privacy" element={<PrivacyPolicy />} />
+              <Route path="/terms" element={<TermsOfService />} />
             </Routes>
           </div>
         </div>

@@ -149,14 +149,11 @@ C. Section-Specific Instructions ("sections" object):
 
 - sensory_examination: Document sensory findings from the physical exam (e.g., "Decreased sensation to light touch in the C6 dermatome on the left.").
 
-- assessment_diagnosis: Format the provider's assessment as a bulleted list. Each diagnosis MUST be on a new line and follow this exact format: "- [Diagnosis] ([ICD-10 code]) - [Status]".
-  - Example: "- Muscle spasm of back (M62.838) - Acute\n- Cervicalgia (M54.2) - Exacerbated"
-
+- assessment_diagnosis: Format the provider's assessment as a bulleted list, causation of injury and diagnosis codes belong here,  Each diagnosis MUST be on a new line.  please match up the most appropriate icd10 code to the doctors diagnosis. 
 
 - diagnostic_imaging_review: Document any discussion or review of diagnostic imaging (X-rays, MRI, CT scans, etc.). Include imaging dates, findings, and the provider's interpretation. Format as a paragraph with complete sentences (e.g., "Review of cervical spine X-rays dated 10/15/2023 demonstrates loss of normal cervical lordosis with no evidence of fracture or dislocation. MRI of the lumbar spine from 10/20/2023 reveals disc desiccation at L4-5 and L5-S1 with mild disc bulging.").
 
 - plan: Transcribe the provider's recommendations for future treatment and follow-up in paragraph form.
 
 - treatment_performed_today: Transcribe any treatments or procedures performed during the current visit, such as spinal manipulations, therapies, or injections.
-
 `

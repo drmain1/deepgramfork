@@ -6,6 +6,7 @@ import TranscriptionProfilesTab from './TranscriptionProfilesTab';
 import OfficeInformationTab from './OfficeInformationTab';
 import BillingRulesTab from './BillingRulesTab';
 import CPTFeesTab from './CPTFeesTab';
+import SecurityTab from './SecurityTab';
 
 function SettingsTabs({ 
   tabValue, 
@@ -22,7 +23,8 @@ function SettingsTabs({
   saveCustomBillingRules,
   cptFees,
   saveCptFees,
-  settingsLoading 
+  settingsLoading,
+  onOpenMFA
 }) { 
   return (
     <>
@@ -34,7 +36,8 @@ function SettingsTabs({
       {tabValue === 3 && <OfficeInformationTab officeInformation={officeInformation} saveOfficeInformation={saveOfficeInformation} settingsLoading={settingsLoading} />}
       {tabValue === 4 && <TranscriptionProfilesTab transcriptionProfiles={transcriptionProfiles} deleteTranscriptionProfile={deleteTranscriptionProfile} settingsLoading={settingsLoading} />}
       {tabValue === 5 && <BillingRulesTab customBillingRules={customBillingRules} saveCustomBillingRules={saveCustomBillingRules} settingsLoading={settingsLoading} />}
-      {tabValue === 6 && <CPTFeesTab cptFees={cptFees} saveCptFees={saveCptFees} settingsLoading={settingsLoading} />} 
+      {tabValue === 6 && <CPTFeesTab cptFees={cptFees} saveCptFees={saveCptFees} settingsLoading={settingsLoading} />}
+      {tabValue === 7 && <SecurityTab onOpenMFA={onOpenMFA} />}
     </>
   );
 }

@@ -73,9 +73,13 @@ const FormattedMedicalText = ({ content, sx = {}, ...props }) => {
 
         <Divider sx={{ my: 2 }} />
 
-        {/* Render sections */}
+        {/* Render sections (excluding assessment, plan, treatment_performed_today, and diagnostic_imaging_review - they'll be rendered in specific order) */}
         {Object.entries(structuredData.sections).map(([key, value]) => {
-          if (!value || value === 'null') return null;
+          if (!value || value === 'null' || 
+              key === 'assessment' || 
+              key === 'plan' || 
+              key === 'treatment_performed_today' ||
+              key === 'diagnostic_imaging_review') return null;
           
           const sectionTitle = key
             .split('_')
@@ -371,6 +375,110 @@ const FormattedMedicalText = ({ content, sx = {}, ...props }) => {
                 </TableContainer>
               </>
             )}
+          </Box>
+        )}
+
+        {/* Cranial Nerve Examination */}
+        {structuredData.cranial_nerve_examination && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
+              CRANIAL NERVE EXAMINATION
+            </Typography>
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>CRANIAL NERVE</TableCell>
+                    <TableCell align="center">FINDING</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {structuredData.cranial_nerve_examination.map((nerve, idx) => {
+                    // Check if this is a re-evaluation with comparison format
+                    const isReEval = nerve.finding && nerve.finding.includes('|');
+                    
+                    if (isReEval) {
+                      // Parse re-evaluation format
+                      const parts = nerve.finding.split('|');
+                      const previous = parts[0].replace('Previously', '').trim();
+                      const current = parts[1].replace('currently', '').trim();
+                      
+                      return (
+                        <TableRow key={idx}>
+                          <TableCell>{nerve.nerve || nerve['cranial nerve']}</TableCell>
+                          <TableCell align="center">
+                            <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2 }}>
+                              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                                Previous: {previous}
+                              </Typography>
+                              <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                Current: {current}
+                              </Typography>
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    } else {
+                      // Initial evaluation format
+                      return (
+                        <TableRow key={idx}>
+                          <TableCell>{nerve.nerve || nerve['cranial nerve']}</TableCell>
+                          <TableCell align="center">{nerve.finding || 'Not tested'}</TableCell>
+                        </TableRow>
+                      );
+                    }
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
+        )}
+
+        {/* Diagnostic Imaging Review */}
+        {structuredData.sections?.diagnostic_imaging_review && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+              DIAGNOSTIC IMAGING REVIEW:
+            </Typography>
+            <Typography sx={{ whiteSpace: 'pre-wrap', pl: 2 }}>
+              {structuredData.sections.diagnostic_imaging_review}
+            </Typography>
+          </Box>
+        )}
+
+        {/* Assessment - after all examination tables */}
+        {structuredData.sections?.assessment && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+              ASSESSMENT:
+            </Typography>
+            <Typography sx={{ whiteSpace: 'pre-wrap', pl: 2 }}>
+              {structuredData.sections.assessment}
+            </Typography>
+          </Box>
+        )}
+
+        {/* Plan - after assessment */}
+        {structuredData.sections?.plan && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+              PLAN:
+            </Typography>
+            <Typography sx={{ whiteSpace: 'pre-wrap', pl: 2 }}>
+              {structuredData.sections.plan}
+            </Typography>
+          </Box>
+        )}
+
+        {/* Treatment Performed Today - after plan */}
+        {structuredData.sections?.treatment_performed_today && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+              TREATMENT PERFORMED TODAY:
+            </Typography>
+            <Typography sx={{ whiteSpace: 'pre-wrap', pl: 2 }}>
+              {structuredData.sections.treatment_performed_today}
+            </Typography>
           </Box>
         )}
 

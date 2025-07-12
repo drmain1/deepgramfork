@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { useAuth } from '../contexts/FirebaseAuthContext';
 import SettingsTabs from '../components/SettingsTabs';
 import { useUserSettings } from '../contexts/UserSettingsContext';
+import MFASetup from '../components/MFASetup';
 
 function SettingsPage() {
   const [tabValue, setTabValue] = useState(0);
+  const [mfaDialogOpen, setMfaDialogOpen] = useState(false);
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
 
   const {
@@ -62,7 +64,8 @@ function SettingsPage() {
     'Office Information',
     'Transcription Profiles',
     'Billing Rules',
-    'CPT Fees'
+    'CPT Fees',
+    'Security'
   ];
 
   if (authLoading || settingsLoading) {
@@ -139,8 +142,15 @@ function SettingsPage() {
           cptFees={userSettings.cptFees}
           saveCptFees={updateCptFees}
           settingsLoading={settingsLoading}
+          onOpenMFA={() => setMfaDialogOpen(true)}
         />
       </div>
+      
+      {/* MFA Setup Dialog */}
+      <MFASetup 
+        open={mfaDialogOpen} 
+        onClose={() => setMfaDialogOpen(false)} 
+      />
     </main>
   );
 }

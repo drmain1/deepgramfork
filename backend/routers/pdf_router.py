@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Response, Depends
+from fastapi import APIRouter, HTTPException, Response, Depends, Request
 from typing import Dict, Any
 import json
 import logging
@@ -7,6 +7,7 @@ from models import MedicalDocument, PDFGenerationRequest, PDFGenerationResponse,
 from services.pdf_service.weasyprint_generator import WeasyPrintMedicalPDFGenerator
 from services.pdf_service.billing_generator import WeasyPrintBillingPDFGenerator
 from firebase_auth_simple import get_current_user
+from audit_logger import AuditLogger
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -15,18 +16,31 @@ generator = WeasyPrintMedicalPDFGenerator()
 billing_generator = WeasyPrintBillingPDFGenerator()
 
 @router.post("/api/generate-pdf")
-async def generate_pdf(data: MedicalDocument, current_user: dict = Depends(get_current_user)):
+async def generate_pdf(data: MedicalDocument, request: Request, current_user: dict = Depends(get_current_user)):
     """Generate PDF from structured medical data"""
+    user_id = current_user.get('sub')
+    patient_name = data.patient_info.patient_name
+    
     try:
         # Convert Pydantic model to dict
         data_dict = data.model_dump()
         
         # Generate PDF with WeasyPrint, passing user_id for clinic info
-        user_id = current_user.get('sub')
         pdf_bytes = await generator.generate_pdf(data_dict, user_id=user_id)
         
+        # Audit log successful PDF generation
+        AuditLogger.log_data_access(
+            user_id=user_id,
+            operation="EXPORT",
+            data_type="medical_record_pdf",
+            resource_id=f"patient:{patient_name}",
+            request=request,
+            success=True,
+            additional_data={"pdf_size_bytes": len(pdf_bytes), "format": "structured"}
+        )
+        
         # Return PDF as response
-        patient_name_safe = data.patient_info.patient_name.replace(' ', '_').replace('/', '_').replace(',', '_')
+        patient_name_safe = patient_name.replace(' ', '_').replace('/', '_').replace(',', '_')
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
@@ -35,36 +49,65 @@ async def generate_pdf(data: MedicalDocument, current_user: dict = Depends(get_c
             }
         )
     except Exception as e:
+        # Audit log failed PDF generation
+        AuditLogger.log_data_access(
+            user_id=user_id,
+            operation="EXPORT",
+            data_type="medical_record_pdf",
+            resource_id=f"patient:{patient_name}",
+            request=request,
+            success=False,
+            additional_data={"error": str(e), "format": "structured"}
+        )
         logger.error(f"WeasyPrint PDF generation error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/api/generate-pdf-from-transcript")
-async def generate_pdf_from_transcript(request: PDFGenerationRequest, current_user: dict = Depends(get_current_user)):
+async def generate_pdf_from_transcript(pdf_request: PDFGenerationRequest, request: Request, current_user: dict = Depends(get_current_user)):
     """Generate PDF from raw transcript"""
+    user_id = current_user.get('sub')
+    patient_name = "unknown_patient"
+    
     try:
-        if request.format_type == "structured":
+        if pdf_request.format_type == "structured":
             # Parse structured JSON from transcript
             try:
                 # The transcript should already be in JSON format from the LLM
-                data = json.loads(request.transcript)
+                data = json.loads(pdf_request.transcript)
             except json.JSONDecodeError:
                 # If not JSON, try to extract JSON from the transcript
                 import re
-                json_match = re.search(r'\{.*\}', request.transcript, re.DOTALL)
+                json_match = re.search(r'\{.*\}', pdf_request.transcript, re.DOTALL)
                 if json_match:
                     data = json.loads(json_match.group())
                 else:
                     raise ValueError("Could not parse structured JSON from transcript")
         else:
             # Legacy markdown support
-            data = generator._convert_markdown_to_structured(request.transcript)
+            data = generator._convert_markdown_to_structured(pdf_request.transcript)
+        
+        # Extract patient name for logging
+        patient_name = data.get('patient_info', {}).get('patient_name', 'unknown_patient')
         
         # Generate PDF with WeasyPrint, passing user_id for clinic info
-        user_id = current_user.get('sub')
         pdf_bytes = await generator.generate_pdf(data, user_id=user_id)
         
+        # Audit log successful PDF generation from transcript
+        AuditLogger.log_data_access(
+            user_id=user_id,
+            operation="EXPORT",
+            data_type="transcript_pdf",
+            resource_id=f"patient:{patient_name}",
+            request=request,
+            success=True,
+            additional_data={
+                "pdf_size_bytes": len(pdf_bytes), 
+                "format": pdf_request.format_type,
+                "transcript_length": len(pdf_request.transcript)
+            }
+        )
+        
         # Extract patient name for filename
-        patient_name = data.get('patient_info', {}).get('patient_name', 'patient')
         safe_name = patient_name.replace(' ', '_').replace('/', '_')
         
         # Return PDF as response
@@ -76,12 +119,29 @@ async def generate_pdf_from_transcript(request: PDFGenerationRequest, current_us
             }
         )
     except Exception as e:
+        # Audit log failed PDF generation from transcript
+        AuditLogger.log_data_access(
+            user_id=user_id,
+            operation="EXPORT",
+            data_type="transcript_pdf",
+            resource_id=f"patient:{patient_name}",
+            request=request,
+            success=False,
+            additional_data={
+                "error": str(e), 
+                "format": pdf_request.format_type,
+                "transcript_length": len(pdf_request.transcript) if pdf_request.transcript else 0
+            }
+        )
         logger.error(f"WeasyPrint PDF generation from transcript error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/api/generate-pdf-preview")
-async def generate_pdf_preview(data: MedicalDocument, current_user: dict = Depends(get_current_user)):
+async def generate_pdf_preview(data: MedicalDocument, request: Request, current_user: dict = Depends(get_current_user)):
     """Generate PDF and return base64 encoded for preview"""
+    user_id = current_user.get('sub')
+    patient_name = data.patient_info.patient_name
+    
     try:
         import base64
         
@@ -89,8 +149,18 @@ async def generate_pdf_preview(data: MedicalDocument, current_user: dict = Depen
         data_dict = data.model_dump()
         
         # Generate PDF with WeasyPrint, passing user_id for clinic info
-        user_id = current_user.get('sub')
         pdf_bytes = await generator.generate_pdf(data_dict, user_id=user_id)
+        
+        # Audit log successful PDF preview generation
+        AuditLogger.log_data_access(
+            user_id=user_id,
+            operation="PREVIEW",
+            data_type="medical_record_pdf",
+            resource_id=f"patient:{patient_name}",
+            request=request,
+            success=True,
+            additional_data={"pdf_size_bytes": len(pdf_bytes), "format": "preview_base64"}
+        )
         
         # Encode to base64
         pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
@@ -98,9 +168,19 @@ async def generate_pdf_preview(data: MedicalDocument, current_user: dict = Depen
         return {
             "success": True,
             "pdf_data": pdf_base64,
-            "filename": f"medical_record_{data.patient_info.patient_name.replace(' ', '_')}.pdf"
+            "filename": f"medical_record_{patient_name.replace(' ', '_')}.pdf"
         }
     except Exception as e:
+        # Audit log failed PDF preview generation
+        AuditLogger.log_data_access(
+            user_id=user_id,
+            operation="PREVIEW",
+            data_type="medical_record_pdf",
+            resource_id=f"patient:{patient_name}",
+            request=request,
+            success=False,
+            additional_data={"error": str(e), "format": "preview_base64"}
+        )
         logger.error(f"WeasyPrint PDF preview generation error: {str(e)}")
         return {
             "success": False,
@@ -138,21 +218,38 @@ async def pdf_service_health():
         }
 
 @router.post("/api/generate-multi-visit-pdf")
-async def generate_multi_visit_pdf(request: MultiVisitPDFRequest, current_user: dict = Depends(get_current_user)):
+async def generate_multi_visit_pdf(pdf_request: MultiVisitPDFRequest, request: Request, current_user: dict = Depends(get_current_user)):
     """Generate PDF from multiple medical visits"""
+    user_id = current_user.get('sub')
+    patient_name = pdf_request.patient_name
+    
     try:
-        if not request.visits:
+        if not pdf_request.visits:
             raise ValueError("No visits provided")
         
         # Convert visits to dict format
-        visits_data = [visit.model_dump() for visit in request.visits]
+        visits_data = [visit.model_dump() for visit in pdf_request.visits]
         
         # Generate PDF with WeasyPrint, passing user_id for clinic info
-        user_id = current_user.get('sub')
-        pdf_bytes = await generator.generate_multi_visit_pdf(visits_data, request.patient_name, user_id=user_id)
+        pdf_bytes = await generator.generate_multi_visit_pdf(visits_data, patient_name, user_id=user_id)
+        
+        # Audit log successful multi-visit PDF generation
+        AuditLogger.log_data_access(
+            user_id=user_id,
+            operation="EXPORT",
+            data_type="multi_visit_pdf",
+            resource_id=f"patient:{patient_name}",
+            request=request,
+            success=True,
+            additional_data={
+                "pdf_size_bytes": len(pdf_bytes), 
+                "visit_count": len(pdf_request.visits),
+                "format": "multi_visit"
+            }
+        )
         
         # Create safe filename
-        safe_name = request.patient_name.replace(' ', '_').replace('/', '_').replace(',', '_')
+        safe_name = patient_name.replace(' ', '_').replace('/', '_').replace(',', '_')
         filename = f"medical_records_{safe_name}_multi_visit.pdf"
         
         # Return PDF as response
@@ -164,24 +261,56 @@ async def generate_multi_visit_pdf(request: MultiVisitPDFRequest, current_user: 
             }
         )
     except Exception as e:
+        # Audit log failed multi-visit PDF generation
+        AuditLogger.log_data_access(
+            user_id=user_id,
+            operation="EXPORT",
+            data_type="multi_visit_pdf",
+            resource_id=f"patient:{patient_name}",
+            request=request,
+            success=False,
+            additional_data={
+                "error": str(e), 
+                "visit_count": len(pdf_request.visits) if pdf_request.visits else 0,
+                "format": "multi_visit"
+            }
+        )
         logger.error(f"WeasyPrint multi-visit PDF generation error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/api/generate-billing-pdf")
-async def generate_billing_pdf(request: BillingPDFRequest, current_user: dict = Depends(get_current_user)):
+async def generate_billing_pdf(billing_request: BillingPDFRequest, request: Request, current_user: dict = Depends(get_current_user)):
     """Generate billing PDF from billing data using WeasyPrint"""
+    user_id = current_user.get('sub')
+    patient_name = f"{billing_request.patient_info.get('first_name', '')} {billing_request.patient_info.get('last_name', '')}".strip()
+    
     try:
         # Generate PDF with WeasyPrint
         pdf_bytes = billing_generator.generate_billing_pdf(
-            billing_data=request.billing_data,
-            patient_info=request.patient_info,
-            doctor_info=request.doctor_info,
-            include_logo=request.include_logo,
-            include_signature=request.include_signature
+            billing_data=billing_request.billing_data,
+            patient_info=billing_request.patient_info,
+            doctor_info=billing_request.doctor_info,
+            include_logo=billing_request.include_logo,
+            include_signature=billing_request.include_signature
+        )
+        
+        # Audit log successful billing PDF generation
+        AuditLogger.log_data_access(
+            user_id=user_id,
+            operation="EXPORT",
+            data_type="billing_pdf",
+            resource_id=f"patient:{patient_name}",
+            request=request,
+            success=True,
+            additional_data={
+                "pdf_size_bytes": len(pdf_bytes),
+                "include_logo": billing_request.include_logo,
+                "include_signature": billing_request.include_signature,
+                "format": "billing"
+            }
         )
         
         # Create safe filename
-        patient_name = f"{request.patient_info.get('first_name', '')} {request.patient_info.get('last_name', '')}".strip()
         safe_name = patient_name.replace(' ', '_').replace('/', '_').replace(',', '_')
         filename = f"billing_{safe_name}_{datetime.now().strftime('%Y%m%d')}.pdf"
         
@@ -194,6 +323,21 @@ async def generate_billing_pdf(request: BillingPDFRequest, current_user: dict = 
             }
         )
     except Exception as e:
+        # Audit log failed billing PDF generation
+        AuditLogger.log_data_access(
+            user_id=user_id,
+            operation="EXPORT",
+            data_type="billing_pdf",
+            resource_id=f"patient:{patient_name}",
+            request=request,
+            success=False,
+            additional_data={
+                "error": str(e),
+                "include_logo": billing_request.include_logo,
+                "include_signature": billing_request.include_signature,
+                "format": "billing"
+            }
+        )
         logger.error(f"WeasyPrint billing PDF generation error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 

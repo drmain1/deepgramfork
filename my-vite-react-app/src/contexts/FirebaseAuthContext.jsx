@@ -199,6 +199,37 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Refresh session to prevent timeout
+  const refreshSession = async () => {
+    try {
+      if (!currentUser) {
+        throw new Error('No authenticated user');
+      }
+      
+      // Refresh the ID token
+      const token = await currentUser.getIdToken(true);
+      
+      // Call backend to refresh session
+      const response = await fetch('/api/v1/refresh-session', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to refresh session');
+      }
+      
+      console.log('Session refreshed successfully');
+      return true;
+    } catch (error) {
+      console.error('Error refreshing session:', error);
+      throw error;
+    }
+  };
+
   // Monitor auth state changes
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -270,6 +301,7 @@ export const AuthProvider = ({ children }) => {
     logout,
     resetPassword,
     getToken,
+    refreshSession,
     checkEmailVerification,
     resendVerificationEmail,
     getUserAttributes,

@@ -51,7 +51,8 @@ Re-evaluation JSON Schema (Compatible with Initial Exam Format)
     "sensory_examination": "string | null",
     "assessment_diagnosis": "string | null",
     "plan": "string | null",
-    "treatment_performed_today": "string | null"
+    "treatment_performed_today": "string | null",
+    "diagnostic_imaging_review": "string | null"
   },
   "motor_exam": {
     "upper_extremity": [
@@ -86,7 +87,21 @@ Re-evaluation JSON Schema (Compatible with Initial Exam Format)
       {"reflex": "BABINSKI", "right": "string", "left": "string"},
       {"reflex": "CLONUS (ANKLE)", "right": "string", "left": "string"}
     ] | null
-  } | null
+  } | null,
+  "cranial_nerve_examination": [
+    {"cranial nerve": "CN I: Olfactory", "finding": "string"},
+    {"cranial nerve": "CN II: Optic", "finding": "string"},
+    {"cranial nerve": "CN III: Oculomotor", "finding": "string"},
+    {"cranial nerve": "CN IV: Trochlear", "finding": "string"},
+    {"cranial nerve": "CN V: Trigeminal", "finding": "string"},
+    {"cranial nerve": "CN VI: Abducens", "finding": "string"},
+    {"cranial nerve": "CN VII: Facial", "finding": "string"},
+    {"cranial nerve": "CN VIII: Vestibulocochlear", "finding": "string"},
+    {"cranial nerve": "CN IX: Glossopharyngeal", "finding": "string"},
+    {"cranial nerve": "CN X: Vagus", "finding": "string"},
+    {"cranial nerve": "CN XI: Accessory", "finding": "string"},
+    {"cranial nerve": "CN XII: Hypoglossal", "finding": "string"}
+  ] | null
 }
 ---
 
@@ -142,6 +157,8 @@ B. Section-Specific Instructions:
     - Knee: Lachman's, Anterior/Posterior Drawer, McMurray's, Apley's Compression/Distraction, Valgus/Varus Stress Test.
     - Ankle/Foot: Anterior Drawer (Ankle), Talar Tilt, Thompson's Test.
 
+- diagnostic_imaging_review: Document any NEW imaging or comparison to previous imaging. Format: "MRI cervical spine dated [date]: Previously showed [findings] | currently shows [findings]". If discussing same imaging as initial eval, note any new interpretations or relevance to current condition.
+
 - assessment_diagnosis: List diagnoses with ICD-10 codes and improvement status. Format: "- [Diagnosis] ([ICD-10 code]) - [status]".
 
 - plan & treatment_performed_today: Transcribe the updated plan and any treatments performed.
@@ -175,6 +192,17 @@ Reflexes Specific Rules:
 - DTR Logic: If a reflex was "2+" initially and is still normal, the output is simply ""2+"". DO NOT use a comparison format for unchanged normal findings. Use comparison ONLY for changes (e.g., ""Previously 1+, currently 2+"").
 - Pathological Reflexes: Use ""positive"" or ""negative"". Only use comparison format for changes (e.g., ""Previously positive, currently negative"").
 - Use ""Not tested"" for any specific reflex not mentioned.
+
+Cranial Nerve Examination Specific Rules:
+- If cranial nerve exam was not performed during re-evaluation, set entire array to null
+- For re-evaluation comparisons, use format: "Previously [finding] | currently [finding]"
+- Examples:
+  - "Previously intact | currently intact" (no change)
+  - "Previously weakness noted | currently intact" (improvement)
+  - "Previously intact | currently diminished" (worsening)
+  - "Previously not tested | currently intact" (new test)
+- If doctor says "cranial nerves 2-11 intact", set those nerves to "intact" and others to "Not tested"
+- Common findings: "intact", "diminished", "absent", "weakness noted", "Not tested"
 
 
 C. Critical Formatting Rules:

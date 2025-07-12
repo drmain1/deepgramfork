@@ -11,6 +11,7 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 from google.api_core import exceptions as gcp_exceptions
 import asyncio
 from functools import wraps
+from audit_logger import AuditLogger
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,16 @@ class FirestoreSessionManager:
             session_ref.set(session_data)
             
             # Audit log for new session
-            logger.info(f"AUDIT: New session created for user {user_id}")
+            AuditLogger.log_authentication(
+                user_id=user_id,
+                event_type="SESSION_CREATED",
+                request=None,  # No request context in session manager
+                success=True,
+                additional_data={
+                    "timeout_minutes": self.timeout_minutes,
+                    "expires_at": session_data['expires_at'].isoformat()
+                }
+            )
             
         except Exception as e:
             logger.error(f"Error creating session for user {user_id}: {str(e)}")
@@ -114,7 +124,19 @@ class FirestoreSessionManager:
                     'active': False,
                     'expired_at': now
                 })
-                logger.warning(f"AUDIT: Session expired for user {user_id}")
+                
+                # Audit log session timeout
+                AuditLogger.log_authentication(
+                    user_id=user_id,
+                    event_type="SESSION_TIMEOUT",
+                    request=None,
+                    success=True,  # Timeout is expected behavior
+                    additional_data={
+                        "expired_at": now.isoformat(),
+                        "original_expires_at": expires_at.isoformat(),
+                        "timeout_minutes": self.timeout_minutes
+                    }
+                )
                 return False
             
             # Update last activity and extend expiration
@@ -137,12 +159,24 @@ class FirestoreSessionManager:
             session_doc = session_ref.get()
             
             if session_doc.exists:
+                logout_time = datetime.now(timezone.utc)
                 # Mark as logged out instead of deleting for audit trail
                 session_ref.update({
                     'active': False,
-                    'logged_out_at': datetime.now(timezone.utc)
+                    'logged_out_at': logout_time
                 })
-                logger.info(f"AUDIT: User {user_id} logged out")
+                
+                # Audit log session clearing
+                AuditLogger.log_authentication(
+                    user_id=user_id,
+                    event_type="SESSION_CLEARED",
+                    request=None,
+                    success=True,
+                    additional_data={
+                        "logged_out_at": logout_time.isoformat(),
+                        "session_was_active": True
+                    }
+                )
             
         except Exception as e:
             logger.error(f"Error clearing session for user {user_id}: {str(e)}")
@@ -180,6 +214,7 @@ class FirestoreSessionManager:
                         ).limit(100).get()  # Process in batches
                         
                         expired_count = 0
+                        expired_user_ids = []
                         for session_doc in expired_sessions:
                             session_ref = self.sessions_collection.document(session_doc.id)
                             session_ref.update({
@@ -187,9 +222,23 @@ class FirestoreSessionManager:
                                 'expired_at': now
                             })
                             expired_count += 1
+                            expired_user_ids.append(session_doc.id)
                         
                         if expired_count > 0:
                             logger.info(f"Cleaned up {expired_count} expired sessions")
+                            
+                            # Audit log bulk session cleanup
+                            AuditLogger.log_authentication(
+                                user_id="system_cleanup",
+                                event_type="BULK_SESSION_CLEANUP",
+                                request=None,
+                                success=True,
+                                additional_data={
+                                    "expired_session_count": expired_count,
+                                    "cleanup_time": now.isoformat(),
+                                    "expired_user_ids": expired_user_ids[:10]  # Log first 10 user IDs to avoid huge logs
+                                }
+                            )
                         
                         consecutive_failures = 0  # Reset on success
                         break  # Success, exit retry loop

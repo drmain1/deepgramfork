@@ -502,6 +502,25 @@ function Sidebar() {
           )}
         </div>
       </div>
+      
+      {/* Footer Links */}
+      <div className="p-4 border-t border-gray-800 mt-auto">
+        <div className="flex justify-center gap-4 text-xs text-gray-500">
+          <button
+            onClick={() => navigate('/privacy')}
+            className="hover:text-gray-300 transition-colors"
+          >
+            Privacy Policy
+          </button>
+          <span>•</span>
+          <button
+            onClick={() => navigate('/terms')}
+            className="hover:text-gray-300 transition-colors"
+          >
+            Terms of Service
+          </button>
+        </div>
+      </div>
     </aside>
   );
 }

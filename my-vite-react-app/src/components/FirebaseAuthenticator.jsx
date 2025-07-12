@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/FirebaseAuthContext';
+import { Link as RouterLink } from 'react-router-dom';
 import {
   Box,
   Button,
@@ -59,6 +60,46 @@ const FirebaseAuthenticator = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  const checkAccountLockout = async (email) => {
+    try {
+      const response = await fetch('/api/v1/auth/check-lockout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      
+      const data = await response.json();
+      if (data.is_locked) {
+        throw new Error(data.message || 'Account is locked due to too many failed attempts');
+      }
+      return data;
+    } catch (error) {
+      console.error('Error checking lockout:', error);
+      // Don't block login if lockout check fails
+      return { is_locked: false };
+    }
+  };
+
+  const recordFailedAttempt = async (email) => {
+    try {
+      const response = await fetch('/api/v1/auth/failed-attempt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      
+      const data = await response.json();
+      if (data.is_locked) {
+        throw new Error(data.message || 'Account is locked due to too many failed attempts');
+      }
+      if (data.remaining_attempts !== undefined) {
+        throw new Error(`Invalid credentials. ${data.remaining_attempts} attempts remaining before account lockout.`);
+      }
+    } catch (error) {
+      throw error;
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -74,8 +115,16 @@ const FirebaseAuthenticator = () => {
         if (password !== confirmPassword) {
           throw new Error('Passwords do not match');
         }
-        if (password.length < 8) {
-          throw new Error('Password must be at least 8 characters');
+        // HIPAA-compliant password requirements
+        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+        if (!passwordRegex.test(password)) {
+          throw new Error('Password must be at least 8 characters with uppercase, lowercase, number, and special character');
+        }
+        
+        // Check for common passwords
+        const commonPasswords = ['Password123!', 'Admin123!', 'Welcome123!'];
+        if (commonPasswords.includes(password)) {
+          throw new Error('Password is too common. Please choose a more secure password');
         }
         await signup(email, password, displayName);
         setSuccess('Account created! Please check your email to verify your account.');
@@ -83,9 +132,25 @@ const FirebaseAuthenticator = () => {
         setPassword('');
         setConfirmPassword('');
       } else {
-        await login(email, password);
-        // After successful login, the auth state change will automatically
-        // trigger a re-render and show the main app
+        // Check if account is locked before attempting login
+        const lockoutStatus = await checkAccountLockout(email);
+        if (lockoutStatus.is_locked) {
+          throw new Error(lockoutStatus.message);
+        }
+        
+        try {
+          await login(email, password);
+          // After successful login, the auth state change will automatically
+          // trigger a re-render and show the main app
+        } catch (loginError) {
+          // Record failed attempt if it's an auth error
+          if (loginError.code === 'auth/wrong-password' || 
+              loginError.code === 'auth/user-not-found' ||
+              loginError.code === 'auth/invalid-credential') {
+            await recordFailedAttempt(email);
+          }
+          throw loginError;
+        }
       }
     } catch (err) {
       console.error('Auth error:', err);
@@ -202,15 +267,20 @@ const FirebaseAuthenticator = () => {
             )}
 
             {isSignUp && !isForgotPassword && (
-              <StyledTextField
-                fullWidth
-                required
-                label="Confirm Password"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                autoComplete="new-password"
-              />
+              <>
+                <StyledTextField
+                  fullWidth
+                  required
+                  label="Confirm Password"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  autoComplete="new-password"
+                />
+                <Typography variant="caption" sx={{ color: '#999', mt: -1 }}>
+                  Password must include: 8+ characters, uppercase, lowercase, number, and special character
+                </Typography>
+              </>
             )}
 
             <Button
@@ -272,6 +342,19 @@ const FirebaseAuthenticator = () => {
         <Typography variant="caption" sx={{ color: '#666', mt: 3, textAlign: 'center' }}>
           HIPAA-compliant medical transcription service
         </Typography>
+        
+        <Box sx={{ mt: 2, textAlign: 'center' }}>
+          <Typography variant="caption" sx={{ color: '#666' }}>
+            By using this service, you agree to our{' '}
+            <Link component={RouterLink} to="/terms" sx={{ color: '#90caf9' }}>
+              Terms of Service
+            </Link>
+            {' and '}
+            <Link component={RouterLink} to="/privacy" sx={{ color: '#90caf9' }}>
+              Privacy Policy
+            </Link>
+          </Typography>
+        </Box>
       </StyledPaper>
     </Container>
   );

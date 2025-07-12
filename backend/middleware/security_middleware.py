@@ -27,7 +27,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com data:; "
         "img-src 'self' data: blob: https:; "
-        "connect-src 'self' wss: https://*.googleapis.com;"
+        "connect-src 'self' http://localhost:* ws://localhost:* wss: https://*.googleapis.com;"
     )
     
     def __init__(
@@ -65,13 +65,17 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Process the request
         response = await call_next(request)
         
-        # Add security headers to the response
+        # Add security headers to the response, but preserve existing CORS headers
         for header_name, header_value in self.headers.items():
+            # Don't override CORS-related headers if they already exist
+            if header_name.startswith("Access-Control-") and header_name in response.headers:
+                continue
             response.headers[header_name] = header_value
         
         # Log headers if debugging is enabled
         if self.log_headers:
             logger.debug(f"Security headers applied to {request.url.path}: {list(self.headers.keys())}")
+            logger.debug(f"Response headers: {dict(response.headers)}")
         
         return response
 
@@ -166,7 +170,7 @@ def create_security_middleware_stack(app):
     app.add_middleware(
         SecurityHeadersMiddleware,
         enable_csp=True,
-        log_headers=False  # Set to True for debugging
+        log_headers=True  # Set to True for debugging
     )
     
     return app

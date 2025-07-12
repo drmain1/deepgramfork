@@ -1,12 +1,13 @@
 """Image management router for logos and signatures.
 All images are stored in GCS, not as base64 in Firestore.
 """
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Request
 from typing import Dict, Any
 import logging
 
 from image_handler import ImageHandler
 from gcp_auth_middleware import get_user_id
+from audit_logger import AuditLogger
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ def init_router(handler: ImageHandler, default_settings: Dict[str, Any]):
 # Logo endpoints
 @router.post("/upload_logo")
 async def upload_logo(
+    request: Request,
     file: UploadFile = File(...),
     current_user_id: str = Depends(get_user_id)
 ):
@@ -41,25 +43,89 @@ async def upload_logo(
             current_user_id, logo_url, "logo", DEFAULT_USER_SETTINGS
         )
         
+        # Audit log successful logo upload
+        AuditLogger.log_data_access(
+            user_id=current_user_id,
+            operation="UPLOAD",
+            data_type="clinic_logo",
+            resource_id=f"user:{current_user_id}",
+            request=request,
+            success=True,
+            additional_data={
+                "filename": file.filename,
+                "file_size": file.size,
+                "content_type": file.content_type,
+                "logo_url": logo_url
+            }
+        )
+        
         return {"logoUrl": logo_url, "message": "Logo uploaded successfully"}
         
     except HTTPException:
+        # Audit log failed logo upload (HTTPException)
+        AuditLogger.log_data_access(
+            user_id=current_user_id,
+            operation="UPLOAD",
+            data_type="clinic_logo",
+            resource_id=f"user:{current_user_id}",
+            request=request,
+            success=False,
+            additional_data={
+                "filename": file.filename if file else "unknown",
+                "error": "HTTPException raised"
+            }
+        )
         raise
     except Exception as e:
+        # Audit log failed logo upload
+        AuditLogger.log_data_access(
+            user_id=current_user_id,
+            operation="UPLOAD",
+            data_type="clinic_logo",
+            resource_id=f"user:{current_user_id}",
+            request=request,
+            success=False,
+            additional_data={
+                "filename": file.filename if file else "unknown",
+                "error": str(e)
+            }
+        )
         logger.error(f"Error uploading logo for user {current_user_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to upload logo: {str(e)}")
 
 @router.delete("/delete_logo")
-async def delete_logo(current_user_id: str = Depends(get_user_id)):
+async def delete_logo(request: Request, current_user_id: str = Depends(get_user_id)):
     """Delete clinic logo from GCS and user settings"""
     if not image_handler:
         raise HTTPException(status_code=503, detail="Image handler not initialized")
     
     try:
         await image_handler.delete_image(current_user_id, "logo", DEFAULT_USER_SETTINGS)
+        
+        # Audit log successful logo deletion
+        AuditLogger.log_data_access(
+            user_id=current_user_id,
+            operation="DELETE",
+            data_type="clinic_logo",
+            resource_id=f"user:{current_user_id}",
+            request=request,
+            success=True,
+            additional_data={"action": "logo_deleted"}
+        )
+        
         return {"message": "Logo deleted successfully"}
         
     except Exception as e:
+        # Audit log failed logo deletion
+        AuditLogger.log_data_access(
+            user_id=current_user_id,
+            operation="DELETE",
+            data_type="clinic_logo",
+            resource_id=f"user:{current_user_id}",
+            request=request,
+            success=False,
+            additional_data={"error": str(e)}
+        )
         logger.error(f"Error deleting logo for user {current_user_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to delete logo: {str(e)}")
 
@@ -82,6 +148,7 @@ async def migrate_logo(current_user_id: str = Depends(get_user_id)):
 # Signature endpoints
 @router.post("/upload_signature")
 async def upload_signature(
+    request: Request,
     file: UploadFile = File(...),
     current_user_id: str = Depends(get_user_id)
 ):
@@ -98,25 +165,89 @@ async def upload_signature(
             current_user_id, signature_url, "signature", DEFAULT_USER_SETTINGS
         )
         
+        # Audit log successful signature upload
+        AuditLogger.log_data_access(
+            user_id=current_user_id,
+            operation="UPLOAD",
+            data_type="signature",
+            resource_id=f"user:{current_user_id}",
+            request=request,
+            success=True,
+            additional_data={
+                "filename": file.filename,
+                "file_size": file.size,
+                "content_type": file.content_type,
+                "signature_url": signature_url
+            }
+        )
+        
         return {"signatureUrl": signature_url, "message": "Signature uploaded successfully"}
         
     except HTTPException:
+        # Audit log failed signature upload (HTTPException)
+        AuditLogger.log_data_access(
+            user_id=current_user_id,
+            operation="UPLOAD",
+            data_type="signature",
+            resource_id=f"user:{current_user_id}",
+            request=request,
+            success=False,
+            additional_data={
+                "filename": file.filename if file else "unknown",
+                "error": "HTTPException raised"
+            }
+        )
         raise
     except Exception as e:
+        # Audit log failed signature upload
+        AuditLogger.log_data_access(
+            user_id=current_user_id,
+            operation="UPLOAD",
+            data_type="signature",
+            resource_id=f"user:{current_user_id}",
+            request=request,
+            success=False,
+            additional_data={
+                "filename": file.filename if file else "unknown",
+                "error": str(e)
+            }
+        )
         logger.error(f"Error uploading signature for user {current_user_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to upload signature: {str(e)}")
 
 @router.delete("/delete_signature")
-async def delete_signature(current_user_id: str = Depends(get_user_id)):
+async def delete_signature(request: Request, current_user_id: str = Depends(get_user_id)):
     """Delete signature from GCS and user settings"""
     if not image_handler:
         raise HTTPException(status_code=503, detail="Image handler not initialized")
     
     try:
         await image_handler.delete_image(current_user_id, "signature", DEFAULT_USER_SETTINGS)
+        
+        # Audit log successful signature deletion
+        AuditLogger.log_data_access(
+            user_id=current_user_id,
+            operation="DELETE",
+            data_type="signature",
+            resource_id=f"user:{current_user_id}",
+            request=request,
+            success=True,
+            additional_data={"action": "signature_deleted"}
+        )
+        
         return {"message": "Signature deleted successfully"}
         
     except Exception as e:
+        # Audit log failed signature deletion
+        AuditLogger.log_data_access(
+            user_id=current_user_id,
+            operation="DELETE",
+            data_type="signature",
+            resource_id=f"user:{current_user_id}",
+            request=request,
+            success=False,
+            additional_data={"error": str(e)}
+        )
         logger.error(f"Error deleting signature for user {current_user_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to delete signature: {str(e)}")
 

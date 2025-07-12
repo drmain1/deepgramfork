@@ -301,20 +301,82 @@ async def test_endpoint():
     """Simple test endpoint that doesn't require authentication"""
     return {"status": "ok", "message": "Backend is running"}
 
+@app.post("/api/v1/auth/check-lockout")
+async def check_lockout(request: Request):
+    """Check if an account is locked due to failed login attempts."""
+    try:
+        body = await request.json()
+        email = body.get('email')
+        if not email:
+            raise HTTPException(status_code=400, detail="Email is required")
+        
+        from account_lockout import account_lockout_service
+        result = await account_lockout_service.check_lockout_status(email)
+        return result
+    except Exception as e:
+        logger.error(f"Error checking lockout status: {str(e)}")
+        return {"is_locked": False, "error": "Could not check lockout status"}
+
+@app.post("/api/v1/auth/failed-attempt")
+async def record_failed_attempt(request: Request):
+    """Record a failed login attempt for account lockout tracking."""
+    try:
+        body = await request.json()
+        email = body.get('email')
+        if not email:
+            raise HTTPException(status_code=400, detail="Email is required")
+        
+        # Get client IP for logging
+        client_ip = request.client.host if request.client else None
+        
+        from account_lockout import account_lockout_service
+        result = await account_lockout_service.record_failed_attempt(email, client_ip)
+        
+        # Audit log failed authentication attempt
+        AuditLogger.log_authentication(
+            user_id=email,  # Use email as user identifier for failed attempts
+            event_type="FAILED_LOGIN_ATTEMPT",
+            request=request,
+            success=False,
+            additional_data={
+                "email": email,
+                "client_ip": client_ip,
+                "is_locked": result.get("is_locked", False),
+                "remaining_attempts": result.get("remaining_attempts", 0)
+            }
+        )
+        
+        return result
+    except Exception as e:
+        logger.error(f"Error recording failed attempt: {str(e)}")
+        return {"is_locked": False, "error": "Could not record failed attempt"}
+
 @app.post("/api/v1/login")
-async def login(current_user: dict = Depends(get_current_user)):
+async def login(request: Request, current_user: dict = Depends(get_current_user)):
     """
     Login endpoint to create a session in Firestore.
     Called after successful Firebase authentication.
     """
     try:
         user_id = current_user.get('sub')
+        email = current_user.get('email')
         
         # Create or update session in Firestore
         await session_manager.create_session(user_id)
         
-        # Log the login event for audit trail
-        logger.info(f"AUDIT: User {user_id} logged in successfully")
+        # Clear any failed login attempts on successful login
+        if email:
+            from account_lockout import account_lockout_service
+            await account_lockout_service.clear_failed_attempts(email)
+        
+        # Audit log successful login
+        AuditLogger.log_authentication(
+            user_id=user_id,
+            event_type="LOGIN",
+            request=request,
+            success=True,
+            additional_data={"email": email, "session_created": True}
+        )
         
         return {
             "success": True,
@@ -322,29 +384,61 @@ async def login(current_user: dict = Depends(get_current_user)):
             "user_id": user_id
         }
     except Exception as e:
-        logger.error(f"Error during login for user {current_user.get('sub')}: {str(e)}")
+        user_id = current_user.get('sub', 'unknown')
+        email = current_user.get('email', 'unknown')
+        
+        # Audit log failed login
+        AuditLogger.log_authentication(
+            user_id=user_id,
+            event_type="LOGIN",
+            request=request,
+            success=False,
+            additional_data={"email": email, "error": str(e)}
+        )
+        
+        logger.error(f"Error during login for user {user_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to create session")
 
 @app.post("/api/v1/logout")
-async def logout(current_user: dict = Depends(get_current_user)):
+async def logout(request: Request, current_user: dict = Depends(get_current_user)):
     """
     Logout endpoint to clear user session from Firestore.
     This ensures proper session cleanup for HIPAA compliance.
     """
     try:
         user_id = current_user.get('sub')
+        email = current_user.get('email')
+        
         # Clear the session in Firestore
         await session_manager.clear_session(user_id)
         
-        # Log the logout event for audit trail
-        logger.info(f"AUDIT: User {user_id} logged out successfully")
+        # Audit log successful logout
+        AuditLogger.log_authentication(
+            user_id=user_id,
+            event_type="LOGOUT",
+            request=request,
+            success=True,
+            additional_data={"email": email, "session_cleared": True}
+        )
         
         return {
             "success": True,
             "message": "Logged out successfully"
         }
     except Exception as e:
-        logger.error(f"Error during logout for user {current_user.get('sub')}: {str(e)}")
+        user_id = current_user.get('sub', 'unknown')
+        email = current_user.get('email', 'unknown')
+        
+        # Audit log failed logout attempt
+        AuditLogger.log_authentication(
+            user_id=user_id,
+            event_type="LOGOUT",
+            request=request,
+            success=False,
+            additional_data={"email": email, "error": str(e)}
+        )
+        
+        logger.error(f"Error during logout for user {user_id}: {str(e)}")
         # Still return success to client to avoid leaking information
         return {
             "success": True,
