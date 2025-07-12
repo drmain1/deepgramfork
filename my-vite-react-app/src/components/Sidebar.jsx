@@ -2,11 +2,14 @@ import { useNavigate } from 'react-router-dom';
 import { useRecordings } from '../contexts/RecordingsContext';
 import { useAuth } from '../contexts/FirebaseAuthContext';
 import { useState, useEffect } from 'react';
+import { useUserSettings } from '../hooks/useUserSettings';
+import { getDateAtMidnightInTimezone, getTodayInTimezone, getYesterdayInTimezone, formatDateInTimezone } from '../utils/timezoneUtils';
 
 function Sidebar() {
   const { recordings, deletePersistedRecording, isFetchingRecordings, selectRecording, selectedRecordingId, fetchUserRecordings, selectedTranscriptError } = useRecordings();
   const navigate = useNavigate();
   const { isAuthenticated, isLoading, user, logout } = useAuth();
+  const { userSettings } = useUserSettings();
   
   // Track backend connection status
   const [isBackendAvailable, setIsBackendAvailable] = useState(true);
@@ -139,12 +142,13 @@ function Sidebar() {
   // Group recordings by date
   const groupRecordingsByDate = (recordings) => {
     const groups = {};
-    const now = new Date();
     
-    // Get today and yesterday at midnight in local timezone
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
+    // Use user's timezone if available, otherwise fallback to browser timezone
+    const userTimezone = userSettings?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    
+    // Get today and yesterday at midnight in user's timezone
+    const today = getTodayInTimezone(userTimezone);
+    const yesterday = getYesterdayInTimezone(userTimezone);
     
     recordings.forEach(recording => {
       // Use the backend date as the source of truth
@@ -154,23 +158,8 @@ function Sidebar() {
         return; // Skip this recording
       }
       
-      // Get the recording date at midnight in the user's local timezone
-      // This correctly handles timezone conversion from UTC to local
-      const recordingDay = new Date(
-        recordingDate.getFullYear(),
-        recordingDate.getMonth(),
-        recordingDate.getDate()
-      );
-      
-      // Debug logging to see date issues
-      console.log('Recording date analysis:', {
-        name: recording.name,
-        originalDate: recording.date,
-        recordingDateLocal: recordingDate.toLocaleString(),
-        recordingDay: recordingDay.toDateString(),
-        today: today.toDateString(),
-        isToday: recordingDay.getTime() === today.getTime()
-      });
+      // Get the recording date at midnight in the user's timezone
+      const recordingDay = getDateAtMidnightInTimezone(recordingDate, userTimezone);
       
       let groupKey;
       if (recordingDay.getTime() === today.getTime()) {
@@ -178,16 +167,17 @@ function Sidebar() {
       } else if (recordingDay.getTime() === yesterday.getTime()) {
         groupKey = 'Yesterday';
       } else {
-        // Format the date appropriately
+        // Format the date appropriately in user's timezone
+        const now = new Date();
         const isThisYear = recordingDate.getFullYear() === now.getFullYear();
         if (isThisYear) {
-          groupKey = recordingDate.toLocaleDateString(undefined, { 
+          groupKey = formatDateInTimezone(recordingDate, userTimezone, { 
             weekday: 'long', 
             month: 'long', 
             day: 'numeric' 
           });
         } else {
-          groupKey = recordingDate.toLocaleDateString(undefined, { 
+          groupKey = formatDateInTimezone(recordingDate, userTimezone, { 
             month: 'long', 
             day: 'numeric',
             year: 'numeric'

@@ -605,18 +605,45 @@ async def save_session_data_firestore(
                         custom_instructions = selected_profile.get('llmInstructions') or selected_profile.get('llmPrompt')
                         logger.info(f"Found LLM instructions from profile '{selected_profile.get('name')}')")
                 
+                # Fetch patient's AI context notes if patient_id is provided
+                patient_ai_context = ""
+                if patient_id:
+                    try:
+                        patient_data = await firestore_client.get_patient(patient_id, current_user_id)
+                        if patient_data and patient_data.get('notes_ai_context'):
+                            patient_ai_context = patient_data['notes_ai_context']
+                            logger.info(f"Retrieved patient AI context notes (length: {len(patient_ai_context)} chars)")
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch patient AI context notes: {e}")
+                
                 # Fallback instructions if no profile found
                 if not custom_instructions:
                     patient_name = request_data.get('patient_name', '')
                     patient_context = request_data.get('patient_context', '')
                     encounter_type = request_data.get('encounter_type', '')
-                    custom_instructions = f"Patient Name: {patient_name}\nPatient Context: {patient_context}\nEncounter Type: {encounter_type}"
+                    
+                    # Combine session context with patient AI context notes
+                    combined_context = patient_context
+                    if patient_ai_context:
+                        combined_context = f"{patient_context}\n\nPatient AI Context Notes:\n{patient_ai_context}" if patient_context else f"Patient AI Context Notes:\n{patient_ai_context}"
+                    
+                    # Build proper instructions for the LLM
+                    custom_instructions = "You are transcribing a medical encounter. Please polish and format the transcript appropriately.\n\n"
+                    custom_instructions += "Context Information:\n"
+                    custom_instructions += f"- Patient Name: {patient_name}\n"
+                    custom_instructions += f"- Encounter Type: {encounter_type}\n"
+                    custom_instructions += f"- Template: {llm_template}\n"
+                    
                     if original_date_of_service:
-                        custom_instructions += f"\nDate of Service: {original_date_of_service}"
+                        custom_instructions += f"- Date of Service: {original_date_of_service}\n"
                     else:
                         current_date = datetime.now().strftime('%m/%d/%Y')
-                        custom_instructions += f"\nDate of Service: {current_date}"
-                    custom_instructions += f"\nTemplate: {llm_template}"
+                        custom_instructions += f"- Date of Service: {current_date}\n"
+                    
+                    if combined_context:
+                        custom_instructions += f"\nAdditional Context:\n{combined_context}\n"
+                    
+                    custom_instructions += "\nInstructions: Please format the transcript into a professional medical note. Include only the relevant medical information from the transcript. Do not include the context information above in the output."
                     
                     # Add previous findings context for re-evaluations (also in fallback path)
                     if evaluation_type == 're_evaluation' and previous_findings:
@@ -628,7 +655,19 @@ async def save_session_data_firestore(
                     patient_name = request_data.get('patient_name', '')
                     patient_context = request_data.get('patient_context', '')
                     encounter_type = request_data.get('encounter_type', '')
-                    custom_instructions += f"\n\nAdditional Context:\nPatient Name: {patient_name}\nPatient Context: {patient_context}\nEncounter Type: {encounter_type}"
+                    
+                    # Combine session context with patient AI context notes
+                    combined_context = patient_context
+                    if patient_ai_context:
+                        combined_context = f"{patient_context}\n\nPatient AI Context Notes:\n{patient_ai_context}" if patient_context else f"Patient AI Context Notes:\n{patient_ai_context}"
+                    
+                    # Append context information to existing profile instructions
+                    custom_instructions += "\n\n--- Additional Context for this Session ---"
+                    custom_instructions += f"\nPatient Name: {patient_name}"
+                    custom_instructions += f"\nEncounter Type: {encounter_type}"
+                    if combined_context:
+                        custom_instructions += f"\nContext Notes: {combined_context}"
+                    custom_instructions += "\n(Note: This context is for your reference only. Do not include it in the formatted output.)"
                     if original_date_of_service:
                         custom_instructions += f"\nDate of Service: {original_date_of_service}"
                         logger.info(f"Added date of service to instructions: {original_date_of_service}")

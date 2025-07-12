@@ -188,6 +188,13 @@ class UserSettingsService {
     return this.saveUserSettings(updatedSettings, true); // Skip loading state to prevent UI refresh
   }
 
+  async updateTimezone(timezone) {
+    console.log('updateTimezone called with:', timezone);
+    const currentSettings = useUserSettingsStore.getState().getSettingsForAPI();
+    const updatedSettings = { ...currentSettings, timezone };
+    return this.saveUserSettings(updatedSettings, true); // Skip loading state to prevent UI refresh
+  }
+
   async updateCustomBillingRules(customBillingRules) {
     console.log('updateCustomBillingRules called with:', customBillingRules?.substring(0, 100) + '...');
     const currentSettings = useUserSettingsStore.getState().getSettingsForAPI();

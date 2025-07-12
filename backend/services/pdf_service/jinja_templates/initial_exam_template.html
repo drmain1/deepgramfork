@@ -197,8 +197,20 @@
             {% for muscle in data.motor_exam.upper_extremity %}
             <tr>
                 <td class="muscle-name">{{ muscle.muscle }}</td>
-                <td class="strength-value">{{ muscle.right }}</td>
-                <td class="strength-value">{{ muscle.left }}</td>
+                <td class="strength-value">
+                    {% if "/" in muscle.right %}
+                        {{ muscle.right.split("/")[0].strip() }}
+                    {% else %}
+                        {{ muscle.right }}
+                    {% endif %}
+                </td>
+                <td class="strength-value">
+                    {% if "/" in muscle.left %}
+                        {{ muscle.left.split("/")[0].strip() }}
+                    {% else %}
+                        {{ muscle.left }}
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>
@@ -219,8 +231,20 @@
             {% for muscle in data.motor_exam.lower_extremity %}
             <tr>
                 <td class="muscle-name">{{ muscle.muscle }}</td>
-                <td class="strength-value">{{ muscle.right }}</td>
-                <td class="strength-value">{{ muscle.left }}</td>
+                <td class="strength-value">
+                    {% if "/" in muscle.right %}
+                        {{ muscle.right.split("/")[0].strip() }}
+                    {% else %}
+                        {{ muscle.right }}
+                    {% endif %}
+                </td>
+                <td class="strength-value">
+                    {% if "/" in muscle.left %}
+                        {{ muscle.left.split("/")[0].strip() }}
+                    {% else %}
+                        {{ muscle.left }}
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>
@@ -246,8 +270,20 @@
             {% for reflex in data.reflexes.deep_tendon %}
             <tr>
                 <td class="reflex-name">{{ reflex.reflex }}</td>
-                <td class="reflex-value">{{ reflex.right }}</td>
-                <td class="reflex-value">{{ reflex.left }}</td>
+                <td class="reflex-value">
+                    {% if reflex.right and reflex.right != "Not tested" %}
+                        {{ reflex.right }}
+                    {% else %}
+                        {{ reflex.right }}
+                    {% endif %}
+                </td>
+                <td class="reflex-value">
+                    {% if reflex.left and reflex.left != "Not tested" %}
+                        {{ reflex.left }}
+                    {% else %}
+                        {{ reflex.left }}
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>
@@ -268,8 +304,20 @@
             {% for reflex in data.reflexes.pathological %}
             <tr>
                 <td class="reflex-name">{{ reflex.reflex }}</td>
-                <td class="reflex-value">{{ reflex.right }}</td>
-                <td class="reflex-value">{{ reflex.left }}</td>
+                <td class="reflex-value">
+                    {% if reflex.right and reflex.right != "Not tested" %}
+                        {{ reflex.right }}
+                    {% else %}
+                        {{ reflex.right }}
+                    {% endif %}
+                </td>
+                <td class="reflex-value">
+                    {% if reflex.left and reflex.left != "Not tested" %}
+                        {{ reflex.left }}
+                    {% else %}
+                        {{ reflex.left }}
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>
@@ -277,10 +325,37 @@
     {% endif %}
     {% endif %}
 
+    <!-- Cranial Nerve Examination -->
+    {% if data.cranial_nerve_examination %}
+    <h4>Cranial Nerve Examination</h4>
+    <table class="motor-table">
+        <thead>
+            <tr>
+                <th>CRANIAL NERVE</th>
+                <th>FINDING</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for nerve in data.cranial_nerve_examination %}
+            <tr>
+                <td class="muscle-name">{{ nerve.nerve }}</td>
+                <td class="strength-value">{{ nerve.finding }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
     <!-- Sensory Examination -->
     {% if data.sections.sensory_examination %}
     <h4>Sensory Examination</h4>
     <p>{{ data.sections.sensory_examination }}</p>
+    {% endif %}
+
+    <!-- Diagnostic Imaging Review -->
+    {% if data.sections.diagnostic_imaging_review %}
+    <h4>Diagnostic Imaging Review</h4>
+    <p>{{ data.sections.diagnostic_imaging_review }}</p>
     {% endif %}
 
     <hr>

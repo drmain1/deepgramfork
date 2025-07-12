@@ -38,6 +38,7 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
   const { patients, fetchPatients, addPatient, updatePatient, removePatient, isLoading } = usePatientsStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
   const [showAddDialog, setShowAddDialog] = useState(openAddDialogImmediately);
   const [editingPatient, setEditingPatient] = useState(null);
   const [formData, setFormData] = useState({
@@ -134,8 +135,8 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
         ...formData,
         date_of_birth: formData.date_of_birth ? formData.date_of_birth + 'T00:00:00.000Z' : null,
         date_of_accident: formData.date_of_accident ? formData.date_of_accident + 'T00:00:00.000Z' : null,
-        notes_private: formData.notes_private || null,
-        notes_ai_context: formData.notes_ai_context || null
+        notes_private: formData.notes_private.trim() || null,
+        notes_ai_context: formData.notes_ai_context.trim() || null
       };
       
       const token = await getToken();
@@ -157,8 +158,22 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
       // Update in store immediately
       updatePatient(updatedPatient.id, updatedPatient);
       
-      setEditingPatient(null);
-      resetForm();
+      // Update form data with the returned values to stay in sync
+      setFormData({
+        first_name: updatedPatient.first_name,
+        last_name: updatedPatient.last_name,
+        date_of_birth: updatedPatient.date_of_birth.split('T')[0],
+        date_of_accident: updatedPatient.date_of_accident ? updatedPatient.date_of_accident.split('T')[0] : '',
+        notes_private: updatedPatient.notes_private || '',
+        notes_ai_context: updatedPatient.notes_ai_context || ''
+      });
+      
+      // Update editingPatient to reflect the changes
+      setEditingPatient(updatedPatient);
+      
+      // Show success message
+      setSuccessMessage('Patient updated successfully');
+      setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       setError(err.message);
     }
@@ -241,6 +256,12 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
           {error}
+        </Alert>
+      )}
+      
+      {successMessage && (
+        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMessage(null)}>
+          {successMessage}
         </Alert>
       )}
 

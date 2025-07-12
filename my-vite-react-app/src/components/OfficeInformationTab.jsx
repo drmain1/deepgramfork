@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, TextField, Button, List, ListItem, ListItemText, IconButton, Paper, Divider, Switch, FormControlLabel, FormControl, Select, MenuItem } from '@mui/material';
+import { Box, Typography, TextField, Button, List, ListItem, ListItemText, IconButton, Paper, Divider, Switch, FormControlLabel, FormControl, Select, MenuItem, InputLabel } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import { useUserSettings } from '../contexts/UserSettingsContext';
 import { useAuth } from '../contexts/FirebaseAuthContext';
 import SignaturePad from './SignaturePad';
 import { medicalSpecialties } from '../templates/templateConfig';
+import { timezones } from '../utils/timezones';
 
 function OfficeInformationTab({ officeInformation, saveOfficeInformation, settingsLoading }) {
   const [newOfficeText, setNewOfficeText] = useState('');
-  const { userSettings, updateDoctorInformation, updateMedicalSpecialty } = useUserSettings();
+  const { userSettings, updateDoctorInformation, updateMedicalSpecialty, updateTimezone } = useUserSettings();
   const { getToken } = useAuth();
   const [doctorName, setDoctorName] = useState('');
   const [showSignaturePad, setShowSignaturePad] = useState(false);
@@ -19,6 +20,8 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
   const [logoPreview, setLogoPreview] = useState('');
   const [medicalSpecialty, setMedicalSpecialty] = useState('');
   const [isSavingSpecialty, setIsSavingSpecialty] = useState(false);
+  const [timezone, setTimezone] = useState('America/Los_Angeles');
+  const [isSavingTimezone, setIsSavingTimezone] = useState(false);
 
   // Sync with userSettings
   useEffect(() => {
@@ -35,6 +38,11 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
       if (!medicalSpecialty && userSettings.medicalSpecialty) {
         console.log('Setting medical specialty from userSettings:', userSettings.medicalSpecialty);
         setMedicalSpecialty(userSettings.medicalSpecialty);
+      }
+      
+      // Set timezone from user settings
+      if (userSettings.timezone) {
+        setTimezone(userSettings.timezone);
       }
       
       // Auto-migrate base64 logos to GCS
@@ -118,6 +126,32 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
         setMedicalSpecialty(userSettings.medicalSpecialty || ''); // Revert on error
       } finally {
         setIsSavingSpecialty(false);
+      }
+    }, 500); // Reduced to 500ms for better UX
+  };
+
+  const handleTimezoneChange = (event) => {
+    const newTimezone = event.target.value;
+    console.log('Timezone changed to:', newTimezone);
+    setTimezone(newTimezone);
+    
+    // Debounce the save to prevent rapid updates
+    if (window.timezoneTimeout) {
+      clearTimeout(window.timezoneTimeout);
+    }
+    
+    window.timezoneTimeout = setTimeout(async () => {
+      setIsSavingTimezone(true);
+      try {
+        console.log('Saving timezone:', newTimezone);
+        const result = await updateTimezone(newTimezone);
+        console.log('Timezone saved successfully, result:', result);
+      } catch (error) {
+        console.error('Failed to save timezone:', error);
+        alert('Failed to save timezone. Please try again.');
+        setTimezone(userSettings.timezone || 'America/Los_Angeles'); // Revert on error
+      } finally {
+        setIsSavingTimezone(false);
       }
     }, 500); // Reduced to 500ms for better UX
   };
@@ -467,6 +501,43 @@ function OfficeInformationTab({ officeInformation, saveOfficeInformation, settin
                 </MenuItem>
               ))}
             </Select>
+          </FormControl>
+
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+              <Typography variant="body2" color="text.secondary">
+                Time Zone
+              </Typography>
+              {isSavingTimezone && (
+                <Typography variant="caption" color="primary.main">
+                  Saving...
+                </Typography>
+              )}
+            </Box>
+            <Select
+              value={timezone}
+              onChange={handleTimezoneChange}
+              displayEmpty
+              size="small"
+              disabled={false}
+              sx={{ 
+                backgroundColor: 'background.paper',
+                '& .MuiSelect-select': {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1
+                }
+              }}
+            >
+              {timezones.map((tz) => (
+                <MenuItem key={tz.value} value={tz.value}>
+                  {tz.label}
+                </MenuItem>
+              ))}
+            </Select>
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+              All dates and times will be displayed in this timezone
+            </Typography>
           </FormControl>
           
           {isDoctorNameSaved ? (

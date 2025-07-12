@@ -76,6 +76,7 @@ export const useUserSettings = () => {
     updateMacroPhrases: userSettingsService.updateMacroPhrases.bind(userSettingsService),
     updateDoctorInformation: userSettingsService.updateDoctorInformation.bind(userSettingsService),
     updateMedicalSpecialty: userSettingsService.updateMedicalSpecialty.bind(userSettingsService),
+    updateTimezone: userSettingsService.updateTimezone.bind(userSettingsService),
     updateCustomBillingRules: userSettingsService.updateCustomBillingRules.bind(userSettingsService),
     updateCptFees: userSettingsService.updateCptFees.bind(userSettingsService),
   }), []);

@@ -25,7 +25,8 @@ class UserSettingsService:
         "includeLogoOnPdf": False,
         "medicalSpecialty": "",
         "customBillingRules": "",
-        "cptFees": {}
+        "cptFees": {},
+        "timezone": "America/Los_Angeles"  # Default to Pacific Time
     }
     
     def __init__(self, gcs_client: GCSClient):
