@@ -8,6 +8,7 @@ import LastTranscriptModal from './LastTranscriptModal';
 import MultilingualSettings from './MultilingualSettings';
 import { useAuth } from '../contexts/FirebaseAuthContext';
 import useTranscriptionSessionStore from '../stores/transcriptionSessionStore';
+import usePatientsStore from '../stores/patientsStore';
 import { useMicrophoneMonitor } from '../hooks/useMicrophoneMonitor';
 import { formatDateForDisplay } from '../utils/dateUtils';
 
@@ -29,7 +30,7 @@ function SetupView({ userSettings, settingsLoading, error, onStartEncounter }) {
     setIsMultilingual,
     targetLanguage,
     setTargetLanguage,
-    selectedPatient,
+    selectedPatientId,
     updatePatientFromSelector,
     clearPatientSelection,
     isDictationMode,
@@ -46,6 +47,10 @@ function SetupView({ userSettings, settingsLoading, error, onStartEncounter }) {
     setPreviousFindings,
     initializeSettings
   } = useTranscriptionSessionStore();
+  
+  // Get patient data from store using ID
+  const { getPatientById } = usePatientsStore();
+  const selectedPatient = selectedPatientId ? getPatientById(selectedPatientId) : null;
 
       const [showPatientSelector, setShowPatientSelector] = useState(false);
   const [showLastTranscript, setShowLastTranscript] = useState(false);

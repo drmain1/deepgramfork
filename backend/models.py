@@ -152,11 +152,20 @@ class ClinicInfo(BaseModel):
     fax: Optional[str] = None
 
 
+class CranialNerveExamination(BaseModel):
+    nerve: str = Field(..., alias="cranial nerve")  # Maps "cranial nerve" from JSON to "nerve" 
+    finding: str
+
+    class Config:
+        populate_by_name = True  # Allow both "nerve" and "cranial nerve" field names
+
+
 class MedicalDocument(BaseModel):
     evaluation_type: Optional[str] = None  # "initial", "follow_up", "re_evaluation", "final"
     patient_info: PatientInfo
     clinic_info: Optional[ClinicInfo] = None
     sections: Dict[str, Optional[str]]
+    cranial_nerve_examination: Optional[List[CranialNerveExamination]] = None
     motor_exam: Optional[MotorExamination] = None
     reflexes: Optional[ReflexExamination] = None
     provider_info: Optional[Dict[str, str]] = None

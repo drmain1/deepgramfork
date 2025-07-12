@@ -46,18 +46,18 @@ Target JSON Schema:
     "diagnostic_imaging_review": "string | null"
   },
   "cranial_nerve_examination": [
-    {"nerve": "CN I: Olfactory", "finding": "string"},
-    {"nerve": "CN II: Optic", "finding": "string"},
-    {"nerve": "CN III: Oculomotor", "finding": "string"},
-    {"nerve": "CN IV: Trochlear", "finding": "string"},
-    {"nerve": "CN V: Trigeminal", "finding": "string"},
-    {"nerve": "CN VI: Abducens", "finding": "string"},
-    {"nerve": "CN VII: Facial", "finding": "string"},
-    {"nerve": "CN VIII: Vestibulocochlear", "finding": "string"},
-    {"nerve": "CN IX: Glossopharyngeal", "finding": "string"},
-    {"nerve": "CN X: Vagus", "finding": "string"},
-    {"nerve": "CN XI: Accessory", "finding": "string"},
-    {"nerve": "CN XII: Hypoglossal", "finding": "string"}
+    {"cranial nerve": "CN I: Olfactory", "finding": "string"},
+    {"cranial nerve": "CN II: Optic", "finding": "string"},
+    {"cranial nerve": "CN III: Oculomotor", "finding": "string"},
+    {"cranial nerve": "CN IV: Trochlear", "finding": "string"},
+    {"cranial nerve": "CN V: Trigeminal", "finding": "string"},
+    {"cranial nerve": "CN VI: Abducens", "finding": "string"},
+    {"cranial nerve": "CN VII: Facial", "finding": "string"},
+    {"cranial nerve": "CN VIII: Vestibulocochlear", "finding": "string"},
+    {"cranial nerve": "CN IX: Glossopharyngeal", "finding": "string"},
+    {"cranial nerve": "CN X: Vagus", "finding": "string"},
+    {"cranial nerve": "CN XI: Accessory", "finding": "string"},
+    {"cranial nerve": "CN XII: Hypoglossal", "finding": "string"}
   ] | null,
   "motor_exam": {
     "upper_extremity": [
@@ -110,7 +110,8 @@ B. Structured Object Rules (cranial_nerve_examination, motor_exam, reflexes):
 - If an examination category was performed, but a specific test within it was not mentioned, use the specific string "Not tested" for that item's value(s).
 
 1.  cranial_nerve_examination:
-    - If a nerve is described as "normal," "grossly intact," or "negative," use the standardized finding "Intact".
+    - if Doctor mentions Cranial nerves during the examination please document findings here
+      they may say all cranial nerves intact, they are numbered 1-12, they may say 2-11 intact, they may say weakness or dysfunction please document in this section. 
     - For any other finding, transcribe the dictated result.
     - If the exam was performed but a specific nerve was not mentioned, its finding must be "Not tested".
 
@@ -137,7 +138,7 @@ C. Section-Specific Instructions ("sections" object):
 
 - vitals: Document height, weight, BP, etc. Format as a simple, comma-separated list (e.g., "Height: 70 inches, Weight: 180 lbs, BP: 120/80").
 
-- outcome_assessments: List any mentioned outcome assessment scores. Include the name of the questionnaire and the score (e.g., "Oswestry Low Back Pain Disability Questionnaire: 45%", "Neck Disability Index: 38/50").
+- outcome_assessments: List any mentioned outcome assessment scores. Include the name of the questionnaire and the score (e.g., "Oswestry Low Back Pain Disability Questionnaire: 45%", "Neck Disability Index: 38/50"). do not place anything else in this section
 
 - physical_examination: This is a catch-all field. Place any general physical examination notes that do not fit into the more specific categories below.
 
@@ -151,9 +152,11 @@ C. Section-Specific Instructions ("sections" object):
 - assessment_diagnosis: Format the provider's assessment as a bulleted list. Each diagnosis MUST be on a new line and follow this exact format: "- [Diagnosis] ([ICD-10 code]) - [Status]".
   - Example: "- Muscle spasm of back (M62.838) - Acute\n- Cervicalgia (M54.2) - Exacerbated"
 
+
+- diagnostic_imaging_review: Document any discussion or review of diagnostic imaging (X-rays, MRI, CT scans, etc.). Include imaging dates, findings, and the provider's interpretation. Format as a paragraph with complete sentences (e.g., "Review of cervical spine X-rays dated 10/15/2023 demonstrates loss of normal cervical lordosis with no evidence of fracture or dislocation. MRI of the lumbar spine from 10/20/2023 reveals disc desiccation at L4-5 and L5-S1 with mild disc bulging.").
+
 - plan: Transcribe the provider's recommendations for future treatment and follow-up in paragraph form.
 
 - treatment_performed_today: Transcribe any treatments or procedures performed during the current visit, such as spinal manipulations, therapies, or injections.
 
-- diagnostic_imaging_review: Document any discussion or review of diagnostic imaging (X-rays, MRI, CT scans, etc.). Include imaging dates, findings, and the provider's interpretation. Format as a paragraph with complete sentences (e.g., "Review of cervical spine X-rays dated 10/15/2023 demonstrates loss of normal cervical lordosis with no evidence of fracture or dislocation. MRI of the lumbar spine from 10/20/2023 reveals disc desiccation at L4-5 and L5-S1 with mild disc bulging.").
 `

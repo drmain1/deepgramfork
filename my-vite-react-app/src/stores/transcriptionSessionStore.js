@@ -9,7 +9,7 @@ const useTranscriptionSessionStore = create(
     // Patient Information
     patientDetails: '',
     patientContext: '',
-    selectedPatient: null,
+    selectedPatientId: null,
     
     // Session Settings
     selectedLocation: '',
@@ -48,8 +48,8 @@ const useTranscriptionSessionStore = create(
     // Actions - Patient Information
     setPatientDetails: (details) => set({ patientDetails: details }),
     setPatientContext: (context) => set({ patientContext: context }),
-    setSelectedPatient: (patient) => set({ 
-      selectedPatient: patient,
+    setSelectedPatientId: (patientId) => set({ 
+      selectedPatientId: patientId,
       // Clear evaluation type when patient changes
       evaluationType: '',
       initialEvaluationId: null,
@@ -138,7 +138,7 @@ const useTranscriptionSessionStore = create(
     updatePatientFromSelector: (patient) => {
       if (!patient) {
         set({
-          selectedPatient: null,
+          selectedPatientId: null,
           patientDetails: '',
           evaluationType: '',
           initialEvaluationId: null,
@@ -164,7 +164,7 @@ const useTranscriptionSessionStore = create(
       }
       
       set({
-        selectedPatient: patient,
+        selectedPatientId: patient.id,
         patientDetails: patientName,
         patientContext: context
       });
@@ -172,7 +172,7 @@ const useTranscriptionSessionStore = create(
     
     // Clear patient selection but keep other settings
     clearPatientSelection: () => set({
-      selectedPatient: null,
+      selectedPatientId: null,
       patientDetails: '',
       patientContext: '',
       evaluationType: '',
@@ -201,7 +201,7 @@ const useTranscriptionSessionStore = create(
     resetSession: () => set({
       patientDetails: '',
       patientContext: '',
-      selectedPatient: null,
+      selectedPatientId: null,
       selectedLocation: get().selectedLocation, // Keep location preference
       selectedProfileId: get().selectedProfileId, // Keep profile preference
       isMultilingual: false,

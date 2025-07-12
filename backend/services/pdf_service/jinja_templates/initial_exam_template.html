@@ -328,22 +328,14 @@
     <!-- Cranial Nerve Examination -->
     {% if data.cranial_nerve_examination %}
     <h4>Cranial Nerve Examination</h4>
-    <table class="motor-table">
-        <thead>
-            <tr>
-                <th>CRANIAL NERVE</th>
-                <th>FINDING</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for nerve in data.cranial_nerve_examination %}
-            <tr>
-                <td class="muscle-name">{{ nerve.nerve }}</td>
-                <td class="strength-value">{{ nerve.finding }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div style="margin-left: 20px; line-height: 1.6;">
+        {% for nerve in data.cranial_nerve_examination %}
+        <div style="margin-bottom: 3px;">
+            <span style="font-weight: 600; color: #333;">{{ nerve.nerve }}:</span> 
+            <span style="color: #555;">{{ nerve.finding }}</span>
+        </div>
+        {% endfor %}
+    </div>
     {% endif %}
 
     <!-- Sensory Examination -->

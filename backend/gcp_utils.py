@@ -54,7 +54,7 @@ def polish_transcript_with_gemini(
         encounter_type: Type of medical encounter
         llm_instructions: Template-specific LLM instructions
         location: Optional location information
-        model_name: Gemini model to use (default: gemini-1.5-pro)
+        
     
     Returns:
         Dictionary with polished transcript and metadata
@@ -96,7 +96,7 @@ def polish_transcript_with_gemini(
         model_used = model_name
         
         # Try requested model first, then fallback to available models
-        model_options = [model_name, "gemini-2.5-flash-lite-preview-06-17", "publishers/google/models/gemini-2.5-flash", "gemini-2.0-flash-exp"]
+        model_options = [model_name, "publishers/google/models/gemini-2.5-flash",]
         
         for try_model in model_options:
             try:
@@ -118,14 +118,14 @@ def polish_transcript_with_gemini(
                 temperature=0.2,  # Very low temperature for consistent extraction
                 top_p=0.9,
                 top_k=20,
-                max_output_tokens=4000,  # Smaller output for findings only
+                max_output_tokens=6000,  # Smaller output for findings only
             )
         else:
             generation_config = GenerationConfig(
                 temperature=0.4,  # Low temperature for consistency
                 top_p=0.95,
                 top_k=40,
-                max_output_tokens=12000,
+                max_output_tokens=50000,  # Increased for comprehensive structured outputs
             )
         
         # Generate response

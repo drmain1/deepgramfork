@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Box,
   TextField,
@@ -33,52 +33,166 @@ import { useAuth } from '../contexts/FirebaseAuthContext';
 import { sessionManager } from '../utils/sessionManager';
 import usePatientsStore from '../stores/patientsStore';
 
+// Memoized date formatter
+const formatDateDisplay = (dateString) => {
+  if (!dateString) return '';
+  const datePart = dateString.split('T')[0];
+  const [year, month, day] = datePart.split('-');
+  return format(new Date(year, month - 1, day), 'MM/dd/yyyy');
+};
+
+// Memoized ListItem component
+const PatientListItem = React.memo(({ patient, isSelected, onSelect, onEdit, onDelete }) => {
+  const handleEditClick = useCallback((e) => {
+    e.stopPropagation();
+    onEdit(patient);
+  }, [onEdit, patient]);
+
+  const handleDeleteClick = useCallback((e) => {
+    e.stopPropagation();
+    onDelete(patient.id);
+  }, [onDelete, patient.id]);
+
+  return (
+    <ListItem
+      component="li"
+      selected={isSelected}
+      onClick={() => onSelect(patient)}
+      sx={{ cursor: 'pointer' }}
+    >
+      <ListItemText
+        primary={`${patient.last_name}, ${patient.first_name}`}
+        secondary={
+          <Box component="span">
+            <Typography variant="caption" component="span" display="block">
+              DOB: {formatDateDisplay(patient.date_of_birth)}
+            </Typography>
+            {patient.date_of_accident && (
+              <Typography variant="caption" component="span" display="block">
+                DOA: {formatDateDisplay(patient.date_of_accident)}
+              </Typography>
+            )}
+          </Box>
+        }
+      />
+      <ListItemSecondaryAction>
+        <IconButton size="small" onClick={handleEditClick}>
+          <EditIcon fontSize="small" />
+        </IconButton>
+        <IconButton size="small" onClick={handleDeleteClick}>
+          <DeleteIcon fontSize="small" />
+        </IconButton>
+      </ListItemSecondaryAction>
+    </ListItem>
+  );
+});
+
 const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDialogImmediately = false }) => {
   const { getToken } = useAuth();
-  const { patients, fetchPatients, addPatient, updatePatient, removePatient, isLoading } = usePatientsStore();
+  const { patients, fetchPatients, addPatient, updatePatient, removePatient, isLoading, getPatientById } = usePatientsStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   const [showAddDialog, setShowAddDialog] = useState(openAddDialogImmediately);
   const [editingPatient, setEditingPatient] = useState(null);
+  const [isOpen, setIsOpen] = useState(true);
+  
+  // Use refs for AI context notes to avoid re-renders on every keystroke
+  const notesPrivateRef = useRef('');
+  const notesAiContextRef = useRef('');
+  
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
     date_of_birth: '',
-    date_of_accident: '',
-    notes_private: '',
-    notes_ai_context: ''
+    date_of_accident: ''
   });
 
-  // Fetch patients on component mount
+  // Debounce timer for AI context notes
+  const aiContextDebounceRef = useRef(null);
+
+  // Only fetch if store is empty and we're not in add mode
   useEffect(() => {
     const init = async () => {
       await sessionManager.ensureSession(getToken);
-      await fetchPatients();
+      // Only fetch if we don't have patients in the store
+      if (patients.length === 0) {
+        await fetchPatients();
+      }
     };
-    // Always fetch on mount to check for updates (the store will handle caching)
-    if (!openAddDialogImmediately && !selectedPatient) {
+    
+    if (!openAddDialogImmediately && !selectedPatient && patients.length === 0) {
       init();
     }
-  }, [fetchPatients, getToken, openAddDialogImmediately, selectedPatient]);
+  }, [fetchPatients, getToken, openAddDialogImmediately, selectedPatient, patients.length]);
 
   // If we have a selectedPatient (editing mode), populate the form
   useEffect(() => {
     if (selectedPatient) {
-      setEditingPatient(selectedPatient);
-      setFormData({
-        first_name: selectedPatient.first_name,
-        last_name: selectedPatient.last_name,
-        date_of_birth: selectedPatient.date_of_birth.split('T')[0],
-        date_of_accident: selectedPatient.date_of_accident ? selectedPatient.date_of_accident.split('T')[0] : '',
-        notes_private: selectedPatient.notes_private || '',
-        notes_ai_context: selectedPatient.notes_ai_context || ''
-      });
-      setShowAddDialog(true);
+      // Always get fresh data from store
+      const freshPatient = getPatientById(selectedPatient.id);
+      if (freshPatient) {
+        setEditingPatient(freshPatient);
+        setFormData({
+          first_name: freshPatient.first_name,
+          last_name: freshPatient.last_name,
+          date_of_birth: freshPatient.date_of_birth.split('T')[0],
+          date_of_accident: freshPatient.date_of_accident ? freshPatient.date_of_accident.split('T')[0] : ''
+        });
+        notesPrivateRef.current = freshPatient.notes_private || '';
+        notesAiContextRef.current = freshPatient.notes_ai_context || '';
+        setShowAddDialog(true);
+      }
     }
-  }, [selectedPatient]);
+  }, [selectedPatient, getPatientById]);
 
-  const handleAddPatient = async () => {
+  // Sync with store updates when editing
+  useEffect(() => {
+    if (editingPatient) {
+      const currentPatient = getPatientById(editingPatient.id);
+      if (currentPatient && currentPatient !== editingPatient) {
+        setEditingPatient(currentPatient);
+        // Only update if the dialog is open and we're not actively typing
+        if (showAddDialog && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+          setFormData({
+            first_name: currentPatient.first_name,
+            last_name: currentPatient.last_name,
+            date_of_birth: currentPatient.date_of_birth.split('T')[0],
+            date_of_accident: currentPatient.date_of_accident ? currentPatient.date_of_accident.split('T')[0] : ''
+          });
+          notesPrivateRef.current = currentPatient.notes_private || '';
+          notesAiContextRef.current = currentPatient.notes_ai_context || '';
+        }
+      }
+    }
+  }, [patients, editingPatient, showAddDialog, getPatientById]);
+
+  // Cleanup debounce on unmount
+  useEffect(() => {
+    return () => {
+      if (aiContextDebounceRef.current) {
+        clearTimeout(aiContextDebounceRef.current);
+      }
+    };
+  }, []);
+
+  // Memoized filtered patients
+  const filteredPatients = useMemo(() => {
+    if (!searchTerm) return patients;
+    
+    const searchLower = searchTerm.toLowerCase();
+    return patients.filter(patient => 
+      patient.first_name.toLowerCase().includes(searchLower) ||
+      patient.last_name.toLowerCase().includes(searchLower)
+    );
+  }, [patients, searchTerm]);
+
+  // Optimized handlers using functional updates
+  const handleFormChange = useCallback((field) => (e) => {
+    setFormData(prev => ({ ...prev, [field]: e.target.value }));
+  }, []);
+
+  const handleAddPatient = useCallback(async () => {
     try {
       // Validate required fields
       if (!formData.first_name || !formData.last_name || !formData.date_of_birth) {
@@ -92,11 +206,10 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
         last_name: formData.last_name,
         date_of_birth: formData.date_of_birth + 'T00:00:00.000Z',
         date_of_accident: formData.date_of_accident ? formData.date_of_accident + 'T00:00:00.000Z' : null,
-        notes_private: formData.notes_private || null,
-        notes_ai_context: formData.notes_ai_context || null
+        notes_private: notesPrivateRef.current || null,
+        notes_ai_context: notesAiContextRef.current || null
       };
       
-      console.log('Adding patient with data:', requestData);
       const token = await getToken();
       const response = await fetch('/api/v1/patients', {
         method: 'POST',
@@ -112,7 +225,6 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
       }
 
       const newPatient = await response.json();
-      console.log('Patient created successfully:', newPatient);
       
       // Add to store immediately
       addPatient(newPatient);
@@ -126,17 +238,18 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
       console.error('Error adding patient:', err);
       setError(err.message);
     }
-  };
+  }, [formData, getToken, addPatient, onSelectPatient]);
 
-  const handleUpdatePatient = async () => {
+  const handleUpdatePatient = useCallback(async () => {
     try {
       // Convert date strings to ISO format - use UTC to avoid timezone issues
       const requestData = {
-        ...formData,
+        first_name: formData.first_name,
+        last_name: formData.last_name,
         date_of_birth: formData.date_of_birth ? formData.date_of_birth + 'T00:00:00.000Z' : null,
         date_of_accident: formData.date_of_accident ? formData.date_of_accident + 'T00:00:00.000Z' : null,
-        notes_private: formData.notes_private.trim() || null,
-        notes_ai_context: formData.notes_ai_context.trim() || null
+        notes_private: notesPrivateRef.current?.trim() || null,
+        notes_ai_context: notesAiContextRef.current?.trim() || null
       };
       
       const token = await getToken();
@@ -163,10 +276,10 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
         first_name: updatedPatient.first_name,
         last_name: updatedPatient.last_name,
         date_of_birth: updatedPatient.date_of_birth.split('T')[0],
-        date_of_accident: updatedPatient.date_of_accident ? updatedPatient.date_of_accident.split('T')[0] : '',
-        notes_private: updatedPatient.notes_private || '',
-        notes_ai_context: updatedPatient.notes_ai_context || ''
+        date_of_accident: updatedPatient.date_of_accident ? updatedPatient.date_of_accident.split('T')[0] : ''
       });
+      notesPrivateRef.current = updatedPatient.notes_private || '';
+      notesAiContextRef.current = updatedPatient.notes_ai_context || '';
       
       // Update editingPatient to reflect the changes
       setEditingPatient(updatedPatient);
@@ -177,9 +290,9 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
     } catch (err) {
       setError(err.message);
     }
-  };
+  }, [formData, editingPatient, getToken, updatePatient]);
 
-  const handleDeletePatient = async (patientId) => {
+  const handleDeletePatient = useCallback(async (patientId) => {
     if (!window.confirm('Are you sure you want to delete this patient?')) {
       return;
     }
@@ -207,46 +320,65 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
     } catch (err) {
       setError(err.message);
     }
-  };
+  }, [getToken, removePatient, selectedPatient, onSelectPatient]);
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setFormData({
       first_name: '',
       last_name: '',
       date_of_birth: '',
-      date_of_accident: '',
-      notes_private: '',
-      notes_ai_context: ''
+      date_of_accident: ''
     });
-  };
+    notesPrivateRef.current = '';
+    notesAiContextRef.current = '';
+  }, []);
 
-  const openEditDialog = (patient) => {
-    setEditingPatient(patient);
-    setFormData({
-      first_name: patient.first_name,
-      last_name: patient.last_name,
-      date_of_birth: patient.date_of_birth.split('T')[0], // Convert to YYYY-MM-DD
-      date_of_accident: patient.date_of_accident ? patient.date_of_accident.split('T')[0] : '',
-      notes_private: patient.notes_private || '',
-      notes_ai_context: patient.notes_ai_context || ''
-    });
-  };
+  const openEditDialog = useCallback((patient) => {
+    // Get fresh patient data from store
+    const freshPatient = getPatientById(patient.id);
+    if (freshPatient) {
+      setEditingPatient(freshPatient);
+      setFormData({
+        first_name: freshPatient.first_name,
+        last_name: freshPatient.last_name,
+        date_of_birth: freshPatient.date_of_birth.split('T')[0],
+        date_of_accident: freshPatient.date_of_accident ? freshPatient.date_of_accident.split('T')[0] : ''
+      });
+      notesPrivateRef.current = freshPatient.notes_private || '';
+      notesAiContextRef.current = freshPatient.notes_ai_context || '';
+      setShowAddDialog(true);
+    }
+  }, [getPatientById]);
 
-  const filteredPatients = patients.filter(patient => {
-    const searchLower = searchTerm.toLowerCase();
-    return (
-      patient.first_name.toLowerCase().includes(searchLower) ||
-      patient.last_name.toLowerCase().includes(searchLower)
-    );
-  });
+  const handleClose = useCallback(() => {
+    setIsOpen(false);
+    onClose();
+  }, [onClose]);
 
+  const handleSearchChange = useCallback((e) => {
+    setSearchTerm(e.target.value);
+  }, []);
+
+  const handleCancelEdit = useCallback(() => {
+    setShowAddDialog(false);
+    setEditingPatient(null);
+    resetForm();
+    if (openAddDialogImmediately || selectedPatient) {
+      handleClose();
+    }
+  }, [openAddDialogImmediately, selectedPatient, resetForm, handleClose]);
+
+  // Don't render dialog if closed
+  if (!isOpen) return null;
 
   return (
-    <Dialog open={true} onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog open={isOpen} onClose={handleClose} maxWidth="md" fullWidth>
       <DialogTitle>
         <Box display="flex" justifyContent="space-between" alignItems="center">
-          <Typography variant="h6">{showAddDialog ? (editingPatient ? 'Edit Patient' : 'Add New Patient') : 'Select Patient'}</Typography>
-          <IconButton onClick={onClose} size="small">
+          <Typography variant="h6">
+            {showAddDialog ? (editingPatient ? 'Edit Patient' : 'Add New Patient') : 'Select Patient'}
+          </Typography>
+          <IconButton onClick={handleClose} size="small">
             <CloseIcon />
           </IconButton>
         </Box>
@@ -273,7 +405,7 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
               size="small"
               placeholder="Search patients..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={handleSearchChange}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
@@ -310,56 +442,13 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
             {filteredPatients.map((patient, index) => (
               <React.Fragment key={patient.id}>
                 {index > 0 && <Divider />}
-                <ListItem
-                  component="li"
-                  selected={selectedPatient?.id === patient.id}
-                  onClick={() => onSelectPatient(patient)}
-                  sx={{ cursor: 'pointer' }}
-                >
-                  <ListItemText
-                    primary={`${patient.last_name}, ${patient.first_name}`}
-                    secondary={
-                      <Box component="span">
-                        <Typography variant="caption" component="span" display="block">
-                          DOB: {(() => {
-                            const datePart = patient.date_of_birth.split('T')[0];
-                            const [year, month, day] = datePart.split('-');
-                            return format(new Date(year, month - 1, day), 'MM/dd/yyyy');
-                          })()}
-                        </Typography>
-                        {patient.date_of_accident && (
-                          <Typography variant="caption" component="span" display="block">
-                            DOA: {(() => {
-                              const datePart = patient.date_of_accident.split('T')[0];
-                              const [year, month, day] = datePart.split('-');
-                              return format(new Date(year, month - 1, day), 'MM/dd/yyyy');
-                            })()}
-                          </Typography>
-                        )}
-                      </Box>
-                    }
-                  />
-                  <ListItemSecondaryAction>
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openEditDialog(patient);
-                      }}
-                    >
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeletePatient(patient.id);
-                      }}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </ListItemSecondaryAction>
-                </ListItem>
+                <PatientListItem
+                  patient={patient}
+                  isSelected={selectedPatient?.id === patient.id}
+                  onSelect={onSelectPatient}
+                  onEdit={openEditDialog}
+                  onDelete={handleDeletePatient}
+                />
               </React.Fragment>
             ))}
           </List>
@@ -376,14 +465,14 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
             <TextField
               label="First Name"
               value={formData.first_name}
-              onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+              onChange={handleFormChange('first_name')}
               required
               fullWidth
             />
             <TextField
               label="Last Name"
               value={formData.last_name}
-              onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+              onChange={handleFormChange('last_name')}
               required
               fullWidth
             />
@@ -391,7 +480,7 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
               label="Date of Birth"
               type="date"
               value={formData.date_of_birth}
-              onChange={(e) => setFormData({ ...formData, date_of_birth: e.target.value })}
+              onChange={handleFormChange('date_of_birth')}
               required
               fullWidth
               InputLabelProps={{ shrink: true }}
@@ -400,14 +489,16 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
               label="Date of Accident (Optional)"
               type="date"
               value={formData.date_of_accident}
-              onChange={(e) => setFormData({ ...formData, date_of_accident: e.target.value })}
+              onChange={handleFormChange('date_of_accident')}
               fullWidth
               InputLabelProps={{ shrink: true }}
             />
             <TextField
               label="Private Notes (Not shared with AI)"
-              value={formData.notes_private}
-              onChange={(e) => setFormData({ ...formData, notes_private: e.target.value })}
+              defaultValue={notesPrivateRef.current}
+              onChange={(e) => {
+                notesPrivateRef.current = e.target.value;
+              }}
               fullWidth
               multiline
               rows={3}
@@ -416,8 +507,21 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
             />
             <TextField
               label="AI Context Notes (Shared with AI)"
-              value={formData.notes_ai_context}
-              onChange={(e) => setFormData({ ...formData, notes_ai_context: e.target.value })}
+              defaultValue={notesAiContextRef.current}
+              onChange={(e) => {
+                // Clear existing debounce
+                if (aiContextDebounceRef.current) {
+                  clearTimeout(aiContextDebounceRef.current);
+                }
+                
+                // Update ref immediately for form submission
+                const value = e.target.value;
+                
+                // Debounce the actual update
+                aiContextDebounceRef.current = setTimeout(() => {
+                  notesAiContextRef.current = value;
+                }, 300);
+              }}
               fullWidth
               multiline
               rows={3}
@@ -430,14 +534,7 @@ const PatientSelector = ({ selectedPatient, onSelectPatient, onClose, openAddDia
       </DialogContent>
       {(showAddDialog || editingPatient !== null) && (
         <DialogActions>
-          <Button onClick={() => {
-            setShowAddDialog(false);
-            setEditingPatient(null);
-            resetForm();
-            if (openAddDialogImmediately || selectedPatient) {
-              onClose();
-            }
-          }}>
+          <Button onClick={handleCancelEdit}>
             Cancel
           </Button>
           <Button

@@ -80,6 +80,12 @@ const usePatientsStore = create((set, get) => ({
   // Clear cache
   clearCache: () => {
     set({ lastFetchTime: null });
+  },
+  
+  // Get a patient by ID
+  getPatientById: (patientId) => {
+    const { patients } = get();
+    return patients.find(p => p.id === patientId) || null;
   }
 }));
 
