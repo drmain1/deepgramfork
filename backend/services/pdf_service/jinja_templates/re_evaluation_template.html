@@ -921,6 +921,17 @@
         <p>{{ data.sections.physical_examination }}</p>
     {% endif %}
     
+    <!-- Postural and Gait Analysis -->
+    {% if data.postural_and_gait_analysis %}
+        <h5 style="margin-top: 15px; margin-bottom: 10px;">Postural and Gait Analysis</h5>
+        {% if data.postural_and_gait_analysis.posture_general %}
+        <p><strong>Posture General:</strong> {{ data.postural_and_gait_analysis.posture_general }}</p>
+        {% endif %}
+        {% if data.postural_and_gait_analysis.gait_analysis %}
+        <p><strong>Gait Analysis:</strong> {{ data.postural_and_gait_analysis.gait_analysis }}</p>
+        {% endif %}
+    {% endif %}
+    
     <!-- Collect all positive findings from various sections -->
     {% set all_findings = [] %}
     

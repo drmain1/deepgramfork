@@ -160,6 +160,11 @@ class CranialNerveExamination(BaseModel):
         populate_by_name = True  # Allow both "nerve" and "cranial nerve" field names
 
 
+class PosturalAndGaitAnalysis(BaseModel):
+    posture_general: Optional[str] = None
+    gait_analysis: Optional[str] = None
+
+
 class MedicalDocument(BaseModel):
     evaluation_type: Optional[str] = None  # "initial", "follow_up", "re_evaluation", "final"
     patient_info: PatientInfo
@@ -168,6 +173,7 @@ class MedicalDocument(BaseModel):
     cranial_nerve_examination: Optional[List[CranialNerveExamination]] = None
     motor_exam: Optional[MotorExamination] = None
     reflexes: Optional[ReflexExamination] = None
+    postural_and_gait_analysis: Optional[PosturalAndGaitAnalysis] = None
     provider_info: Optional[Dict[str, str]] = None
 
 

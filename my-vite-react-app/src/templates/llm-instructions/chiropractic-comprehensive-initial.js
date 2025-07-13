@@ -1,4 +1,4 @@
-export const painManagementEvalStructuredInstructions = 
+export const chiropracticComprehensiveInitialInstructions = 
 
 `Your task is to extract information from a medical transcript and format it as a single, complete, and valid JSON object that strictly adheres to the schema provided below.
 
@@ -145,12 +145,12 @@ C. Section-Specific Instructions ("sections" object):
 
 - outcome_assessments: List any mentioned outcome assessment scores. Include the name of the questionnaire and the score (e.g., "Oswestry Low Back Pain Disability Questionnaire: 45%", "Neck Disability Index: 38/50"). do not place anything else in this section
 
-- physical_examination: This is a catch-all field. Place any general physical examination notes that do not fit into the more specific categories below.
+- physical_examination: This is a catch-all field. Place any general physical examination notes that do not fit into the more specific categories below, may be a heart lung or other organ or other examination.  If doctor discusses patient being alert, oriented, well-nourished, combative etc place here
 
 - cervico_thoracic, lumbopelvic, extremity: These sections are for objective physical exam findings, including range of motion, palpation, and results of specific orthopedic tests for the corresponding body region.
-  - Example content for "cervico_thoracic": Findings for Spurling's, Jackson's Compression, Cervical Distraction, Shoulder Depression, Soto-Hall, Adam's Test, Slump Test, Lhermitte's, Upper Limb Tension Test (ULTT).
-  - Example content for "lumbopelvic": Findings for Straight Leg Raise (SLR), Braggard's, Kemp's, Yeoman's, Gaenslen's, FABER, FADIR, Thomas Test, Hoover Sign.
-  - Example content for "extremity": Extremity Test List (for "extremity"): (Shoulder) Drop Arm, Neer's, Hawkins-Kennedy, Empty Can, Speed's; (Elbow/Wrist) Cozen's, Golfer's Elbow, Tinel's, Phalen's, Finkelstein's; (Knee) Lachman's, Anterior Drawer, McMurray's, Apley's, Valgus/Varus; (Ankle/Foot) Drawer, Talar Tilt, Thompson's.   When documenting please include body part, doctor will say left drop arm and neer’s test negative.  Please document “Left Shoulder examination: Drop Arm negative and Neer’s negative”
+  - Example content for "cervico_thoracic": Findings for Spurling's, Jackson's Compression, Cervical Distraction, Shoulder Depression, Soto-Hall, Adam's Test, Slump Test, Lhermitte's, Upper Limb Tension Test (ULTT), put palpation findings, spinal fixations or subluxations taught and tender fibers, muscle spasm, muscle tenderness for cervical thoracic spine here
+  - Example content for "lumbopelvic": Findings for Straight Leg Raise (SLR), Braggard's, Kemp's, Yeoman's, Gaenslen's, FABER, FADIR, Thomas Test, Hoover Sign. put palpation findings, spinal fixations or subluxations , taught and tender fibers, muscle spasm, muscle tenderness for cervical thoracic spine here
+  - Example content for "extremity": Extremity Test List (for "extremity") please classify test with the correct body part and document here, doctor may say body part and test, or just the name of the test: (Shoulder) Drop Arm, Neer's, Hawkins-Kennedy, Empty Can, Speed's; (Elbow/Wrist) Cozen's, Golfer's Elbow, Tinel's, Phalen's, Finkelstein's; (Knee) Lachman's, Anterior Drawer, McMurray's, Apley's, Valgus/Varus; (Ankle/Foot) Drawer, Talar Tilt, Thompson's.   When documenting please include body part, doctor will say left drop arm and neer's test negative.  Please document "Left Shoulder examination: Drop Arm negative and Neer's negative"
   - 
 
 - sensory_examination: Document sensory findings from the physical exam (e.g., "Decreased sensation to light touch in the C6 dermatome on the left.").

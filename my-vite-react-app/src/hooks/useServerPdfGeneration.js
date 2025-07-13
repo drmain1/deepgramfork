@@ -36,6 +36,17 @@ export const useServerPdfGeneration = () => {
             include_signature: options.includeSignature !== false
           };
       
+      // Log the data being sent, especially checking for postural_and_gait_analysis
+      if (isStructured) {
+        console.log('🔍 Frontend: Sending structured data to PDF service');
+        console.log('Data keys:', Object.keys(transcriptData));
+        if (transcriptData.postural_and_gait_analysis) {
+          console.log('✅ postural_and_gait_analysis found:', transcriptData.postural_and_gait_analysis);
+        } else {
+          console.warn('⚠️ postural_and_gait_analysis NOT found in transcriptData');
+        }
+      }
+      
       // Send to backend
       const response = await fetch(`${import.meta.env.VITE_API_URL}${endpoint}`, {
         method: 'POST',

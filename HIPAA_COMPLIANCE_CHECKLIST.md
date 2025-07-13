@@ -1,17 +1,14 @@
-# HIPAA Compliance Checklist for MedLegalDoc
+# HIPAA Compliance Checklist for MedLegalDoc 7/11/25
 
-## 🚀 Easy Wins (Can implement in minutes/hours) ✅ MOSTLY COMPLETED
+## 🚀 Easy Wins (Can implement in minutes/hours) ✅ COMPLETED
 
 ### Environment & Configuration
 - [x] Enable Firestore encryption at rest (via GCP Console) - ✅ Already enabled by default
 - [x] Enable automatic backups for Firestore (via GCP Console) - ✅ Daily backups with 30-day retention
 - [x] Enable Point-in-Time Recovery for Firestore - ✅ 7-day retention enabled
-- [ ] Set up Cloud Armor DDoS protection (via GCP Console) - Requires active App Engine deployment
+- [ ] Set up Cloud Armor DDoS protection (via GCP Console) - Requires active App Engine deployment (let's skip for MVP)
 - [ ] Enable VPC Service Controls for additional security (via GCP Console)
-- [ ] Add automatic logout on browser close/tab close
-- [ ] Implement field-level validation for PHI data
 - [x] Configure Firestore audit logs retention (via GCP Console) - ✅ Metrics created
-- [x] SSL/TLS for scribe.medlegaldoc.com - ✅ Already configured in Cloudflare
 
 ### Code-Based Quick Fixes
 - [x] Add password complexity requirements to signup - ✅ 8+ chars, uppercase, lowercase, number, special char
@@ -25,8 +22,8 @@
 ## 🔒 High Priority (1-2 days)
 
 ### Authentication & Access Control
-- [x] Implement Multi-Factor Authentication (MFA) using Firebase Auth - ✅ Phone-based MFA with UI
-- [x] Add password reset rate limiting - ✅ Included in account lockout
+- [ ] Implement Multi-Factor Authentication (MFA) using Firebase Auth
+- [ ] Add password reset rate limiting
 - [ ] Implement password history to prevent reuse
 - [ ] Add email notification for login from new devices
 - [ ] Implement session invalidation on password change
@@ -39,7 +36,7 @@
 - [ ] Implement secure file deletion with overwrite
 
 ### Monitoring & Alerts
-- [x] Set up Cloud Monitoring alerts for failed login attempts - ✅ Log metrics created
+- [ ] Set up Cloud Monitoring alerts for failed login attempts
 - [ ] Configure alerts for unusual data access patterns
 - [ ] Set up alerts for large data exports
 - [ ] Monitor for concurrent session anomalies
@@ -52,7 +49,7 @@
 - [ ] Create audit log query interface for compliance officers
 - [ ] Implement automated data retention policies
 - [ ] Add HIPAA training tracking module
-- [x] Create privacy policy acceptance tracking - ✅ Added to login page
+- [ ] Create privacy policy acceptance tracking
 
 ### Advanced Security
 - [ ] Implement Role-Based Access Control (RBAC)
@@ -71,8 +68,8 @@
 ## 📊 Tracking & Documentation
 
 ### Legal/Compliance Docs
-- [x] Create and host Privacy Policy - ✅ Created with HIPAA-specific language
-- [x] Create and host Terms of Service - ✅ Created with healthcare-specific clauses
+- [ ] Create and host Privacy Policy
+- [ ] Create and host Terms of Service
 - [ ] Create BAA template for third-party services
 - [ ] Document data retention policies
 - [ ] Create incident response plan
@@ -153,20 +150,12 @@
    - HSTS, CSP, XSS protection
    - HIPAA compliance headers
    - Cache control for PHI data
-8. ✅ Privacy Policy & Terms of Service
-   - HIPAA-compliant privacy policy with all required disclosures
-   - Healthcare-specific terms of service
-   - Footer links in login and sidebar
-   - Routes configured for /privacy and /terms
 
 ### Day 2
-1. Complete audit logging gaps:
-   - Add audit logging to PDF generation
-   - Add audit logging to file uploads
-   - Use AuditLogger for login/logout events
-2. Create audit log viewer interface
-3. Environment variables security audit
-4. Implement automated backup verification
+1. Implement MFA with Firebase Auth
+2. Add account lockout mechanism
+3. Set up automated backup verification
+4. Create security monitoring dashboard
 
 ### Day 3-4
 1. Build audit log query interface

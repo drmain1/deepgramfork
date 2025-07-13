@@ -434,6 +434,35 @@ const FormattedMedicalText = ({ content, sx = {}, ...props }) => {
           </Box>
         )}
 
+        {/* Postural and Gait Analysis */}
+        {structuredData.postural_and_gait_analysis && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
+              POSTURAL AND GAIT ANALYSIS
+            </Typography>
+            {structuredData.postural_and_gait_analysis.posture_general && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                  Posture General:
+                </Typography>
+                <Typography sx={{ pl: 2 }}>
+                  {structuredData.postural_and_gait_analysis.posture_general}
+                </Typography>
+              </Box>
+            )}
+            {structuredData.postural_and_gait_analysis.gait_analysis && (
+              <Box>
+                <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                  Gait Analysis:
+                </Typography>
+                <Typography sx={{ pl: 2 }}>
+                  {structuredData.postural_and_gait_analysis.gait_analysis}
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        )}
+
         {/* Diagnostic Imaging Review */}
         {structuredData.sections?.diagnostic_imaging_review && (
           <Box sx={{ mb: 3 }}>

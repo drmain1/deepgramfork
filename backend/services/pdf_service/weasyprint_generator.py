@@ -438,6 +438,12 @@ class WeasyPrintMedicalPDFGenerator:
         if not self.jinja_env:
             raise Exception("Jinja2 environment not initialized")
         
+        # Debug log the postural_and_gait_analysis data
+        if 'postural_and_gait_analysis' in data:
+            logger.info(f"🔍 postural_and_gait_analysis data found: {data['postural_and_gait_analysis']}")
+        else:
+            logger.warning("⚠️ postural_and_gait_analysis not found in data")
+        
         # Load the initial exam template
         template = self.jinja_env.get_template('initial_exam_template.html')
         

@@ -101,7 +101,11 @@ Re-evaluation JSON Schema (Compatible with Initial Exam Format)
     {"cranial nerve": "CN X: Vagus", "finding": "string"},
     {"cranial nerve": "CN XI: Accessory", "finding": "string"},
     {"cranial nerve": "CN XII: Hypoglossal", "finding": "string"}
-  ] | null
+  ] | null,
+  "postural_and_gait_analysis": {
+    "posture_general": "string | null",
+    "gait_analysis": "string | null"
+  }
 }
 ---
 
@@ -203,6 +207,11 @@ Cranial Nerve Examination Specific Rules:
   - "Previously not tested | currently intact" (new test)
 - If doctor says "cranial nerves 2-11 intact", set those nerves to "intact" and others to "Not tested"
 - Common findings: "intact", "diminished", "absent", "weakness noted", "Not tested"
+
+- postural_and_gait_analysis: This section must be an object with two keys: \`posture_general\` and \`gait_analysis\`.
+  - If the entire postural and gait analysis was not performed, the \`postural_and_gait_analysis\` object should be \`null\`.
+  - **\`posture_general\`**: Document all static postural findings here as a comma-separated list (e.g., "Forward head carriage, posterior pelvic tilt"). If explicitly normal, state "Unremarkable". If not mentioned, this field should be \`null\`.
+  - **\`gait_analysis\`**: Document all dynamic gait findings here as a comma-separated list (e.g., "Antalgic gait"). If explicitly normal, state "Unremarkable". If not mentioned, this field should be \`null\`.
 
 
 C. Critical Formatting Rules:

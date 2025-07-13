@@ -200,6 +200,10 @@ Response: { status: "healthy", service: "weasyprint_pdf_generator", test_pdf_siz
   reflexes?: {
     deep_tendon: Array<{reflex, right, left}>,
     pathological: Array<{reflex, right, left}>
+  },
+  postural_and_gait_analysis?: {  // NEW: Added for postural and gait assessments
+    posture_general?: string,
+    gait_analysis?: string
   }
 }
 ```
@@ -267,6 +271,7 @@ Response: { status: "healthy", service: "weasyprint_pdf_generator", test_pdf_siz
 - Supports clinic logos and doctor signatures
 - **NEW**: Multi-visit PDF generation with chronological sorting
 - **NEW**: Mixed content support (structured + narrative)
+- **NEW**: Postural and gait analysis section in initial and re-evaluation templates
 - No markdown parsing required
 
 ### 3b. WeasyPrint Billing PDF Generation (billing_generator.py) - NEW
@@ -350,6 +355,8 @@ pdfplumber==0.10.3    # No longer needed
 - [x] Numbered lists work for chief complaints
 - [x] Professional styling matches target design
 - [x] Times New Roman fallback works
+- [x] Postural and gait analysis section appears in initial exam PDFs
+- [x] Postural and gait analysis section appears in re-evaluation PDFs
 - [ ] Logo appears when configured
 - [ ] Signature appears when configured
 - [ ] Special characters in patient names handled
@@ -398,6 +405,7 @@ pdfplumber==0.10.3    # No longer needed
 - **Smart Layout Logic**: Optimal page breaks and spacing
 - **Visit Management**: Automatic numbering and section headers
 - **Billing PDF System**: Complete server-side billing invoice generation with WeasyPrint (NEW)
+- **Postural and Gait Analysis**: Added support for postural and gait assessment data in PDFs
 
 ### ❌ TODO (Future Enhancements)
 - Logo integration for clinic headers

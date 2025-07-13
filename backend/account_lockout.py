@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict
 from google.cloud import firestore
-from firestore_client import get_firestore_client
+from firestore_client import FirestoreClient
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,8 @@ class AccountLockoutService:
     RESET_WINDOW_MINUTES = 15  # Reset counter after 15 minutes of no attempts
     
     def __init__(self):
-        self.db = get_firestore_client()
+        self.firestore_client = FirestoreClient()
+        self.db = self.firestore_client.db
     
     async def record_failed_attempt(self, email: str, ip_address: Optional[str] = None) -> Dict[str, any]:
         """Record a failed login attempt.

@@ -7,6 +7,7 @@ import { chiropracticMultipleVisitsInstructions } from './llm-instructions/chiro
 import { chiropracticSOAPImprovedInstructions } from './llm-instructions/chiropractic-soap-improved.js';
 import { chiropracticFollowupNarrativeInstructions } from './llm-instructions/chiropractic-followup-narrative.js';
 import { chiropracticReevaluationInstructions } from './llm-instructions/chiropractic-reevaluation.js';
+import { chiropracticComprehensiveInitialInstructions } from './llm-instructions/chiropractic-comprehensive-initial.js';
 import { testGCPTemplateInstructions } from './llm-instructions/test-gcp-template.js';
 
 export const medicalSpecialties = [
@@ -209,6 +210,12 @@ CA License #A123456`
       name: 'Initial Consultation', 
       llmInstructions: chiropracticInitialInstructions, 
       sampleNarrative: 'Sample for Chiropractic Initial Consultation: Comprehensive new patient evaluation including history, examination, and treatment plan.' 
+    },
+    { 
+      id: 'chiro_comprehensive_initial', 
+      name: 'Comprehensive Initial', 
+      llmInstructions: chiropracticComprehensiveInitialInstructions, 
+      sampleNarrative: 'Sample for Chiropractic Comprehensive Initial Evaluation: Complete structured assessment with detailed neurological examination, motor testing, reflexes, and postural/gait analysis.' 
     },
     { 
       id: 'chiro_followup', 

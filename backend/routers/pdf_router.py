@@ -77,11 +77,41 @@ async def generate_pdf_from_transcript(pdf_request: PDFGenerationRequest, reques
             except json.JSONDecodeError:
                 # If not JSON, try to extract JSON from the transcript
                 import re
-                json_match = re.search(r'\{.*\}', pdf_request.transcript, re.DOTALL)
-                if json_match:
-                    data = json.loads(json_match.group())
+                # Look for JSON block that starts with opening brace and ends with closing brace
+                # This handles cases where there might be text before/after the JSON
+                # Use a more robust approach to find the JSON object
+                transcript_stripped = pdf_request.transcript.strip()
+                
+                # First, try to find a JSON object by looking for balanced braces
+                # Start from the first { and find its matching }
+                start_idx = transcript_stripped.find('{')
+                if start_idx != -1:
+                    brace_count = 0
+                    end_idx = start_idx
+                    for i in range(start_idx, len(transcript_stripped)):
+                        if transcript_stripped[i] == '{':
+                            brace_count += 1
+                        elif transcript_stripped[i] == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                end_idx = i
+                                break
+                    
+                    if end_idx > start_idx:
+                        json_str = transcript_stripped[start_idx:end_idx + 1]
+                        try:
+                            data = json.loads(json_str)
+                            logger.info("Successfully extracted JSON from transcript using balanced brace method")
+                        except json.JSONDecodeError as e:
+                            logger.warning(f"Found JSON-like content but it's not valid JSON: {str(e)}, falling back to markdown conversion")
+                            data = generator._convert_markdown_to_structured(pdf_request.transcript)
+                    else:
+                        logger.warning("Could not find matching closing brace for JSON object")
+                        data = generator._convert_markdown_to_structured(pdf_request.transcript)
                 else:
-                    raise ValueError("Could not parse structured JSON from transcript")
+                    # No JSON found, convert markdown to structured format
+                    logger.info("No JSON found in transcript, converting from markdown format")
+                    data = generator._convert_markdown_to_structured(pdf_request.transcript)
         else:
             # Legacy markdown support
             data = generator._convert_markdown_to_structured(pdf_request.transcript)

@@ -344,6 +344,19 @@
     <p>{{ data.sections.sensory_examination }}</p>
     {% endif %}
 
+    <!-- Postural and Gait Analysis -->
+    {% if data.postural_and_gait_analysis %}
+    <h4>Postural and Gait Analysis</h4>
+    <div style="margin-left: 20px; margin-bottom: 15px;">
+        {% if data.postural_and_gait_analysis.posture_general %}
+        <p style="margin-bottom: 8px;"><strong style="color: #333;">Posture General:</strong> <span style="color: #555;">{{ data.postural_and_gait_analysis.posture_general }}</span></p>
+        {% endif %}
+        {% if data.postural_and_gait_analysis.gait_analysis %}
+        <p style="margin-bottom: 8px;"><strong style="color: #333;">Gait Analysis:</strong> <span style="color: #555;">{{ data.postural_and_gait_analysis.gait_analysis }}</span></p>
+        {% endif %}
+    </div>
+    {% endif %}
+
     <!-- Diagnostic Imaging Review -->
     {% if data.sections.diagnostic_imaging_review %}
     <h4>Diagnostic Imaging Review</h4>

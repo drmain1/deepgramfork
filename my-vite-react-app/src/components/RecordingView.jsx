@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/FirebaseAuthContext';
 import { useRecordings } from '../contexts/RecordingsContext';
 import PreviousFindingsEnhanced from './PreviousFindingsEnhanced';
 import useTranscriptionSessionStore from '../stores/transcriptionSessionStore';
+import usePatientsStore from '../stores/patientsStore';
 import { useTranscriptionWebSocket } from '../hooks/useTranscriptionWebSocket';
 import { useAudioRecording } from '../hooks/useAudioRecording';
 import { 
@@ -52,7 +53,7 @@ function RecordingView({
     selectedProfileId,
     isMultilingual,
     targetLanguage,
-    selectedPatient,
+    selectedPatientId,
     isDictationMode,
     dateOfService,
     evaluationType,
@@ -64,6 +65,10 @@ function RecordingView({
     setShowPreviousFindingsSidebar,
     recordingStartTime
   } = useTranscriptionSessionStore();
+  
+  // Get the patient object from the patients store
+  const { getPatientById } = usePatientsStore();
+  const selectedPatient = selectedPatientId ? getPatientById(selectedPatientId) : null;
   const { user, getToken } = useAuth();
   const { startPendingRecording, updateRecording, removeRecording, fetchUserRecordings, selectRecording } = useRecordings();
 
