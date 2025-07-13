@@ -92,15 +92,14 @@ function SetupView({ userSettings, settingsLoading, error, onStartEncounter }) {
         const evaluation = await response.json();
         console.log('Initial evaluation response:', evaluation);
         console.log('Positive findings:', evaluation.positive_findings);
-        console.log('Positive findings markdown:', evaluation.positive_findings_markdown);
+        // Note: Backend now only returns JSON findings, markdown is generated client-side
         setPreviousEvaluationId(evaluation.id);
         
         // Extract findings if not already done
         if (evaluation.positive_findings && Object.keys(evaluation.positive_findings).length > 0) {
           // Check if we need to re-extract due to old format
           const needsReExtraction = evaluation.positive_findings.raw_findings && 
-                                  !evaluation.positive_findings.pain_findings &&
-                                  !evaluation.positive_findings_markdown;
+                                  !evaluation.positive_findings.pain_findings;
           
           if (needsReExtraction) {
             console.log('Old format detected, triggering re-extraction');
@@ -116,32 +115,20 @@ function SetupView({ userSettings, settingsLoading, error, onStartEncounter }) {
               const extractResult = await extractResponse.json();
               console.log('Extract response:', extractResult);
               if (extractResult.success && extractResult.findings) {
-                // Check if markdown has actual content
-                const hasValidMarkdown = extractResult.findings_markdown && extractResult.findings_markdown.trim().length > 0;
                 setPreviousFindings({
                   ...extractResult.findings,
-                  date: evaluation.date || evaluation.created_at,
-                  _markdown: hasValidMarkdown ? extractResult.findings_markdown : null
+                  date: evaluation.date || evaluation.created_at
                 });
               }
             }
           } else {
             console.log('Setting previous findings from evaluation:', evaluation.positive_findings);
-            console.log('Findings markdown available:', !!evaluation.positive_findings_markdown);
-            console.log('Findings markdown content:', evaluation.positive_findings_markdown);
-            
-            // Check if markdown is empty or just whitespace
-            const markdownContent = evaluation.positive_findings_markdown;
-            const hasValidMarkdown = markdownContent && markdownContent.trim().length > 0;
             
             const findingsToSet = {
               ...evaluation.positive_findings,
-              date: evaluation.date || evaluation.created_at,
-              // Only include markdown if it has actual content
-              _markdown: hasValidMarkdown ? markdownContent : null
+              date: evaluation.date || evaluation.created_at
             };
             console.log('Final findings object being set:', findingsToSet);
-            console.log('Has valid markdown:', hasValidMarkdown);
             setPreviousFindings(findingsToSet);
           }
         } else {
@@ -158,13 +145,9 @@ function SetupView({ userSettings, settingsLoading, error, onStartEncounter }) {
             const extractResult = await extractResponse.json();
             
             if (extractResult.success && extractResult.findings) {
-              // Check if markdown has actual content
-              const hasValidMarkdown = extractResult.findings_markdown && extractResult.findings_markdown.trim().length > 0;
               setPreviousFindings({
                 ...extractResult.findings,
-                date: evaluation.date || evaluation.created_at,
-                // Include markdown version if available and not empty
-                _markdown: hasValidMarkdown ? extractResult.findings_markdown : null
+                date: evaluation.date || evaluation.created_at
               });
             } else {
               alert('Failed to extract findings from the previous evaluation');
