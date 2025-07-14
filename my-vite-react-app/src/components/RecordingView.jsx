@@ -81,6 +81,11 @@ function RecordingView({
   const [currentProfileId, setCurrentProfileId] = useState(resumeData?.profileId || selectedProfileId);
   const [showCloseConfirmation, setShowCloseConfirmation] = useState(false);
   const [error, setError] = useState(null);
+  
+  // Debug: Log when showCloseConfirmation changes
+  useEffect(() => {
+    console.log('showCloseConfirmation changed to:', showCloseConfirmation);
+  }, [showCloseConfirmation]);
 
   // Use custom hooks
   const { 
@@ -164,6 +169,7 @@ function RecordingView({
       setCurrentInterimTranscript('');
     } else if (text.startsWith('SessionID: ')) {
       const id = text.substring('SessionID: '.length);
+      console.log('Setting sessionId from WebSocket:', id);
       setSessionId(id);
       setError('');
     } else if (text.startsWith('Error: ')) {
@@ -399,11 +405,20 @@ function RecordingView({
   };
 
   const handleCloseSession = () => {
+    console.log('handleCloseSession called', {
+      sessionId,
+      isSessionSaved,
+      hasTranscript: !!combinedTranscript.trim(),
+      transcriptLength: combinedTranscript.length
+    });
+    
     // If there's unsaved content, show confirmation dialog
     if (sessionId && !isSessionSaved && combinedTranscript.trim()) {
+      console.log('Setting showCloseConfirmation to true');
       setShowCloseConfirmation(true);
     } else {
       // No unsaved content, close immediately
+      console.log('No unsaved content, closing immediately');
       if (isRecording) {
         stopRecording();
       }
@@ -619,12 +634,29 @@ function RecordingView({
         </div>
       </div>
 
+      {/* Debug: Show dialog state */}
+      {showCloseConfirmation && (
+        <div style={{ 
+          position: 'fixed', 
+          top: 10, 
+          right: 10, 
+          background: 'red', 
+          color: 'white', 
+          padding: '10px',
+          zIndex: 9999 
+        }}>
+          Dialog should be visible!
+        </div>
+      )}
+
       {/* Close Confirmation Dialog */}
       <Dialog
         open={showCloseConfirmation}
         onClose={() => setShowCloseConfirmation(false)}
         aria-labelledby="close-confirmation-dialog-title"
         aria-describedby="close-confirmation-dialog-description"
+        sx={{ zIndex: 9999 }}
+        disablePortal={false}
       >
         <DialogTitle id="close-confirmation-dialog-title">
           Unsaved Recording
