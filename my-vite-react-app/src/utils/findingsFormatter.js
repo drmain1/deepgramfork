@@ -3,33 +3,6 @@
  * Maintains data structure while improving display readability
  */
 
-/**
- * Helper function to detect if a string is likely markdown or JSON
- * @param {string} str - String to check
- * @returns {boolean} - True if likely markdown, false if likely JSON
- */
-export const isLikelyMarkdown = (str) => {
-  if (!str || typeof str !== 'string') return false;
-  
-  const trimmed = str.trim();
-  
-  // If it starts with JSON indicators, it's not markdown
-  if (trimmed.startsWith('{') || trimmed.startsWith('[')) return false;
-  
-  // Check for markdown indicators
-  const markdownIndicators = [
-    /^#{1,6}\s/m,  // Headers
-    /\*\*/,         // Bold
-    /\*/,           // Italic
-    /^-\s/m,        // Bullet lists
-    /^\d+\.\s/m,    // Numbered lists
-    /\[.*\]\(.*\)/, // Links
-    /^>/m,          // Blockquotes
-    /\|.*\|/        // Tables
-  ];
-  
-  return markdownIndicators.some(pattern => pattern.test(trimmed));
-};
 
 /**
  * Convert JSON findings to markdown format for display
@@ -42,6 +15,12 @@ export const convertFindingsToMarkdown = (findings) => {
     return '### No Previous Findings Available\n\nThe transcript may need to be processed for findings extraction.';
   }
 
+  // Check if findings contains positive_findings_markdown field (new format from extraction_prompts_simple.py)
+  if (findings.positive_findings_markdown && typeof findings.positive_findings_markdown === 'string') {
+    console.log('Found positive_findings_markdown field, returning directly');
+    return findings.positive_findings_markdown;
+  }
+  
   // Check if findings contains raw_findings field with JSON string
   if (findings.raw_findings && typeof findings.raw_findings === 'string') {
     console.log('Found raw_findings field, attempting to parse JSON');
@@ -63,6 +42,15 @@ export const convertFindingsToMarkdown = (findings) => {
       console.error('Failed to parse raw_findings JSON:', e);
       // Fall through to regular processing
     }
+  }
+
+  // Check if this is the new simple JSON format (from extraction_prompts_simple.py)
+  if (findings.outcome_assessments !== undefined || findings.physical_examination_narrative !== undefined ||
+      findings.range_of_motion !== undefined || findings.orthopedic_tests !== undefined ||
+      findings.motor_exam !== undefined || findings.reflex_exam !== undefined || 
+      findings.sensory_exam !== undefined) {
+    console.log('Detected new simple JSON format, using convertSimpleJsonToMarkdown');
+    return convertSimpleJsonToMarkdown(findings);
   }
 
   // Check if this is the enhanced format with arrays of findings
@@ -262,6 +250,129 @@ export const convertFindingsToMarkdown = (findings) => {
   const trimmedMarkdown = markdown.trim();
   return trimmedMarkdown || 'No clinical findings data available to display.';
 };
+
+/**
+ * Convert new simple JSON format to markdown with abnormal findings only
+ * @param {Object} findings - Simple JSON findings from extraction_prompts_simple.py
+ * @returns {string} Markdown formatted abnormal findings
+ */
+function convertSimpleJsonToMarkdown(findings) {
+  console.log('convertSimpleJsonToMarkdown called with:', findings);
+  let markdown = '### Clinical Baseline Summary\n\n';
+  let hasContent = false;
+  const abnormals = [];
+
+  // 1. Check Outcome Assessments
+  if (findings.outcome_assessments && Array.isArray(findings.outcome_assessments)) {
+    findings.outcome_assessments.forEach(assessment => {
+      if (assessment.tool_name && assessment.score) {
+        abnormals.push(`**${assessment.tool_name}:** ${assessment.score}`);
+        hasContent = true;
+      }
+    });
+  }
+
+  // 2. Check Physical Examination Narrative
+  if (findings.physical_examination_narrative) {
+    if (findings.physical_examination_narrative.palpation_findings) {
+      abnormals.push(`**Palpation:** ${findings.physical_examination_narrative.palpation_findings}`);
+      hasContent = true;
+    }
+    if (findings.physical_examination_narrative.posture_and_gait) {
+      abnormals.push(`**Posture/Gait:** ${findings.physical_examination_narrative.posture_and_gait}`);
+      hasContent = true;
+    }
+  }
+
+  // 3. Check Range of Motion
+  if (findings.range_of_motion && Array.isArray(findings.range_of_motion)) {
+    findings.range_of_motion.forEach(rom => {
+      if (rom.pain_on_motion || 
+          (rom.status && (rom.status.toLowerCase().includes('restricted') || rom.status.toLowerCase().includes('limited')))) {
+        const painStatus = rom.pain_on_motion ? 'painful' : 'not painful';
+        abnormals.push(`**Range of Motion:** ${rom.body_part} is ${rom.status} (${painStatus})`);
+        hasContent = true;
+      }
+    });
+  }
+
+  // 4. Check Orthopedic Tests
+  if (findings.orthopedic_tests && Array.isArray(findings.orthopedic_tests)) {
+    findings.orthopedic_tests.forEach(test => {
+      if (test.result && test.result.toLowerCase() === 'positive') {
+        abnormals.push(`**Orthopedic Test:** ${test.test_name} - Positive`);
+        hasContent = true;
+      }
+    });
+  }
+
+  // 5. Check Motor Exam
+  if (findings.motor_exam) {
+    ['upper_extremity', 'lower_extremity'].forEach(category => {
+      if (findings.motor_exam[category] && Array.isArray(findings.motor_exam[category])) {
+        findings.motor_exam[category].forEach(muscle_test => {
+          const muscle = muscle_test.muscle;
+          // Check Right Side
+          if (muscle_test.right && muscle_test.right !== '5/5' && muscle_test.right !== 'Normal') {
+            abnormals.push(`**Motor:** ${muscle} (Right) strength is ${muscle_test.right}`);
+            hasContent = true;
+          }
+          // Check Left Side
+          if (muscle_test.left && muscle_test.left !== '5/5' && muscle_test.left !== 'Normal') {
+            abnormals.push(`**Motor:** ${muscle} (Left) strength is ${muscle_test.left}`);
+            hasContent = true;
+          }
+        });
+      }
+    });
+  }
+
+  // 6. Check Reflexes (abnormal is anything other than '2+' or 'Normal')
+  if (findings.reflex_exam) {
+    if (findings.reflex_exam.deep_tendon && Array.isArray(findings.reflex_exam.deep_tendon)) {
+      findings.reflex_exam.deep_tendon.forEach(reflex_test => {
+        const reflex = reflex_test.reflex;
+        if (reflex_test.right && reflex_test.right !== '2+' && reflex_test.right !== 'Normal') {
+          abnormals.push(`**Reflex:** ${reflex} (Right) is ${reflex_test.right}`);
+          hasContent = true;
+        }
+        if (reflex_test.left && reflex_test.left !== '2+' && reflex_test.left !== 'Normal') {
+          abnormals.push(`**Reflex:** ${reflex} (Left) is ${reflex_test.left}`);
+          hasContent = true;
+        }
+      });
+    }
+    if (findings.reflex_exam.pathological && Array.isArray(findings.reflex_exam.pathological)) {
+      findings.reflex_exam.pathological.forEach(reflex_test => {
+        const reflex = reflex_test.reflex;
+        if (reflex_test.right && reflex_test.right.toLowerCase() !== 'negative') {
+          abnormals.push(`**Pathological Reflex:** ${reflex} (Right) is ${reflex_test.right}`);
+          hasContent = true;
+        }
+        if (reflex_test.left && reflex_test.left.toLowerCase() !== 'negative') {
+          abnormals.push(`**Pathological Reflex:** ${reflex} (Left) is ${reflex_test.left}`);
+          hasContent = true;
+        }
+      });
+    }
+  }
+
+  // 7. Check Sensory Exam
+  if (findings.sensory_exam && findings.sensory_exam.findings && findings.sensory_exam.findings.trim()) {
+    abnormals.push(`**Sensory:** ${findings.sensory_exam.findings}`);
+    hasContent = true;
+  }
+
+  // Build the markdown
+  if (abnormals.length > 0) {
+    markdown += '#### Positive Findings\n';
+    abnormals.forEach(finding => {
+      markdown += `- ${finding}\n`;
+    });
+  }
+
+  return hasContent ? markdown.trim() : '### No abnormal findings detected\n\nAll tests and measurements are within normal limits.';
+}
 
 /**
  * Convert simple format findings (from enhanced extraction) to markdown

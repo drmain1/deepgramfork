@@ -1,8 +1,8 @@
 # Re-evaluation Functionality Documentation
 
-*Last Updated: July 8, 2025*
+*Last Updated: January 13, 2025*
 
-## Current Status (July 8, 2025)
+## Current Status (January 13, 2025)
 
 ✅ **FULLY FUNCTIONAL** - The re-evaluation system is working end-to-end with the following capabilities:
 
@@ -31,6 +31,14 @@
    - Updated re-evaluation formatting for chief complaints, outcome assessments, and physical findings
    - Added comprehensive examples and edge cases
    - Fixed format inconsistencies causing PDF rendering issues
+8. **Previous Findings Display Fix** (January 13, 2025):
+   - Fixed issue where Previous Findings window wasn't displaying content
+   - Added robust JSON parsing in frontend to handle multiple data formats:
+     - Direct JSON objects
+     - JSON strings requiring parsing
+     - JSON embedded within markdown code blocks
+   - Updated `extraction_prompts_simple.py` to output both markdown summary and JSON
+   - Maintained simplified prompt approach while ensuring UI displays properly
 
 ### Next Steps for Testing:
 1. Test complete re-evaluation workflow from patient selection to save
@@ -262,6 +270,11 @@ main.py (FastAPI Application)
 │   ├── ENHANCED_CHIROPRACTIC_PROMPT - Specialty-specific prompt
 │   └── get_enhanced_extraction_prompt() - Returns appropriate prompt
 │
+├── extraction_prompts_simple.py (Updated January 13, 2025)
+│   ├── SIMPLE_INITIAL_EVALUATION_PROMPT - Simplified prompt with dual output
+│   ├── Outputs both markdown summary (abnormal findings only) and complete JSON
+│   └── get_simple_extraction_prompt() - Returns the simplified prompt
+│
 ├── extraction_prompts.py
 │   ├── INITIAL_EVALUATION_FINDINGS_PROMPT - Legacy prompt (NOT USED)
 │   ├── get_extraction_prompt() - Imported but not called
@@ -275,6 +288,58 @@ main.py (FastAPI Application)
 ```
 
 ## Data Models
+
+### Findings Data Structure (extraction_prompts_simple.py)
+
+The simplified extraction prompt outputs findings in the following JSON structure:
+
+```json
+{
+  "outcome_assessments": [
+    {
+      "tool_name": "string | e.g., Neck Disability Index",
+      "score": "string | e.g., 31/50 or 62%"
+    }
+  ] | null,
+  "physical_examination_narrative": {
+    "palpation_findings": "string | Paragraph describing tenderness, muscle tone, etc.",
+    "posture_and_gait": "string | Paragraph describing postural and gait analysis."
+  } | null,
+  "range_of_motion": [
+    {
+      "body_part": "string | e.g., Cervical Flexion",
+      "status": "string | e.g., Full, Restricted, Limited to 40 degrees",
+      "pain_on_motion": "boolean"
+    }
+  ] | null,
+  "orthopedic_tests": [
+    {
+      "test_name": "string | e.g., Kemp's Test (Right)",
+      "result": "string | Positive, Negative"
+    }
+  ] | null,
+  "motor_exam": {
+    "upper_extremity": [
+      {"muscle": "DELTOID", "right": "string", "left": "string"},
+      {"muscle": "BICEPS", "right": "string", "left": "string"}
+    ],
+    "lower_extremity": [
+      {"muscle": "QUAD", "right": "string", "left": "string"}
+    ]
+  } | null,
+  "reflex_exam": {
+    "deep_tendon": [
+      {"reflex": "PATELLAR", "right": "string", "left": "string"}
+    ],
+    "pathological": [
+      {"reflex": "BABINSKI", "right": "string", "left": "string"}
+    ]
+  } | null,
+  "sensory_exam": {
+    "findings": "string | Paragraph describing any sensory deficits."
+  } | null
+}
+```
 
 ### Firestore Document Structure
 
@@ -502,6 +567,26 @@ if (needsReExtraction) {
       - Added explicit "DO NOT" instructions for each category
       - Focused on objective, measurable findings only
     - **Note**: The system uses `extraction_prompts_enhanced.py` (not `extraction_prompts.py`)
+
+11. **Previous Findings Window Display Issue (Fixed January 13, 2025)**
+    - **Issue**: Previous Findings window showed empty despite data being loaded
+    - **Root Causes**: 
+      - Backend was returning JSON-only output after simplifying `extraction_prompts_simple.py`
+      - Frontend expected either markdown or properly formatted JSON
+      - JSON data sometimes stored as string requiring parsing
+    - **Fixes**:
+      - **Frontend (SetupView.jsx)**: Added robust JSON parsing that handles:
+        - Direct JSON objects
+        - JSON strings needing parsing
+        - JSON embedded in markdown code blocks
+        - Fallback to wrap unparseable content in `raw_findings` field
+      - **Backend (extraction_prompts_simple.py)**: Updated to output both:
+        - Markdown summary of abnormal findings for display
+        - Complete JSON structure for data processing
+      - **Frontend (findingsFormatter.js)**: Already had logic to handle multiple formats
+    - **Files Modified**: 
+      - `/my-vite-react-app/src/components/SetupView.jsx`
+      - `/backend/extraction_prompts_simple.py`
 
 ## Future Enhancements
 

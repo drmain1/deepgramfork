@@ -161,6 +161,29 @@ B. Section-Specific Instructions:
     - Knee: Lachman's, Anterior/Posterior Drawer, McMurray's, Apley's Compression/Distraction, Valgus/Varus Stress Test.
     - Ankle/Foot: Anterior Drawer (Ankle), Talar Tilt, Thompson's Test.
 
+C. Data Comparison and Edge Case Logic:
+This section provides critical logic for comparing the current re-evaluation against the provided initial examination data, especially when the initial data is incomplete for a specific test. These rules apply to all comparative fields (ROM, Orthopedic Tests, etc.).
+
+1.  **Test Mentioned in Both:**
+    -   **IF** a test is present in BOTH the initial data AND the current re-evaluation dictation,
+    -   **THEN** you MUST use the standard comparison format: \`[Test Name]: Previously [initial finding] | currently [current finding]\`.
+
+2.  **New Finding (The Edge Case):**
+    -   **IF** a test is mentioned in the CURRENT re-evaluation dictation but is NOT present in the initial data,
+    -   **THEN** you MUST use the format: \`[Test Name]: Previously not documented | currently [current finding]\`.
+    -   **Example:** The initial data does not mention Cervical Extension ROM. The current dictation says "Cervical extension is now full and painless." The output must be: "Cervical Extension: Previously not documented | currently Full and painless".
+
+3.  **Carry-Forward Finding:**
+    -   **IF** a test was documented as ABNORMAL in the initial data but is NOT mentioned in the current re-evaluation dictation,
+    -   **THEN** you MUST assume the finding is unchanged and carry it forward. Use the format: \`[Test Name]: Previously [initial abnormal finding] | currently [initial abnormal finding]\`. This prevents the loss of significant clinical data.
+    -   **Example:** Initial data shows "Cervical Compression: Positive". The current dictation does not mention this test. The output must be: "Cervical Compression: Previously Positive | currently Positive".
+
+4.  **Omission of Unchanged Normal Findings:**
+    -   **IF** a test was documented as NORMAL (e.g., "Negative", "2+/2+", "Full") in the initial data and is NOT mentioned in the current re-evaluation dictation,
+    -   **THEN** you MAY omit it from the final re-evaluation report to reduce clutter.
+
+
+
 - diagnostic_imaging_review: Document any NEW imaging or comparison to previous imaging. Format: "MRI cervical spine dated [date]: Previously showed [findings] | currently shows [findings]". If discussing same imaging as initial eval, note any new interpretations or relevance to current condition.
 
 - assessment_diagnosis: List diagnoses with ICD-10 codes and improvement status. Format: "- [Diagnosis] ([ICD-10 code]) - [status]".
@@ -208,10 +231,10 @@ Cranial Nerve Examination Specific Rules:
 - If doctor says "cranial nerves 2-11 intact", set those nerves to "intact" and others to "Not tested"
 - Common findings: "intact", "diminished", "absent", "weakness noted", "Not tested"
 
-- postural_and_gait_analysis: This section must be an object with two keys: \`posture_general\` and \`gait_analysis\`.
-  - If the entire postural and gait analysis was not performed, the \`postural_and_gait_analysis\` object should be \`null\`.
-  - **\`posture_general\`**: Document all static postural findings here as a comma-separated list (e.g., "Forward head carriage, posterior pelvic tilt"). If explicitly normal, state "Unremarkable". If not mentioned, this field should be \`null\`.
-  - **\`gait_analysis\`**: Document all dynamic gait findings here as a comma-separated list (e.g., "Antalgic gait"). If explicitly normal, state "Unremarkable". If not mentioned, this field should be \`null\`.
+- postural_and_gait_analysis: This section must be an object with two keys: \\\`posture_general\\\` and \\\`gait_analysis\\\`.
+  - If the entire postural and gait analysis was not performed, the \\\`postural_and_gait_analysis\\\` object should be \\\`null\\\`.
+  - **\\\`posture_general\\\`**: Document all static postural findings here as a comma-separated list (e.g., "Forward head carriage, posterior pelvic tilt"). If explicitly normal, state "Unremarkable". If not mentioned, this field should be \\\`null\\\`.
+  - **\\\`gait_analysis\\\`**: Document all dynamic gait findings here as a comma-separated list (e.g., "Antalgic gait"). If explicitly normal, state "Unremarkable". If not mentioned, this field should be \\\`null\\\`.
 
 
 C. Critical Formatting Rules:

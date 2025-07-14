@@ -938,11 +938,11 @@ async def extract_transcript_findings(
         user_settings = await firestore_client.get_user_settings(current_user_id)
         specialty = user_settings.get('medicalSpecialty', 'general') if user_settings else 'general'
         
-        # Use simplified extraction prompt that generates only JSON
+        # Use simplified extraction prompt that generates markdown summary + JSON
         logger.info(f"Extracting findings for transcript {transcript_id}")
         logger.info(f"User specialty: {specialty}")
         extraction_prompt = get_simple_extraction_prompt(specialty=specialty)
-        logger.info(f"Using extraction prompt type: simplified (JSON only)")
+        logger.info(f"Using extraction prompt type: simplified (markdown + JSON)")
         logger.info(f"Extraction prompt length: {len(extraction_prompt)} characters")
         
         # Run the synchronous function in an executor
@@ -971,14 +971,46 @@ async def extract_transcript_findings(
                 output = result['polished_transcript']
                 findings = {}
                 
-                # Try to parse the output as JSON
+                # Try to parse the output which now contains both markdown and JSON
                 try:
-                    findings = json.loads(output)
-                    logger.info(f"Successfully parsed JSON findings: {list(findings.keys())}")
+                    # Extract markdown section first
+                    markdown_content = ""
+                    json_content = ""
+                    
+                    # Check if output contains markdown code blocks
+                    if "```markdown" in output and "```json" in output:
+                        # Extract markdown section
+                        markdown_start = output.find("```markdown") + 11
+                        markdown_end = output.find("```", markdown_start)
+                        if markdown_end > markdown_start:
+                            markdown_content = output[markdown_start:markdown_end].strip()
+                            logger.info(f"Extracted markdown content length: {len(markdown_content)}")
+                        
+                        # Extract JSON section
+                        json_start = output.find("```json") + 7
+                        json_end = output.find("```", json_start)
+                        if json_end > json_start:
+                            json_content = output[json_start:json_end].strip()
+                            logger.info(f"Extracted JSON content length: {len(json_content)}")
+                    else:
+                        # Fallback: assume entire output is JSON
+                        json_content = output
+                    
+                    # Parse the JSON content
+                    if json_content:
+                        findings = json.loads(json_content)
+                        logger.info(f"Successfully parsed JSON findings: {list(findings.keys())}")
+                        
+                        # Add markdown content to findings if available
+                        if markdown_content:
+                            findings['positive_findings_markdown'] = markdown_content
+                            logger.info("Added markdown content to findings")
+                    else:
+                        raise json.JSONDecodeError("No JSON content found", output, 0)
                     
                     # Log the ROM findings format for debugging
-                    if 'range_of_motion_findings' in findings:
-                        rom_findings = findings['range_of_motion_findings']
+                    if 'range_of_motion' in findings:
+                        rom_findings = findings['range_of_motion']
                         logger.info(f"ROM findings type: {type(rom_findings)}")
                         if isinstance(rom_findings, list) and len(rom_findings) > 0:
                             logger.info(f"ROM findings count: {len(rom_findings)}")
@@ -989,10 +1021,10 @@ async def extract_transcript_findings(
                     logger.error(f"Failed to parse JSON: {e}")
                     logger.error(f"Raw output preview: {output[:500]}...")
                     
-                    # If all else fails, create basic findings structure
+                    # If all else fails, create basic findings structure with raw output
                     findings = {
-                        "pain_findings": ["Unable to parse findings - check raw transcript"],
-                        "raw_output": output[:1000]
+                        "error": "Failed to parse extraction output",
+                        "raw_output": output
                     }
                     logger.error("Fallback: created error findings structure")
                 

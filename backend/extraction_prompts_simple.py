@@ -1,19 +1,35 @@
 """
-Simplified extraction prompts that generate only JSON output.
-This reduces prompt complexity and token usage while maintaining data structure.
+Simplified extraction prompts that generate both markdown summary and JSON output.
+This provides a concise abnormal findings summary for display while maintaining 
+complete data structure in JSON for system processing.
 """
 
-# Simplified initial evaluation findings extraction - JSON only
+# Simplified initial evaluation findings extraction - JSON with markdown summary
 SIMPLE_INITIAL_EVALUATION_PROMPT = """
-JSON object that can be used for machine processing.
+Extract data from the provided JSON input and output BOTH:
+1. A markdown summary of positive/abnormal findings for display
+2. A JSON object with all test data for machine processing
 
 CRITICAL DIRECTIVES:
-1.  Your output MUST be a single, raw JSON object and nothing else.
-2.  Extract ALL tested values, both normal and abnormal, for all fields. Do not omit normal findings.
-3.  If a section was not mentioned, its value should be null or an empty array [] as appropriate for the schema.
-4.  Stick strictly to the grading formats provided in the schema examples.
+1. The markdown section should include ONLY positive/abnormal findings (no normal findings)
+2. The JSON section should include ALL tested values, both normal and abnormal
+3. If a section was not mentioned, its value should be null or an empty array [] as appropriate
+4. Format your response EXACTLY as shown below
 
-Return ONLY a JSON object that strictly adheres to this schema:
+OUTPUT FORMAT:
+
+```markdown
+### Clinical Baseline Summary
+
+#### Positive Findings
+- [List each abnormal finding concisely]
+- [Include pain levels, restrictions, positive tests, etc.]
+- [Use clinical terminology]
+
+*Initial evaluation performed on [Date if available]*
+```
+
+```json
 {
   "outcome_assessments": [
     {
@@ -59,4 +75,21 @@ Return ONLY a JSON object that strictly adheres to this schema:
     "findings": "string | Paragraph describing any sensory deficits. e.g., 'Decreased sensation to light touch in the L5 dermatome on the left.'"
   } | null
 }
+```
 """
+
+# Function to get the simple extraction prompt
+def get_simple_extraction_prompt(specialty: str = "general", evaluation_type: str = "initial") -> str:
+    """
+    Get the simple extraction prompt that outputs both markdown summary and JSON.
+    
+    Args:
+        specialty: Medical specialty (currently unused - returns same prompt for all)
+        evaluation_type: Type of evaluation (currently unused - returns same prompt for all)
+    
+    Returns:
+        Simple extraction prompt string that produces markdown summary + JSON output
+    """
+    # For now, return the same prompt regardless of parameters
+    # This simplified version outputs both markdown summary and JSON
+    return SIMPLE_INITIAL_EVALUATION_PROMPT

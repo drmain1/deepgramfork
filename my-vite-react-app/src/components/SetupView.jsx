@@ -96,40 +96,72 @@ function SetupView({ userSettings, settingsLoading, error, onStartEncounter }) {
         setPreviousEvaluationId(evaluation.id);
         
         // Extract findings if not already done
-        if (evaluation.positive_findings && Object.keys(evaluation.positive_findings).length > 0) {
-          // Check if we need to re-extract due to old format
-          const needsReExtraction = evaluation.positive_findings.raw_findings && 
-                                  !evaluation.positive_findings.pain_findings;
+        if (evaluation.positive_findings) {
+          let findings = evaluation.positive_findings;
           
-          if (needsReExtraction) {
-            console.log('Old format detected, triggering re-extraction');
-            // Trigger re-extraction for old format
-            const extractResponse = await fetch(`${API_BASE_URL}/api/v1/transcripts/${evaluation.id}/extract-findings`, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${token}`
-              }
-            });
-            
-            if (extractResponse.ok) {
-              const extractResult = await extractResponse.json();
-              console.log('Extract response:', extractResult);
-              if (extractResult.success && extractResult.findings) {
-                setPreviousFindings({
-                  ...extractResult.findings,
-                  date: evaluation.date || evaluation.created_at
-                });
+          // Check if positive_findings is a string that needs parsing
+          if (typeof findings === 'string') {
+            console.log('positive_findings is a string, attempting to parse');
+            try {
+              // First try to parse as JSON
+              findings = JSON.parse(findings);
+              console.log('Successfully parsed findings as JSON:', findings);
+            } catch (e) {
+              console.error('Failed to parse positive_findings as JSON:', e);
+              // If it's not valid JSON, it might contain JSON within markdown code blocks
+              const jsonMatch = findings.match(/```json\n([\s\S]*?)\n```/);
+              if (jsonMatch) {
+                try {
+                  findings = JSON.parse(jsonMatch[1]);
+                  console.log('Successfully extracted and parsed JSON from markdown:', findings);
+                } catch (e2) {
+                  console.error('Failed to parse extracted JSON:', e2);
+                  // If all parsing fails, wrap the string in a raw_findings field
+                  findings = { raw_findings: findings };
+                }
+              } else {
+                // If no JSON found in markdown, wrap the string
+                findings = { raw_findings: findings };
               }
             }
-          } else {
-            console.log('Setting previous findings from evaluation:', evaluation.positive_findings);
+          }
+          
+          // Now check if we have valid findings
+          if (findings && typeof findings === 'object' && Object.keys(findings).length > 0) {
+            // Check if we need to re-extract due to old format
+            const needsReExtraction = findings.raw_findings && !findings.pain_findings &&
+                                    !findings.outcome_assessments && !findings.physical_examination_narrative;
             
-            const findingsToSet = {
-              ...evaluation.positive_findings,
-              date: evaluation.date || evaluation.created_at
-            };
-            console.log('Final findings object being set:', findingsToSet);
-            setPreviousFindings(findingsToSet);
+            if (needsReExtraction) {
+              console.log('Old format detected, triggering re-extraction');
+              // Trigger re-extraction for old format
+              const extractResponse = await fetch(`${API_BASE_URL}/api/v1/transcripts/${evaluation.id}/extract-findings`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${token}`
+                }
+              });
+              
+              if (extractResponse.ok) {
+                const extractResult = await extractResponse.json();
+                console.log('Extract response:', extractResult);
+                if (extractResult.success && extractResult.findings) {
+                  setPreviousFindings({
+                    ...extractResult.findings,
+                    date: evaluation.date || evaluation.created_at
+                  });
+                }
+              }
+            } else {
+              console.log('Setting previous findings from evaluation:', findings);
+              
+              const findingsToSet = {
+                ...findings,
+                date: evaluation.date || evaluation.created_at
+              };
+              console.log('Final findings object being set:', findingsToSet);
+              setPreviousFindings(findingsToSet);
+            }
           }
         } else {
           console.log('No positive_findings found, triggering extraction');
