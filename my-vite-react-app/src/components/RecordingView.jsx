@@ -81,6 +81,23 @@ function RecordingView({
   const [currentProfileId, setCurrentProfileId] = useState(resumeData?.profileId || selectedProfileId);
   const [showCloseConfirmation, setShowCloseConfirmation] = useState(false);
   const [error, setError] = useState(null);
+
+  // Use resumeData patient details if available
+  const effectivePatientDetails = resumeData?.patientDetails || patientDetails;
+  
+  // Debug logging for draft resume
+  useEffect(() => {
+    if (resumeData) {
+      console.log('[RecordingView] Resume data loaded:', {
+        sessionId: resumeData.sessionId,
+        patientDetails: resumeData.patientDetails,
+        effectivePatientDetails,
+        storePatientDetails: patientDetails,
+        savedTranscriptLength: resumeData.savedTranscript?.length || 0,
+        profileId: resumeData.profileId
+      });
+    }
+  }, [resumeData, effectivePatientDetails, patientDetails]);
   
   // Debug: Log when showCloseConfirmation changes
   useEffect(() => {
@@ -131,7 +148,7 @@ function RecordingView({
       
       if (!resumeData || !resumeData.sessionId) {
         setSessionId(backendSessionId);
-        startPendingRecording(backendSessionId, patientDetails || 'New Session');
+        startPendingRecording(backendSessionId, effectivePatientDetails || 'New Session');
       }
       setError('');
     } else if (message.type === WS_MESSAGE_TYPES.TRANSCRIPT) {
@@ -306,7 +323,7 @@ function RecordingView({
     // Update status to 'processing' immediately
     updateRecording(sessionId, { 
       status: RECORDING_STATUS.PROCESSING, 
-      name: `${patientDetails || 'New Note'}` 
+      name: `${effectivePatientDetails || 'New Note'}` 
     });
 
     setSaveStatusMessage('Generating and saving notes...');
@@ -320,7 +337,7 @@ function RecordingView({
         sessionId,
         transcript: combinedTranscript,
         location: selectedLocation,
-        patientDetails,
+        patientDetails: effectivePatientDetails,
         patientContext,
         selectedPatient,
         userSettings,
@@ -365,7 +382,7 @@ function RecordingView({
       setSaveStatusMessage('Notes generated and saved!');
       setIsSessionSaved(true);
       
-      const savedName = patientDetails || `Session ${sessionId}`;
+      const savedName = effectivePatientDetails || `Session ${sessionId}`;
       const activeProfile = userSettings.transcriptionProfiles?.find(p => p.id === currentProfileId);
       const encounterType = activeProfile ? activeProfile.name : patientContext || 'General';
       
@@ -398,7 +415,7 @@ function RecordingView({
       setSaveStatusMessage(`Error saving notes: ${error.message}`);
       updateRecording(sessionId, { 
         status: RECORDING_STATUS.FAILED, 
-        name: `Failed: ${patientDetails || 'New Note'}`,
+        name: `Failed: ${effectivePatientDetails || 'New Note'}`,
         error: error.message 
       });
     }
@@ -435,7 +452,7 @@ function RecordingView({
       updateRecording(sessionId, { 
         status: RECORDING_STATUS.DRAFT,
         transcript: combinedTranscript,
-        name: `Draft: ${patientDetails || 'Untitled Session'}`,
+        name: `Draft: ${effectivePatientDetails || 'Untitled Session'}`,
         profileId: currentProfileId,
         lastUpdated: new Date().toISOString()
       });
@@ -447,7 +464,7 @@ function RecordingView({
         await saveDraftToBackend({
           sessionId,
           transcript: combinedTranscript,
-          patientDetails,
+          patientDetails: effectivePatientDetails,
           currentProfileId,
           user,
           isDictationMode,
@@ -480,7 +497,7 @@ function RecordingView({
           <div>
             <h1 className="text-4xl font-semibold text-gray-900">Recording Session</h1>
             <p className="text-lg text-gray-500 mt-2">
-              {patientDetails || 'New Session'} {sessionId && `(${sessionId})`}
+              {effectivePatientDetails || 'New Session'} {sessionId && `(${sessionId})`}
               {resumeData && <span className="text-blue-600 ml-2">[Resumed Draft]</span>}
               {isDictationMode && dateOfService && (
                 <span className="text-purple-600 ml-2">
@@ -534,7 +551,7 @@ function RecordingView({
                       variant="contained"
                       color="primary"
                       onClick={startRecordingProcess}
-                      disabled={!patientDetails.trim()}
+                      disabled={!effectivePatientDetails?.trim()}
                       size="large"
                       fullWidth
                     >
@@ -686,7 +703,7 @@ function RecordingView({
           findings={previousFindings} 
           onClose={() => setShowPreviousFindingsSidebar(false)}
           isOpen={showPreviousFindingsSidebar}
-          patientName={patientDetails}
+          patientName={effectivePatientDetails}
         />
       )}
     </main>

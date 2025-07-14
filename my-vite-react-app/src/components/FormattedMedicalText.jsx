@@ -1,4 +1,3 @@
-import React from 'react';
 import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Divider } from '@mui/material';
 
 const FormattedMedicalText = ({ content, sx = {}, ...props }) => {
@@ -79,7 +78,14 @@ const FormattedMedicalText = ({ content, sx = {}, ...props }) => {
               key === 'assessment' || 
               key === 'plan' || 
               key === 'treatment_performed_today' ||
-              key === 'diagnostic_imaging_review') return null;
+              key === 'diagnostic_imaging_review' ||
+              key === 'assessment_diagnosis' ||
+              key === 'cervical_rom' ||
+              key === 'lumbar_rom' ||
+              key === 'cervico_thoracic' ||
+              key === 'lumbopelvic' ||
+              key === 'extremity' ||
+              key === 'outcome_assessments') return null;
           
           const sectionTitle = key
             .split('_')
@@ -460,6 +466,106 @@ const FormattedMedicalText = ({ content, sx = {}, ...props }) => {
                 </Typography>
               </Box>
             )}
+          </Box>
+        )}
+
+        {/* Assessment Diagnosis */}
+        {structuredData.sections?.assessment_diagnosis && Array.isArray(structuredData.sections.assessment_diagnosis) && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+              ASSESSMENT/DIAGNOSIS:
+            </Typography>
+            {structuredData.sections.assessment_diagnosis.map((diagnosis, idx) => (
+              <Typography key={idx} sx={{ pl: 2, mb: 0.5 }}>
+                • {diagnosis.diagnosis} - {diagnosis.icd10_code} {diagnosis.status && `(${diagnosis.status})`}
+              </Typography>
+            ))}
+          </Box>
+        )}
+
+        {/* Cervical ROM */}
+        {structuredData.sections?.cervical_rom && Array.isArray(structuredData.sections.cervical_rom) && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+              CERVICAL RANGE OF MOTION:
+            </Typography>
+            {structuredData.sections.cervical_rom.map((rom, idx) => (
+              <Typography key={idx} sx={{ pl: 2, mb: 0.5 }}>
+                • {rom.movement}: Previously {rom.previous_state} | Currently {rom.current_state}
+              </Typography>
+            ))}
+          </Box>
+        )}
+
+        {/* Lumbar ROM */}
+        {structuredData.sections?.lumbar_rom && Array.isArray(structuredData.sections.lumbar_rom) && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+              LUMBAR RANGE OF MOTION:
+            </Typography>
+            {structuredData.sections.lumbar_rom.map((rom, idx) => (
+              <Typography key={idx} sx={{ pl: 2, mb: 0.5 }}>
+                • {rom.movement}: Previously {rom.previous_state} | Currently {rom.current_state}
+              </Typography>
+            ))}
+          </Box>
+        )}
+
+        {/* Cervico-Thoracic Tests */}
+        {structuredData.sections?.cervico_thoracic && Array.isArray(structuredData.sections.cervico_thoracic) && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+              CERVICO-THORACIC ORTHOPEDIC TESTS:
+            </Typography>
+            {structuredData.sections.cervico_thoracic.map((test, idx) => (
+              <Typography key={idx} sx={{ pl: 2, mb: 0.5 }}>
+                • {test.test_name}: Previously {test.previous_result} | Currently {test.current_result}
+              </Typography>
+            ))}
+          </Box>
+        )}
+
+        {/* Lumbopelvic Tests */}
+        {structuredData.sections?.lumbopelvic && Array.isArray(structuredData.sections.lumbopelvic) && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+              LUMBOPELVIC ORTHOPEDIC TESTS:
+            </Typography>
+            {structuredData.sections.lumbopelvic.map((test, idx) => (
+              <Typography key={idx} sx={{ pl: 2, mb: 0.5 }}>
+                • {test.test_name}: Previously {test.previous_result} | Currently {test.current_result}
+              </Typography>
+            ))}
+          </Box>
+        )}
+
+        {/* Extremity Tests */}
+        {structuredData.sections?.extremity && Array.isArray(structuredData.sections.extremity) && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+              EXTREMITY ORTHOPEDIC TESTS:
+            </Typography>
+            {structuredData.sections.extremity.map((test, idx) => (
+              <Typography key={idx} sx={{ pl: 2, mb: 0.5 }}>
+                • {test.test_name}: Previously {test.previous_result} | Currently {test.current_result}
+              </Typography>
+            ))}
+          </Box>
+        )}
+
+        {/* Outcome Assessments */}
+        {structuredData.sections?.outcome_assessments && Array.isArray(structuredData.sections.outcome_assessments) && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+              OUTCOME ASSESSMENTS:
+            </Typography>
+            {structuredData.sections.outcome_assessments.map((assessment, idx) => (
+              <Typography key={idx} sx={{ pl: 2, mb: 0.5 }}>
+                • {assessment.name}: 
+                {assessment.previous_score && ` Previously ${assessment.previous_score}`}
+                {assessment.current_score && ` | Currently ${assessment.current_score}`}
+              </Typography>
+            ))}
           </Box>
         )}
 
