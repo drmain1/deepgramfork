@@ -25,6 +25,12 @@ async def generate_pdf(data: MedicalDocument, request: Request, current_user: di
         # Convert Pydantic model to dict
         data_dict = data.model_dump()
         
+        # Log the incoming data structure for re-evaluation debugging
+        logger.info("=== PDF ROUTER - generate_pdf ===")
+        logger.info(f"Evaluation type: {data_dict.get('evaluation_type', 'Not specified')}")
+        logger.info(f"Data structure keys: {list(data_dict.keys())}")
+        logger.info(f"Full data for PDF generation: {json.dumps(data_dict, indent=2)}")
+        
         # Generate PDF with WeasyPrint, passing user_id for clinic info
         pdf_bytes = await generator.generate_pdf(data_dict, user_id=user_id)
         
@@ -74,6 +80,13 @@ async def generate_pdf_from_transcript(pdf_request: PDFGenerationRequest, reques
             try:
                 # The transcript should already be in JSON format from the LLM
                 data = json.loads(pdf_request.transcript)
+                
+                # Log the parsed data for debugging
+                logger.info("=== PDF ROUTER - generate_pdf_from_transcript (structured) ===")
+                logger.info(f"Successfully parsed JSON transcript")
+                logger.info(f"Evaluation type: {data.get('evaluation_type', 'Not specified')}")
+                logger.info(f"Data structure keys: {list(data.keys()) if data else 'None'}")
+                logger.info(f"Full parsed data: {json.dumps(data, indent=2)}")
             except json.JSONDecodeError:
                 # If not JSON, try to extract JSON from the transcript
                 import re
@@ -254,11 +267,33 @@ async def generate_multi_visit_pdf(pdf_request: MultiVisitPDFRequest, request: R
     patient_name = pdf_request.patient_name
     
     try:
+        logger.info(f"Multi-visit PDF request received for patient: {patient_name}")
+        logger.debug(f"Number of visits: {len(pdf_request.visits) if pdf_request.visits else 0}")
+        
         if not pdf_request.visits:
             raise ValueError("No visits provided")
         
-        # Convert visits to dict format
-        visits_data = [visit.model_dump() for visit in pdf_request.visits]
+        # Convert visits to dict format with exclude_unset to handle optional fields
+        visits_data = []
+        for idx, visit in enumerate(pdf_request.visits):
+            try:
+                visit_dict = visit.model_dump(exclude_unset=True)
+                visits_data.append(visit_dict)
+                logger.debug(f"Visit {idx} converted successfully, type: {visit_dict.get('evaluation_type', 'unknown')}")
+                
+                # Debug cranial nerve data for initial visits
+                if visit_dict.get('evaluation_type') == 'initial' and 'cranial_nerve_examination' in visit_dict:
+                    logger.info(f"\n=== CRANIAL NERVE DEBUG - Visit {idx} ===")
+                    cns = visit_dict['cranial_nerve_examination']
+                    logger.info(f"Cranial nerve examination present: Type={type(cns)}, Length={len(cns) if isinstance(cns, list) else 'N/A'}")
+                    if isinstance(cns, list) and cns:
+                        logger.info(f"First cranial nerve: {cns[0]}")
+                        intact_count = sum(1 for item in cns if isinstance(item, dict) and item.get('finding') == 'Intact')
+                        logger.info(f"Intact count: {intact_count} out of {len(cns)} total nerves")
+                        
+            except Exception as e:
+                logger.error(f"Error converting visit {idx} to dict: {str(e)}")
+                raise
         
         # Generate PDF with WeasyPrint, passing user_id for clinic info
         pdf_bytes = await generator.generate_multi_visit_pdf(visits_data, patient_name, user_id=user_id)

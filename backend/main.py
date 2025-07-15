@@ -28,6 +28,15 @@ import json
 import tempfile
 import time
 
+# Configure logging to show INFO level logs
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()  # This ensures logs go to stdout
+    ]
+)
+
 # Set up logging
 logger = logging.getLogger(__name__)
 from fastapi import HTTPException, Path

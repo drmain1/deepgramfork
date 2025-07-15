@@ -5,7 +5,38 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Re-Evaluation Report</title>
     <style>
-        {{ css_styles }}
+        /* This can be a separate CSS file loaded by WeasyPrint or included directly */
+        body { font-family: sans-serif; font-size: 10pt; color: #333; }
+        h2 { font-size: 16pt; color: #000; border-bottom: 2px solid #333; padding-bottom: 5px; margin-top: 20px; }
+        h3 { font-size: 13pt; color: #333; margin-top: 25px; margin-bottom: 10px; border-bottom: 1px solid #ccc; padding-bottom: 3px; }
+        h4 { font-size: 11pt; color: #444; margin-top: 20px; margin-bottom: 8px; font-weight: bold; }
+        h5 { font-size: 10pt; color: #444; margin-top: 15px; margin-bottom: 5px; font-weight: bold; text-transform: uppercase; }
+        hr { border: none; border-top: 1px solid #ccc; margin: 25px 0; }
+        p, .complaint-block { margin: 0 0 10px 0; line-height: 1.4; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; page-break-inside: avoid; }
+        th, td { padding: 6px; border: 1px solid #495057; text-align: left; font-size: 9pt; vertical-align: top; color: #212529; }
+        td b { color: #000; }
+        th { background-color: #e9ecef; font-weight: bold; color: #212529; border-bottom: 2px solid #495057; }
+        .text-center { text-align: center; }
+        .clinic-header { text-align: right; margin-bottom: 20px; }
+        .patient-bar { background-color: #e9ecef; padding: 8px; border: 1px solid #495057; margin-bottom: 20px; font-size: 9pt; color: #212529; }
+        .complaint-block { margin-bottom: 15px; }
+        .complaint-current { font-size: 11pt; margin-bottom: 2px; }
+        .complaint-initial { font-size: 9pt; color: #666; margin-left: 10px; margin-top: 0; }
+        .status-icon { font-weight: bold; font-size: 12pt; }
+        .status-improved { color: #28a745; }
+        .status-worsened { color: #dc3545; }
+        .status-unchanged { color: #6c757d; }
+        .status-new { color: #17a2b8; }
+        .status-resolved { color: #007bff; }
+        .status-changed { color: #ffc107; }
+        .dashboard-item { margin-bottom: 20px; page-break-inside: avoid; }
+        .improvement-text { font-weight: bold; padding: 3px 6px; border-radius: 4px; font-size: 9pt; }
+        .progress-bar-container { background-color: #dee2e6; border: 1px solid #adb5bd; border-radius: 4px; height: 18px; margin-top: 4px; width: 100%; }
+        .progress-bar { height: 100%; border-radius: 3px; }
+        .progress-bar.previous { background-color: #6c757d; }
+        .progress-bar.current { background-color: #198754; }
+        .legend { margin-top: 10px; font-size: 8pt; color: #6c757d; }
     </style>
 </head>
 <body>
@@ -13,31 +44,23 @@
     <!-- Clinic Header -->
     {% if data.clinic_info %}
     <div class="clinic-header">
-        {% if data.clinic_info.lines %}
-            <!-- Display each line of office information as entered by user -->
-            {% for line in data.clinic_info.lines %}
-            <div class="clinic-info-line" style="font-size: {% if loop.first %}18pt{% else %}10pt{% endif %}; font-weight: {% if loop.first %}bold{% else %}normal{% endif %}; color: {% if loop.first %}#333{% else %}#666{% endif %}; margin-top: {% if loop.first %}0{% else %}5px{% endif %};">
-                {{ line }}
-            </div>
+        <h1 style="margin: 0; font-size: 18pt; color: #333;">{{ data.clinic_info.name or '' }}</h1>
+        {% if data.clinic_info.address %}
+            {% set address_lines = data.clinic_info.address.replace('\\n', '\n').split('\n') %}
+            {% for line in address_lines %}
+                {% if line.strip() %}
+                    <div style="font-size: 10pt; color: #666; margin-top: 2px;">{{ line.strip() }}</div>
+                {% endif %}
             {% endfor %}
-        {% else %}
-            <!-- Fallback to individual fields for compatibility -->
-            {% if data.clinic_info.name %}
-            <h1 style="margin: 0; font-size: 18pt; color: #333;">{{ data.clinic_info.name }}</h1>
-            {% endif %}
-            {% if data.clinic_info.address %}
-            <div class="clinic-address" style="font-size: 10pt; color: #666; margin-top: 5px;">{{ data.clinic_info.address }}</div>
-            {% endif %}
-            {% if data.clinic_info.phone or data.clinic_info.fax %}
-            <div class="clinic-contact" style="font-size: 10pt; color: #666; margin-top: 2px;">
-                {% if data.clinic_info.phone %}Tel: {{ data.clinic_info.phone }}{% endif %}
-                {% if data.clinic_info.phone and data.clinic_info.fax %} | {% endif %}
-                {% if data.clinic_info.fax %}Fax: {{ data.clinic_info.fax }}{% endif %}
-            </div>
-            {% endif %}
-            {% if data.clinic_info.email %}
-            <div class="clinic-contact" style="font-size: 10pt; color: #666; margin-top: 2px;">{{ data.clinic_info.email }}</div>
-            {% endif %}
+        {% endif %}
+        {% if data.clinic_info.email %}
+            <div style="font-size: 10pt; color: #666; margin-top: 2px;">{{ data.clinic_info.email }}</div>
+        {% endif %}
+        {% if data.clinic_info.phone %}
+            <div style="font-size: 10pt; color: #666; margin-top: 2px;">{{ data.clinic_info.phone }}</div>
+        {% endif %}
+        {% if data.clinic_info.fax %}
+            <div style="font-size: 10pt; color: #666; margin-top: 2px;">Fax: {{ data.clinic_info.fax }}</div>
         {% endif %}
     </div>
     {% endif %}
@@ -45,59 +68,28 @@
 
     <!-- Patient Information Bar -->
     <div class="patient-bar">
-        <strong>Patient:</strong> {{ data.patient_info.patient_name or 'N/A' }} | 
-        <strong>DOB:</strong> {{ data.patient_info.date_of_birth or 'N/A' }} | 
+        <strong>Patient:</strong> {{ data.patient_info.patient_name or 'N/A' }} |
+        <strong>DOB:</strong> {{ data.patient_info.date_of_birth or 'N/A' }} |
         {% if data.patient_info.date_of_accident %}
-        <strong>DOA:</strong> {{ data.patient_info.date_of_accident }} | 
+        <strong>DOA:</strong> {{ data.patient_info.date_of_accident }} |
         {% endif %}
         <strong>Date of Service:</strong> {{ data.patient_info.date_of_treatment or 'N/A' }}
     </div>
 
     <!-- Chief Complaint & Status -->
     <h3>Chief Complaint & Status</h3>
-    {% if data.sections.chief_complaint %}
-        {% set complaint_text = data.sections.chief_complaint %}
-        
-        <!-- Process each line separately -->
-        {% for line in complaint_text.split('\n') %}
-            {% if line.strip() %}
-                <div class="complaint-block">
-                    {% set clean_line = line.strip() %}
-                    
-                    {% if '|' in clean_line %}
-                        <!-- Split on pipe character -->
-                        {% set before_pipe = clean_line.split('|')[0].strip() %}
-                        {% set after_pipe = clean_line.split('|')[1].strip() %}
-                        
-                        <!-- Extract complaint name (everything before and including first colon) -->
-                        {% if ':' in before_pipe %}
-                            {% set complaint_parts = before_pipe.split(':') %}
-                            {% set complaint_name = complaint_parts[0].strip() %}
-                            {% set prev_text = complaint_parts[1].strip() %}
-                            
-                            <!-- Remove "Previously" if present -->
-                            {% if prev_text.startswith('Previously') %}
-                                {% set prev_text = prev_text[10:].strip() %}
-                            {% endif %}
-                            
-                            <!-- Remove "Currently" from after pipe if present -->
-                            {% set curr_text = after_pipe %}
-                            {% if curr_text.startswith('Currently') %}
-                                {% set curr_text = curr_text[9:].strip() %}
-                            {% endif %}
-                            
-                            <p class="complaint-current"><strong>{{ complaint_name }}:</strong> {{ curr_text }}</p>
-                            <p class="complaint-initial">(Previous: {{ prev_text }})</p>
-                        {% else %}
-                            <!-- Fallback if no colon found -->
-                            <p class="complaint-current">{{ clean_line }}</p>
-                        {% endif %}
-                    {% else %}
-                        <!-- No pipe, display as is -->
-                        <p class="complaint-current">{{ clean_line }}</p>
-                    {% endif %}
-                </div>
-            {% endif %}
+    {% if data.sections.chief_complaint_parsed %}
+        {% for complaint in data.sections.chief_complaint_parsed %}
+        <div class="complaint-block">
+            <p class="complaint-current">
+                <strong>{{ complaint.name }}:</strong> {{ complaint.current_score|capitalize }}
+                {% if complaint.comparison_status == "resolved" %}<span class="status-icon status-resolved" title="Resolved">✓</span>
+                {% elif complaint.comparison_status == "improved" %}<span class="status-icon status-improved" title="Improved">↓</span>
+                {% elif complaint.comparison_status == "worsened" %}<span class="status-icon status-worsened" title="Worsened">↑</span>
+                {% endif %}
+            </p>
+            <p class="complaint-initial">(Previous: {{ complaint.previous_score|capitalize }})</p>
+        </div>
         {% endfor %}
     {% else %}
         <p>No chief complaints documented.</p>
@@ -114,937 +106,370 @@
     <!-- Objective Progress & Data -->
     <h3>Objective Progress & Data</h3>
 
-    <!-- Visual Progress Dashboard -->
-    {% if data.sections.outcome_assessments %}
-    <h4>Visual Progress Dashboard</h4>
-    {% set outcome_text = data.sections.outcome_assessments %}
-    
-    <!-- Split by periods to handle multiple assessments -->
-    {% set assessments = [] %}
-    {% if '. ' in outcome_text %}
-        {% set assessments = outcome_text.split('. ') %}
-    {% else %}
-        {% set assessments = [outcome_text] %}
-    {% endif %}
-    
-    <!-- Process each assessment (up to 3) -->
-    {% for assessment_text in assessments[:3] %}
-        {% if assessment_text.strip() %}
-            <!-- Try to parse the assessment data -->
-            {% set ns = namespace(parsed_successfully=false) %}
-            
-            <!-- Clean up the assessment text (remove trailing periods) -->
-            {% set assessment_text = assessment_text.strip().rstrip('.') %}
-            
-            <!-- Parse format: "Neck Disability Index: Previously 31/50, currently 25/50" -->
-            {% if ":" in assessment_text %}
-                {% set parts = assessment_text.split(':', 1) %}
-                {% set assessment_name = parts[0].strip() %}
-                {% set values_part = parts[1].strip() if parts|length > 1 else "" %}
-                
-                {% set initial_score = "" %}
-                {% set current_score = "" %}
-                {% set initial_percentage = 0 %}
-                {% set current_percentage = 0 %}
-                {% set improvement_percentage = 0 %}
-                
-                <!-- Parse "Previously 31/50, currently 25/50" or "Previously 31/50 | Current: 25/50" formats -->
-                {% if "Previously" in values_part and ("currently" in values_part or "Current:" in values_part) %}
-                    {% if "currently" in values_part %}
-                        {% set prev_part = values_part.split('currently')[0].replace('Previously', '').strip().rstrip(',') %}
-                        {% set curr_part = values_part.split('currently')[1].strip() %}
-                    {% elif "Current:" in values_part %}
-                        {% set prev_part = values_part.split('|')[0].replace('Previously', '').strip() if '|' in values_part else values_part.replace('Previously', '').strip() %}
-                        {% set curr_part = values_part.split('Current:')[1].strip() if 'Current:' in values_part else "" %}
-                    {% endif %}
-                    
-                    <!-- Extract scores like "31/50" from potentially complex text like "31/50 (62%)" -->
-                    {% if "/" in prev_part %}
-                        <!-- Extract just the fraction part before any parentheses -->
-                        {% set fraction_match = prev_part.split('(')[0].strip() %}
-                        {% set prev_nums = fraction_match.split('/') %}
-                        {% if prev_nums|length >= 2 and prev_nums[0].strip().isdigit() and prev_nums[1].strip().isdigit() %}
-                            {% set initial_numerator = prev_nums[0].strip()|int %}
-                            {% set initial_denominator = prev_nums[1].strip()|int %}
-                            {% if initial_denominator > 0 %}
-                                {% set initial_score = initial_numerator|string + "/" + initial_denominator|string %}
-                                {% set initial_percentage = ((initial_numerator / initial_denominator) * 100)|round|int %}
-                            {% endif %}
-                        {% endif %}
-                    {% endif %}
-                    
-                    {% if "/" in curr_part %}
-                        <!-- Extract just the fraction part before any parentheses -->
-                        {% set fraction_match = curr_part.split('(')[0].strip() %}
-                        {% set curr_nums = fraction_match.split('/') %}
-                        {% if curr_nums|length >= 2 and curr_nums[0].strip().isdigit() and curr_nums[1].strip().isdigit() %}
-                            {% set current_numerator = curr_nums[0].strip()|int %}
-                            {% set current_denominator = curr_nums[1].strip()|int %}
-                            {% if current_denominator > 0 %}
-                                {% set current_score = current_numerator|string + "/" + current_denominator|string %}
-                                {% set current_percentage = ((current_numerator / current_denominator) * 100)|round|int %}
-                            {% endif %}
-                        {% endif %}
-                    {% endif %}
-                    
-                    <!-- Calculate improvement percentage -->
-                    {% if initial_percentage > 0 and current_percentage >= 0 %}
-                        {% set improvement_percentage = ((initial_percentage - current_percentage) / initial_percentage * 100)|round|int %}
-                    {% endif %}
-                {% endif %}
-                
-                <div class="dashboard-item" style="margin-bottom: 15px;">
-                    <strong>{{ assessment_name }}: 
-                    {% if improvement_percentage > 0 %}
-                    <span class="improvement-text">{{ improvement_percentage }}% Improvement</span>
-                    {% elif improvement_percentage < 0 %}
-                    <span class="improvement-text" style="color: #dc3545;">{{ -improvement_percentage }}% Worsened</span>
-                    {% elif initial_score and current_score and initial_percentage == current_percentage %}
-                    <span class="improvement-text" style="color: #6c757d;">No Change</span>
-                    {% endif %}
-                    </strong>
-                    
-                    {% if initial_score and initial_percentage >= 0 %}
-                    <p style="margin: 2px 0; font-size: 9pt;">Previous: {{ initial_score }} ({{ initial_percentage }}% Disabled)</p>
-                    <div class="progress-bar-container" style="background-color: #e9ecef; border-radius: 4pt; height: 18pt; margin-top: 4pt; margin-bottom: 8pt;">
-                        <div class="progress-bar" style="background-color: #ced4da; height: 100%; border-radius: 4pt; width: {{ initial_percentage }}%;"></div>
-                    </div>
-                    {% endif %}
-                    
-                    {% if current_score and current_percentage >= 0 %}
-                    <p style="margin: 2px 0; font-size: 9pt;">Current: {{ current_score }} ({{ current_percentage }}% Disabled)</p>
-                    <div class="progress-bar-container" style="background-color: #e9ecef; border-radius: 4pt; height: 18pt; margin-top: 4pt; margin-bottom: 8pt;">
-                        <div class="progress-bar current" style="background-color: #28a745; height: 100%; border-radius: 4pt; width: {{ current_percentage }}%;"></div>
-                    </div>
-                    {% endif %}
-                    
-                    <!-- Mark as successfully parsed if we have at least one score -->
-                    {% if initial_score or current_score %}
-                        {% set ns.parsed_successfully = true %}
-                    {% endif %}
-                    
-                    <!-- If parsing failed for this assessment, show the raw text -->
-                    {% if not ns.parsed_successfully %}
-                        <p style="margin-left: 20px;">{{ values_part }}</p>
-                    {% endif %}
-                </div>
-            {% else %}
-                <!-- No colon found, just display the text -->
-                <div class="dashboard-item" style="margin-bottom: 15px;">
-                    <p>{{ assessment_text }}</p>
-                </div>
-            {% endif %}
+    <!-- Visual Progress Dashboard for Outcome Assessments -->
+    {% if data.sections.outcome_assessments_parsed %}
+    <h4>Functional Outcome Assessments</h4>
+    {% for assessment in data.sections.outcome_assessments_parsed %}
+    <div class="dashboard-item">
+        <strong>{{ assessment.name }}:
+        {% if assessment.comparison_status == "improved" %}
+            <span class="improvement-text status-improved">{{ assessment.improvement_percentage }}% Improvement</span>
+        {% elif assessment.comparison_status == "worsened" %}
+            <span class="improvement-text status-worsened">{{ -assessment.improvement_percentage }}% Worsened</span>
+        {% elif assessment.comparison_status == "unchanged" %}
+            <span class="improvement-text status-unchanged">No Change</span>
+        {% elif assessment.comparison_status == "new" %}
+            <span class="improvement-text status-new">New Assessment</span>
         {% endif %}
+        </strong>
+
+        {% if assessment.previous_percentage is not none %}
+        <p style="margin: 2px 0; font-size: 9pt;">Previous: {{ assessment.previous_score_raw }} ({{ assessment.previous_percentage }}% Disabled)</p>
+        <div class="progress-bar-container">
+            <div class="progress-bar previous" style="width: {{ assessment.previous_percentage }}%;"></div>
+        </div>
+        {% endif %}
+
+        {% if assessment.current_percentage is not none %}
+        <p style="margin: 2px 0; font-size: 9pt;">Current: {{ assessment.current_score_raw }} ({{ assessment.current_percentage }}% Disabled)</p>
+        <div class="progress-bar-container">
+            <div class="progress-bar current" style="width: {{ assessment.current_percentage }}%;"></div>
+        </div>
+        {% endif %}
+    </div>
     {% endfor %}
-    
     {% endif %}
 
     <!-- Consolidated Physical Examination Findings -->
     <h4>Physical Examination Progress</h4>
-    
+    <div class="legend">
+        Legend: <span class="status-icon status-improved">✓</span> Improved / Resolved |
+        <span class="status-icon status-worsened">✗</span> Worsened |
+        <span class="status-icon status-unchanged">→</span> Unchanged |
+        <span class="status-icon status-new">●</span> New Finding |
+        <span class="status-icon status-changed">~</span> Changed
+    </div>
+
+    <!-- Define a macro for the status icon to avoid repetition -->
+    {% macro status_icon(status) %}
+        {% if status == "improved" or status == "resolved" %}<span class="status-icon status-improved">✓</span>
+        {% elif status == "worsened" %}<span class="status-icon status-worsened">✗</span>
+        {% elif status == "unchanged" %}<span class="status-icon status-unchanged">→</span>
+        {% elif status == "new" %}<span class="status-icon status-new">●</span>
+        {% elif status == "changed" %}<span class="status-icon status-changed">~</span>
+        {% else %} 
+        {% endif %}
+    {% endmacro %}
+
     <!-- Cervical Range of Motion Table -->
-    {% if data.sections.cervical_rom %}
-        <h5 style="margin-top: 15px; margin-bottom: 10px;">Cervical Range of Motion</h5>
-        
-        <!-- Parse cervical ROM findings -->
-        {% set cervical_rom_data = {} %}
-        {% set cervical_findings = data.sections.cervical_rom.split('\n') %}
-        {% for finding in cervical_findings %}
-            {% if finding.strip() and ':' in finding %}
-                {% set parts = finding.split(':', 1) %}
-                {% if parts|length >= 2 %}
-                    {% set movement = parts[0].strip().lower() %}
-                    {% set states = parts[1].strip() %}
-                    
-                    <!-- Extract movement type -->
-                    {% if 'flexion' in movement and 'lateral' not in movement %}
-                        {% set cervical_rom_data = cervical_rom_data.update({'flexion': states}) or cervical_rom_data %}
-                    {% elif 'extension' in movement %}
-                        {% set cervical_rom_data = cervical_rom_data.update({'extension': states}) or cervical_rom_data %}
-                    {% elif 'left rotation' in movement or 'rotation left' in movement %}
-                        {% set cervical_rom_data = cervical_rom_data.update({'left_rotation': states}) or cervical_rom_data %}
-                    {% elif 'right rotation' in movement or 'rotation right' in movement %}
-                        {% set cervical_rom_data = cervical_rom_data.update({'right_rotation': states}) or cervical_rom_data %}
-                    {% elif 'left lateral' in movement or 'lateral flexion left' in movement %}
-                        {% set cervical_rom_data = cervical_rom_data.update({'left_lateral_flexion': states}) or cervical_rom_data %}
-                    {% elif 'right lateral' in movement or 'lateral flexion right' in movement %}
-                        {% set cervical_rom_data = cervical_rom_data.update({'right_lateral_flexion': states}) or cervical_rom_data %}
-                    {% endif %}
-                {% endif %}
-            {% endif %}
-        {% endfor %}
-        
-        <!-- Display cervical ROM table with all 6 movements -->
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+    {% if data.sections.cervical_rom_parsed and not data.sections.cervical_rom_all_not_documented %}
+        <h5>Cervical Range of Motion</h5>
+        <table>
             <thead>
-                <tr style="background-color: #f8f9fa;">
-                    <th style="width: 30%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Movement</th>
-                    <th style="width: 25%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Previous</th>
-                    <th style="width: 25%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Current</th>
-                    <th style="width: 20%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Status</th>
-                </tr>
-            </thead>
-            <tbody>
-                <!-- Define all cervical movements -->
-                {% set cervical_movements = [
-                    ('flexion', 'Flexion'),
-                    ('extension', 'Extension'),
-                    ('left_rotation', 'Left Rotation'),
-                    ('right_rotation', 'Right Rotation'),
-                    ('left_lateral_flexion', 'Left Lateral Flexion'),
-                    ('right_lateral_flexion', 'Right Lateral Flexion')
-                ] %}
-                
-                {% for movement_key, movement_name in cervical_movements %}
-                    {% set movement_data = cervical_rom_data.get(movement_key, '') %}
-                    {% set prev_state = "Normal" %}
-                    {% set curr_state = "Normal" %}
-                    {% set improvement_status = "unchanged" %}
-                    
-                    {% if movement_data %}
-                        <!-- Parse the states -->
-                        {% if 'Previously' in movement_data and '|' in movement_data and ('Currently' in movement_data or 'Current:' in movement_data) %}
-                            {% set pipe_parts = movement_data.split('|') %}
-                            {% if pipe_parts|length >= 2 %}
-                                {% set prev_state = pipe_parts[0].replace('Previously', '').strip() %}
-                                {% set curr_state = pipe_parts[1].replace('Currently', '').replace('Current:', '').strip().rstrip('.') %}
-                            {% endif %}
-                        {% endif %}
-                        
-                        <!-- Determine improvement status -->
-                        {% if 'normal' in curr_state.lower() and 'normal' not in prev_state.lower() %}
-                            {% set improvement_status = "improved" %}
-                        {% elif prev_state == curr_state %}
-                            {% set improvement_status = "unchanged" %}
-                        {% elif 'restricted' in curr_state.lower() and 'normal' in prev_state.lower() %}
-                            {% set improvement_status = "worsened" %}
-                        {% elif prev_state != curr_state %}
-                            {% set improvement_status = "changed" %}
-                        {% endif %}
-                    {% endif %}
-                    
-                    <tr>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt;">{{ movement_name }}</td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt;">{{ prev_state|capitalize }}</td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt; font-weight: bold;">{{ curr_state|capitalize }}</td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; text-align: center; font-size: 9pt;">
-                            {% if improvement_status == "improved" %}
-                                <span style="color: #28a745;">✓</span>
-                            {% elif improvement_status == "worsened" %}
-                                <span style="color: #dc3545;">✗</span>
-                            {% elif improvement_status == "unchanged" %}
-                                <span style="color: #6c757d;">→</span>
-                            {% else %}
-                                <span style="color: #6c757d;">•</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    {% endif %}
-    
-    <!-- Lumbar Range of Motion Table -->
-    {% if data.sections.lumbar_rom %}
-        <h5 style="margin-top: 15px; margin-bottom: 10px;">Lumbar Range of Motion</h5>
-        
-        <!-- Parse lumbar ROM findings -->
-        {% set lumbar_rom_data = {} %}
-        {% set lumbar_findings = data.sections.lumbar_rom.split('\n') %}
-        {% for finding in lumbar_findings %}
-            {% if finding.strip() and ':' in finding %}
-                {% set parts = finding.split(':', 1) %}
-                {% if parts|length >= 2 %}
-                    {% set movement = parts[0].strip().lower() %}
-                    {% set states = parts[1].strip() %}
-                    
-                    <!-- Extract movement type -->
-                    {% if 'flexion' in movement and 'lateral' not in movement and 'side' not in movement %}
-                        {% set lumbar_rom_data = lumbar_rom_data.update({'flexion': states}) or lumbar_rom_data %}
-                    {% elif 'extension' in movement %}
-                        {% set lumbar_rom_data = lumbar_rom_data.update({'extension': states}) or lumbar_rom_data %}
-                    {% elif ('left lateral' in movement or 'lateral flexion left' in movement or 
-                            'left side' in movement or 'side bending left' in movement) %}
-                        {% set lumbar_rom_data = lumbar_rom_data.update({'left_lateral_flexion': states}) or lumbar_rom_data %}
-                    {% elif ('right lateral' in movement or 'lateral flexion right' in movement or 
-                            'right side' in movement or 'side bending right' in movement) %}
-                        {% set lumbar_rom_data = lumbar_rom_data.update({'right_lateral_flexion': states}) or lumbar_rom_data %}
-                    {% elif 'left rotation' in movement or 'rotation left' in movement %}
-                        {% set lumbar_rom_data = lumbar_rom_data.update({'left_rotation': states}) or lumbar_rom_data %}
-                    {% elif 'right rotation' in movement or 'rotation right' in movement %}
-                        {% set lumbar_rom_data = lumbar_rom_data.update({'right_rotation': states}) or lumbar_rom_data %}
-                    {% endif %}
-                {% endif %}
-            {% endif %}
-        {% endfor %}
-        
-        <!-- Display lumbar ROM table with all 6 movements -->
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-            <thead>
-                <tr style="background-color: #f8f9fa;">
-                    <th style="width: 30%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Movement</th>
-                    <th style="width: 25%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Previous</th>
-                    <th style="width: 25%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Current</th>
-                    <th style="width: 20%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Status</th>
-                </tr>
-            </thead>
-            <tbody>
-                <!-- Define all lumbar movements -->
-                {% set lumbar_movements = [
-                    ('flexion', 'Flexion'),
-                    ('extension', 'Extension'),
-                    ('left_lateral_flexion', 'Left Lateral Flexion'),
-                    ('right_lateral_flexion', 'Right Lateral Flexion'),
-                    ('left_rotation', 'Left Rotation'),
-                    ('right_rotation', 'Right Rotation')
-                ] %}
-                
-                {% for movement_key, movement_name in lumbar_movements %}
-                    {% set movement_data = lumbar_rom_data.get(movement_key, '') %}
-                    {% set prev_state = "Normal" %}
-                    {% set curr_state = "Normal" %}
-                    {% set improvement_status = "unchanged" %}
-                    
-                    {% if movement_data %}
-                        <!-- Parse the states -->
-                        {% if 'Previously' in movement_data and '|' in movement_data and ('Currently' in movement_data or 'Current:' in movement_data) %}
-                            {% set pipe_parts = movement_data.split('|') %}
-                            {% if pipe_parts|length >= 2 %}
-                                {% set prev_state = pipe_parts[0].replace('Previously', '').strip() %}
-                                {% set curr_state = pipe_parts[1].replace('Currently', '').replace('Current:', '').strip().rstrip('.') %}
-                            {% endif %}
-                        {% endif %}
-                        
-                        <!-- Determine improvement status -->
-                        {% if 'normal' in curr_state.lower() and 'normal' not in prev_state.lower() %}
-                            {% set improvement_status = "improved" %}
-                        {% elif prev_state == curr_state %}
-                            {% set improvement_status = "unchanged" %}
-                        {% elif 'restricted' in curr_state.lower() and 'normal' in prev_state.lower() %}
-                            {% set improvement_status = "worsened" %}
-                        {% elif prev_state != curr_state %}
-                            {% set improvement_status = "changed" %}
-                        {% endif %}
-                    {% endif %}
-                    
-                    <tr>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt;">{{ movement_name }}</td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt;">{{ prev_state|capitalize }}</td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt; font-weight: bold;">{{ curr_state|capitalize }}</td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; text-align: center; font-size: 9pt;">
-                            {% if improvement_status == "improved" %}
-                                <span style="color: #28a745;">✓</span>
-                            {% elif improvement_status == "worsened" %}
-                                <span style="color: #dc3545;">✗</span>
-                            {% elif improvement_status == "unchanged" %}
-                                <span style="color: #6c757d;">→</span>
-                            {% else %}
-                                <span style="color: #6c757d;">•</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    {% endif %}
-    
-    <!-- Upper Extremity Motor Examination Table -->
-    {% if data.motor_exam and data.motor_exam.upper_extremity %}
-        <h5 style="margin-top: 15px; margin-bottom: 10px;">Upper Extremity Motor Examination</h5>
-        
-        <!-- Define standard upper extremity muscles -->
-        {% set standard_muscles = [
-            "DELTOID",
-            "BICEPS", 
-            "TRICEPS",
-            "WRIST EXT",
-            "FINGER FLEX",
-            "FINGER EXT",
-            "THUMB EXT",
-            "HAND INTRINSICS"
-        ] %}
-        
-        <!-- Create a dictionary of existing motor data -->
-        {% set motor_data = {} %}
-        {% for muscle_item in data.motor_exam.upper_extremity %}
-            {% set motor_data = motor_data.update({muscle_item.muscle: muscle_item}) or motor_data %}
-        {% endfor %}
-        
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-            <thead>
-                <tr style="background-color: #f8f9fa;">
-                    <th style="width: 25%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Muscle</th>
-                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Right Previous</th>
-                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Left Previous</th>
-                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Right Current</th>
-                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Left Current</th>
-                    <th style="width: 7.5%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">R</th>
-                    <th style="width: 7.5%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">L</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for muscle_name in standard_muscles %}
-                    {% set muscle_item = motor_data.get(muscle_name) %}
-                    
-                    <!-- Parse right side -->
-                    {% set right_prev = "Not performed" %}
-                    {% set right_curr = "Not performed" %}
-                    {% set right_status = "unchanged" %}
-                    {% if muscle_item and muscle_item.right %}
-                        {% if "|" in muscle_item.right %}
-                            {% set parts = muscle_item.right.split("|") %}
-                            {% set right_prev = parts[0].replace("Previously", "").strip() %}
-                            {% set right_curr_raw = parts[1].replace("Currently", "").strip() %}
-                            <!-- Extract just the number from format like "5/5" -->
-                            {% if "/" in right_curr_raw %}
-                                {% set right_curr = right_curr_raw.split("/")[0].strip() %}
-                            {% else %}
-                                {% set right_curr = right_curr_raw %}
-                            {% endif %}
-                        {% elif "Previously" in muscle_item.right and "currently" in muscle_item.right %}
-                            {% set parts = muscle_item.right.split("currently") %}
-                            {% set right_prev = parts[0].replace("Previously", "").replace(",", "").strip() %}
-                            {% set right_curr_raw = parts[1].strip() %}
-                            <!-- Extract just the number from format like "5/5" -->
-                            {% if "/" in right_curr_raw %}
-                                {% set right_curr = right_curr_raw.split("/")[0].strip() %}
-                            {% else %}
-                                {% set right_curr = right_curr_raw %}
-                            {% endif %}
-                        {% else %}
-                            {% set right_curr = muscle_item.right %}
-                            {% set right_prev = muscle_item.right %}
-                        {% endif %}
-                        
-                        <!-- Determine right status -->
-                        {% if "not performed" in right_prev.lower() and right_curr == "5" %}
-                            {% set right_status = "new" %}
-                        {% elif right_curr == "5" and right_prev != "5/5" and "not performed" not in right_prev.lower() %}
-                            {% set right_status = "improved" %}
-                        {% elif right_curr == right_prev %}
-                            {% set right_status = "unchanged" %}
-                        {% elif right_curr != "5" and right_prev == "5/5" %}
-                            {% set right_status = "worsened" %}
-                        {% else %}
-                            {% set right_status = "changed" %}
-                        {% endif %}
-                    {% endif %}
-                    
-                    <!-- Parse left side -->
-                    {% set left_prev = "Not performed" %}
-                    {% set left_curr = "Not performed" %}
-                    {% set left_status = "unchanged" %}
-                    {% if muscle_item and muscle_item.left %}
-                        {% if "|" in muscle_item.left %}
-                            {% set parts = muscle_item.left.split("|") %}
-                            {% set left_prev = parts[0].replace("Previously", "").strip() %}
-                            {% set left_curr_raw = parts[1].replace("Currently", "").strip() %}
-                            <!-- Extract just the number from format like "5/5" -->
-                            {% if "/" in left_curr_raw %}
-                                {% set left_curr = left_curr_raw.split("/")[0].strip() %}
-                            {% else %}
-                                {% set left_curr = left_curr_raw %}
-                            {% endif %}
-                        {% elif "Previously" in muscle_item.left and "currently" in muscle_item.left %}
-                            {% set parts = muscle_item.left.split("currently") %}
-                            {% set left_prev = parts[0].replace("Previously", "").replace(",", "").strip() %}
-                            {% set left_curr_raw = parts[1].strip() %}
-                            <!-- Extract just the number from format like "5/5" -->
-                            {% if "/" in left_curr_raw %}
-                                {% set left_curr = left_curr_raw.split("/")[0].strip() %}
-                            {% else %}
-                                {% set left_curr = left_curr_raw %}
-                            {% endif %}
-                        {% else %}
-                            {% set left_curr = muscle_item.left %}
-                            {% set left_prev = muscle_item.left %}
-                        {% endif %}
-                        
-                        <!-- Determine left status -->
-                        {% if "not performed" in left_prev.lower() and left_curr == "5" %}
-                            {% set left_status = "new" %}
-                        {% elif left_curr == "5" and left_prev != "5/5" and "not performed" not in left_prev.lower() %}
-                            {% set left_status = "improved" %}
-                        {% elif left_curr == left_prev %}
-                            {% set left_status = "unchanged" %}
-                        {% elif left_curr != "5" and left_prev == "5/5" %}
-                            {% set left_status = "worsened" %}
-                        {% else %}
-                            {% set left_status = "changed" %}
-                        {% endif %}
-                    {% endif %}
-                    
-                    <tr>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt;">{{ muscle_name }}</td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt; text-align: center;">{{ right_prev }}</td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt; text-align: center;">{{ left_prev }}</td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt; text-align: center; font-weight: bold;">{{ right_curr }}</td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt; text-align: center; font-weight: bold;">{{ left_curr }}</td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; text-align: center; font-size: 9pt;">
-                            {% if right_status == "new" %}
-                                <span style="color: #28a745;">✓</span>
-                            {% elif right_status == "improved" %}
-                                <span style="color: #28a745;">✓</span>
-                            {% elif right_status == "worsened" %}
-                                <span style="color: #dc3545;">✗</span>
-                            {% elif right_status == "unchanged" %}
-                                <span style="color: #6c757d;">→</span>
-                            {% else %}
-                                <span style="color: #6c757d;">•</span>
-                            {% endif %}
-                        </td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; text-align: center; font-size: 9pt;">
-                            {% if left_status == "new" %}
-                                <span style="color: #28a745;">✓</span>
-                            {% elif left_status == "improved" %}
-                                <span style="color: #28a745;">✓</span>
-                            {% elif left_status == "worsened" %}
-                                <span style="color: #dc3545;">✗</span>
-                            {% elif left_status == "unchanged" %}
-                                <span style="color: #6c757d;">→</span>
-                            {% else %}
-                                <span style="color: #6c757d;">•</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    {% endif %}
-    
-    <!-- Lower Extremity Motor Examination Table -->
-    {% if data.motor_exam and data.motor_exam.lower_extremity %}
-        <h5 style="margin-top: 15px; margin-bottom: 10px;">Lower Extremity Motor Examination</h5>
-        
-        <!-- Define standard lower extremity muscles -->
-        {% set standard_muscles = [
-            "ILIOPSOAS",
-            "QUAD",
-            "HAMSTRINGS",
-            "GLUTEUS",
-            "ANTERIOR TIBIALIS",
-            "EXT HALLUCIS LONGUS"
-        ] %}
-        
-        <!-- Create a dictionary of existing motor data -->
-        {% set motor_data = {} %}
-        {% for muscle_item in data.motor_exam.lower_extremity %}
-            {% set motor_data = motor_data.update({muscle_item.muscle: muscle_item}) or motor_data %}
-        {% endfor %}
-        
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-            <thead>
-                <tr style="background-color: #f8f9fa;">
-                    <th style="width: 25%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Muscle</th>
-                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Right Previous</th>
-                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Left Previous</th>
-                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Right Current</th>
-                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Left Current</th>
-                    <th style="width: 7.5%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">R</th>
-                    <th style="width: 7.5%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">L</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for muscle_name in standard_muscles %}
-                    {% set muscle_item = motor_data.get(muscle_name) %}
-                    
-                    <!-- Parse right side -->
-                    {% set right_prev = "Not performed" %}
-                    {% set right_curr = "Not performed" %}
-                    {% set right_status = "unchanged" %}
-                    {% if muscle_item and muscle_item.right %}
-                        {% if "|" in muscle_item.right %}
-                            {% set parts = muscle_item.right.split("|") %}
-                            {% set right_prev = parts[0].replace("Previously", "").strip() %}
-                            {% set right_curr_raw = parts[1].replace("Currently", "").strip() %}
-                            <!-- Extract just the number from format like "5/5" -->
-                            {% if "/" in right_curr_raw %}
-                                {% set right_curr = right_curr_raw.split("/")[0].strip() %}
-                            {% else %}
-                                {% set right_curr = right_curr_raw %}
-                            {% endif %}
-                        {% elif "Previously" in muscle_item.right and "currently" in muscle_item.right %}
-                            {% set parts = muscle_item.right.split("currently") %}
-                            {% set right_prev = parts[0].replace("Previously", "").replace(",", "").strip() %}
-                            {% set right_curr_raw = parts[1].strip() %}
-                            <!-- Extract just the number from format like "5/5" -->
-                            {% if "/" in right_curr_raw %}
-                                {% set right_curr = right_curr_raw.split("/")[0].strip() %}
-                            {% else %}
-                                {% set right_curr = right_curr_raw %}
-                            {% endif %}
-                        {% else %}
-                            {% set right_curr = muscle_item.right %}
-                            {% set right_prev = muscle_item.right %}
-                        {% endif %}
-                        
-                        <!-- Determine right status -->
-                        {% if "not performed" in right_prev.lower() and right_curr == "5" %}
-                            {% set right_status = "new" %}
-                        {% elif right_curr == "5" and right_prev != "5/5" and "not performed" not in right_prev.lower() %}
-                            {% set right_status = "improved" %}
-                        {% elif right_curr == right_prev %}
-                            {% set right_status = "unchanged" %}
-                        {% elif right_curr != "5" and right_prev == "5/5" %}
-                            {% set right_status = "worsened" %}
-                        {% else %}
-                            {% set right_status = "changed" %}
-                        {% endif %}
-                    {% endif %}
-                    
-                    <!-- Parse left side -->
-                    {% set left_prev = "Not performed" %}
-                    {% set left_curr = "Not performed" %}
-                    {% set left_status = "unchanged" %}
-                    {% if muscle_item and muscle_item.left %}
-                        {% if "|" in muscle_item.left %}
-                            {% set parts = muscle_item.left.split("|") %}
-                            {% set left_prev = parts[0].replace("Previously", "").strip() %}
-                            {% set left_curr_raw = parts[1].replace("Currently", "").strip() %}
-                            <!-- Extract just the number from format like "5/5" -->
-                            {% if "/" in left_curr_raw %}
-                                {% set left_curr = left_curr_raw.split("/")[0].strip() %}
-                            {% else %}
-                                {% set left_curr = left_curr_raw %}
-                            {% endif %}
-                        {% elif "Previously" in muscle_item.left and "currently" in muscle_item.left %}
-                            {% set parts = muscle_item.left.split("currently") %}
-                            {% set left_prev = parts[0].replace("Previously", "").replace(",", "").strip() %}
-                            {% set left_curr_raw = parts[1].strip() %}
-                            <!-- Extract just the number from format like "5/5" -->
-                            {% if "/" in left_curr_raw %}
-                                {% set left_curr = left_curr_raw.split("/")[0].strip() %}
-                            {% else %}
-                                {% set left_curr = left_curr_raw %}
-                            {% endif %}
-                        {% else %}
-                            {% set left_curr = muscle_item.left %}
-                            {% set left_prev = muscle_item.left %}
-                        {% endif %}
-                        
-                        <!-- Determine left status -->
-                        {% if "not performed" in left_prev.lower() and left_curr == "5" %}
-                            {% set left_status = "new" %}
-                        {% elif left_curr == "5" and left_prev != "5/5" and "not performed" not in left_prev.lower() %}
-                            {% set left_status = "improved" %}
-                        {% elif left_curr == left_prev %}
-                            {% set left_status = "unchanged" %}
-                        {% elif left_curr != "5" and left_prev == "5/5" %}
-                            {% set left_status = "worsened" %}
-                        {% else %}
-                            {% set left_status = "changed" %}
-                        {% endif %}
-                    {% endif %}
-                    
-                    <tr>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt;">{{ muscle_name }}</td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt; text-align: center;">{{ right_prev }}</td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt; text-align: center;">{{ left_prev }}</td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt; text-align: center; font-weight: bold;">{{ right_curr }}</td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt; text-align: center; font-weight: bold;">{{ left_curr }}</td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; text-align: center; font-size: 9pt;">
-                            {% if right_status == "new" %}
-                                <span style="color: #28a745;">✓</span>
-                            {% elif right_status == "improved" %}
-                                <span style="color: #28a745;">✓</span>
-                            {% elif right_status == "worsened" %}
-                                <span style="color: #dc3545;">✗</span>
-                            {% elif right_status == "unchanged" %}
-                                <span style="color: #6c757d;">→</span>
-                            {% else %}
-                                <span style="color: #6c757d;">•</span>
-                            {% endif %}
-                        </td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; text-align: center; font-size: 9pt;">
-                            {% if left_status == "new" %}
-                                <span style="color: #28a745;">✓</span>
-                            {% elif left_status == "improved" %}
-                                <span style="color: #28a745;">✓</span>
-                            {% elif left_status == "worsened" %}
-                                <span style="color: #dc3545;">✗</span>
-                            {% elif left_status == "unchanged" %}
-                                <span style="color: #6c757d;">→</span>
-                            {% else %}
-                                <span style="color: #6c757d;">•</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    {% endif %}
-    
-    <!-- Deep Tendon Reflexes Table -->
-    {% if data.reflexes and data.reflexes.deep_tendon %}
-        <h5 style="margin-top: 15px; margin-bottom: 10px;">Deep Tendon Reflexes</h5>
-        
-        <!-- Define standard reflexes -->
-        {% set standard_reflexes = [
-            "BICEPS",
-            "TRICEPS",
-            "BRACHIORADIALIS",
-            "PATELLAR",
-            "ACHILLES"
-        ] %}
-        
-        <!-- Create a dictionary of existing reflex data -->
-        {% set reflex_data = {} %}
-        {% for reflex_item in data.reflexes.deep_tendon %}
-            {% set reflex_data = reflex_data.update({reflex_item.reflex: reflex_item}) or reflex_data %}
-        {% endfor %}
-        
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-            <thead>
-                <tr style="background-color: #f8f9fa;">
-                    <th style="width: 25%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Reflex</th>
-                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Right Previous</th>
-                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Left Previous</th>
-                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Right Current</th>
-                    <th style="width: 15%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Left Current</th>
-                    <th style="width: 7.5%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">R</th>
-                    <th style="width: 7.5%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">L</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for reflex_name in standard_reflexes %}
-                    {% set reflex_item = reflex_data.get(reflex_name) %}
-                    
-                    <!-- Parse right side -->
-                    {% set right_prev = "2+" %}
-                    {% set right_curr = "2+" %}
-                    {% set right_status = "unchanged" %}
-                    {% if reflex_item and reflex_item.right %}
-                        {% if "|" in reflex_item.right %}
-                            {% set parts = reflex_item.right.split("|") %}
-                            {% set right_prev = parts[0].replace("Previously", "").strip() %}
-                            {% set right_curr = parts[1].replace("Currently", "").strip() %}
-                        {% elif "Previously" in reflex_item.right and "currently" in reflex_item.right %}
-                            {% set parts = reflex_item.right.split("currently") %}
-                            {% set right_prev = parts[0].replace("Previously", "").replace(",", "").strip() %}
-                            {% set right_curr = parts[1].strip() %}
-                        {% else %}
-                            {% set right_curr = reflex_item.right %}
-                            {% set right_prev = reflex_item.right %}
-                        {% endif %}
-                        
-                        <!-- Determine right status -->
-                        {% if "normal" in right_curr.lower() and "not documented" in right_prev.lower() %}
-                            {% set right_status = "new" %}
-                        {% elif right_curr == "2+" and right_prev != "2+" %}
-                            {% set right_status = "improved" %}
-                        {% elif right_curr == right_prev %}
-                            {% set right_status = "unchanged" %}
-                        {% elif (right_curr == "3+" or right_curr == "4+") and right_prev == "2+" %}
-                            {% set right_status = "worsened" %}
-                        {% elif right_curr == "0" or right_curr == "1+" %}
-                            {% set right_status = "worsened" %}
-                        {% else %}
-                            {% set right_status = "changed" %}
-                        {% endif %}
-                    {% endif %}
-                    
-                    <!-- Parse left side -->
-                    {% set left_prev = "2+" %}
-                    {% set left_curr = "2+" %}
-                    {% set left_status = "unchanged" %}
-                    {% if reflex_item and reflex_item.left %}
-                        {% if "|" in reflex_item.left %}
-                            {% set parts = reflex_item.left.split("|") %}
-                            {% set left_prev = parts[0].replace("Previously", "").strip() %}
-                            {% set left_curr = parts[1].replace("Currently", "").strip() %}
-                        {% elif "Previously" in reflex_item.left and "currently" in reflex_item.left %}
-                            {% set parts = reflex_item.left.split("currently") %}
-                            {% set left_prev = parts[0].replace("Previously", "").replace(",", "").strip() %}
-                            {% set left_curr = parts[1].strip() %}
-                        {% else %}
-                            {% set left_curr = reflex_item.left %}
-                            {% set left_prev = reflex_item.left %}
-                        {% endif %}
-                        
-                        <!-- Determine left status -->
-                        {% if "normal" in left_curr.lower() and "not documented" in left_prev.lower() %}
-                            {% set left_status = "new" %}
-                        {% elif left_curr == "2+" and left_prev != "2+" %}
-                            {% set left_status = "improved" %}
-                        {% elif left_curr == left_prev %}
-                            {% set left_status = "unchanged" %}
-                        {% elif (left_curr == "3+" or left_curr == "4+") and left_prev == "2+" %}
-                            {% set left_status = "worsened" %}
-                        {% elif left_curr == "0" or left_curr == "1+" %}
-                            {% set left_status = "worsened" %}
-                        {% else %}
-                            {% set left_status = "changed" %}
-                        {% endif %}
-                    {% endif %}
-                    
-                    <tr>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt;">{{ reflex_name }}</td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt; text-align: center;">{{ right_prev }}</td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt; text-align: center;">{{ left_prev }}</td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt; text-align: center; font-weight: bold;">{{ right_curr }}</td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt; text-align: center; font-weight: bold;">{{ left_curr }}</td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; text-align: center; font-size: 9pt;">
-                            {% if right_status == "new" %}
-                                <span style="color: #28a745;">✓</span>
-                            {% elif right_status == "improved" %}
-                                <span style="color: #28a745;">✓</span>
-                            {% elif right_status == "worsened" %}
-                                <span style="color: #dc3545;">✗</span>
-                            {% elif right_status == "unchanged" %}
-                                <span style="color: #6c757d;">→</span>
-                            {% else %}
-                                <span style="color: #6c757d;">•</span>
-                            {% endif %}
-                        </td>
-                        <td style="padding: 6px; border: 1px solid #dee2e6; text-align: center; font-size: 9pt;">
-                            {% if left_status == "new" %}
-                                <span style="color: #28a745;">✓</span>
-                            {% elif left_status == "improved" %}
-                                <span style="color: #28a745;">✓</span>
-                            {% elif left_status == "worsened" %}
-                                <span style="color: #dc3545;">✗</span>
-                            {% elif left_status == "unchanged" %}
-                                <span style="color: #6c757d;">→</span>
-                            {% else %}
-                                <span style="color: #6c757d;">•</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    {% endif %}
-    
-    <!-- Other Physical Examinations -->
-    {% if data.sections.physical_examination %}
-        <h5 style="margin-top: 15px; margin-bottom: 10px;">Other Physical Examinations</h5>
-        <p>{{ data.sections.physical_examination }}</p>
-    {% endif %}
-    
-    <!-- Postural and Gait Analysis -->
-    {% if data.postural_and_gait_analysis %}
-        <h5 style="margin-top: 15px; margin-bottom: 10px;">Postural and Gait Analysis</h5>
-        {% if data.postural_and_gait_analysis.posture_general %}
-        <p><strong>Posture General:</strong> {{ data.postural_and_gait_analysis.posture_general }}</p>
-        {% endif %}
-        {% if data.postural_and_gait_analysis.gait_analysis %}
-        <p><strong>Gait Analysis:</strong> {{ data.postural_and_gait_analysis.gait_analysis }}</p>
-        {% endif %}
-    {% endif %}
-    
-    <!-- Collect all positive findings from various sections -->
-    {% set all_findings = [] %}
-    
-    <!-- Process orthopedic/special tests from different body regions -->
-    {% for section_name, section_data in [
-        ("Cervico-thoracic", data.sections.cervico_thoracic), 
-        ("Lumbopelvic", data.sections.lumbopelvic), 
-        ("Extremity", data.sections.extremity), 
-        ("Sensory", data.sections.sensory_examination)
-    ] %}
-        {% if section_data %}
-            {% set findings = section_data.split('\n') %}
-            {% for finding in findings %}
-                {% set finding = finding.strip() %}
-                {% if finding and ':' in finding and ('Previously' in finding or 'currently' in finding) %}
-                    {% set parts = finding.split(':', 1) %}
-                    {% if parts|length >= 2 %}
-                        {% set finding_dict = {'category': section_name, 'name': parts[0].strip(), 'states': parts[1].strip()} %}
-                        {% set _ = all_findings.append(finding_dict) %}
-                    {% endif %}
-                {% endif %}
-            {% endfor %}
-        {% endif %}
-    {% endfor %}
-    
-    <!-- Motor examination and reflexes are now handled in dedicated tables above -->
-    
-    <!-- Display consolidated findings table if we have any positive findings -->
-    {% if all_findings %}
-    <h5 style="margin-top: 15px; margin-bottom: 10px;">Other Physical Examination Findings</h5>
-    <p style="margin-bottom: 10px;">Previously positive findings compared with current status:</p>
-    
-    <table style="width: 100%; border-collapse: collapse;">
-        <thead>
-            <tr style="background-color: #f8f9fa;">
-                <th style="width: 20%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Category</th>
-                <th style="width: 30%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Finding</th>
-                <th style="width: 20%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Previous State</th>
-                <th style="width: 20%; padding: 8px; text-align: left; border: 1px solid #dee2e6;">Current State</th>
-                <th style="width: 10%; padding: 8px; text-align: center; border: 1px solid #dee2e6;">Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for finding in all_findings %}
-                {% set prev_state = "" %}
-                {% set curr_state = "" %}
-                {% set improvement_status = "" %}
-                
-                <!-- Parse the states string -->
-                {% set states = finding.states %}
-                
-                <!-- Handle "Previously X | Currently Y" format -->
-                {% if 'Previously' in states and '|' in states and ('Currently' in states or 'Current:' in states) %}
-                    {% set pipe_parts = states.split('|') %}
-                    {% if pipe_parts|length >= 2 %}
-                        {% set prev_state = pipe_parts[0].replace('Previously', '').strip() %}
-                        {% set curr_state = pipe_parts[1].replace('Currently', '').replace('Current:', '').strip().rstrip('.') %}
-                    {% endif %}
-                    
-                <!-- Handle "Previously X, currently Y" format (for motor strength) -->
-                {% elif 'Previously' in states and 'currently' in states %}
-                    {% set state_parts = states.split('currently') %}
-                    {% if state_parts|length >= 2 %}
-                        {% set prev_state = state_parts[0].replace('Previously', '').replace(',', '').strip() %}
-                        {% set curr_state = state_parts[1].strip().rstrip('.') %}
-                    {% endif %}
-                
-                <!-- Handle direct comparison format (e.g., "4+/5" for current only) -->
-                {% elif '/' in states and 'Previously' not in states %}
-                    {% set prev_state = "Not previously tested" %}
-                    {% set curr_state = states %}
-                {% endif %}
-                
-                <!-- Determine improvement status -->
-                {% if prev_state and curr_state %}
-                    {% if 'normal' in curr_state.lower() or 'negative' in curr_state.lower() or '5/5' in curr_state %}
-                        {% set improvement_status = "improved" %}
-                    {% elif prev_state == curr_state %}
-                        {% set improvement_status = "unchanged" %}
-                    {% elif 'positive' in curr_state.lower() and 'negative' in prev_state.lower() %}
-                        {% set improvement_status = "worsened" %}
-                    {% else %}
-                        {% set improvement_status = "changed" %}
-                    {% endif %}
-                {% endif %}
-                
-                {% if prev_state and curr_state %}
                 <tr>
-                    <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt;">{{ finding.category }}</td>
-                    <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt;">{{ finding.name }}</td>
-                    <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt;">{{ prev_state|capitalize }}</td>
-                    <td style="padding: 6px; border: 1px solid #dee2e6; font-size: 9pt; font-weight: bold;">{{ curr_state|capitalize }}</td>
-                    <td style="padding: 6px; border: 1px solid #dee2e6; text-align: center; font-size: 9pt;">
-                        {% if improvement_status == "improved" %}
-                            <span style="color: #28a745;">✓</span>
-                        {% elif improvement_status == "worsened" %}
-                            <span style="color: #dc3545;">✗</span>
-                        {% elif improvement_status == "unchanged" %}
-                            <span style="color: #6c757d;">→</span>
+                    <th style="width: 30%;">Movement</th>
+                    <th style="width: 32%;">Previous</th>
+                    <th style="width: 32%;">Current</th>
+                    <th class="text-center" style="width: 6%;">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for rom in data.sections.cervical_rom_parsed %}
+                <tr>
+                    <td>{{ rom.movement }}</td>
+                    <td>{{ rom.previous_state|capitalize }}</td>
+                    <td><b>{{ rom.current_state|capitalize }}</b></td>
+                    <td class="text-center">{{ status_icon(rom.comparison_status) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+
+    <!-- Lumbar Range of Motion Table -->
+    {% if data.sections.lumbar_rom_parsed and not data.sections.lumbar_rom_all_not_documented %}
+        <h5>Lumbar Range of Motion</h5>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 30%;">Movement</th>
+                    <th style="width: 32%;">Previous</th>
+                    <th style="width: 32%;">Current</th>
+                    <th class="text-center" style="width: 6%;">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for rom in data.sections.lumbar_rom_parsed %}
+                <tr>
+                    <td>{{ rom.movement }}</td>
+                    <td>{{ rom.previous_state|capitalize }}</td>
+                    <td><b>{{ rom.current_state|capitalize }}</b></td>
+                    <td class="text-center">{{ status_icon(rom.comparison_status) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+
+    <!-- Orthopedic Tests Table -->
+    {% set all_ortho_tests = data.sections.cervico_thoracic_parsed + data.sections.lumbopelvic_parsed + data.sections.extremity_parsed %}
+    {% set all_ortho_not_documented = data.sections.cervico_thoracic_all_not_documented and data.sections.lumbopelvic_all_not_documented and data.sections.extremity_all_not_documented %}
+    {% if all_ortho_tests and not all_ortho_not_documented %}
+        <h5>Orthopedic Tests</h5>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 30%;">Test</th>
+                    <th style="width: 32%;">Previous</th>
+                    <th style="width: 32%;">Current</th>
+                    <th class="text-center" style="width: 6%;">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for test in all_ortho_tests %}
+                <tr>
+                    <td>{{ test.test_name }}</td>
+                    <td>{{ test.previous_result|capitalize }}</td>
+                    <td><b>{{ test.current_result|capitalize }}</b></td>
+                    <td class="text-center">{{ status_icon(test.comparison_status) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+
+    <!-- ===================== START OF FIX ===================== -->
+    <h4>Neurological Examination Progress</h4>
+    
+    <!-- Motor Exam - Upper Extremity Table -->
+    {% if data.motor_exam and data.motor_exam.upper_extremity_parsed and not data.motor_exam.upper_extremity_all_not_documented %}
+        <h5>Motor Examination - Upper Extremity</h5>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 22%;">Muscle</th>
+                    <th class="text-center" style="width: 17%;">Right Prev</th>
+                    <th class="text-center" style="width: 17%;">Right Curr</th>
+                    <th class="text-center" style="width: 17%;">Left Prev</th>
+                    <th class="text-center" style="width: 17%;">Left Curr</th>
+                    <th class="text-center" style="width: 10%;">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for muscle in data.motor_exam.upper_extremity_parsed %}
+                <tr>
+                    <td>{{ muscle.muscle }}</td>
+                    <td class="text-center">{{ muscle.right_previous|strip_denominator }}</td>
+                    <td class="text-center"><b>{{ muscle.right_current|strip_denominator }}</b></td>
+                    <td class="text-center">{{ muscle.left_previous|strip_denominator }}</td>
+                    <td class="text-center"><b>{{ muscle.left_current|strip_denominator }}</b></td>
+                    <td class="text-center">
+                        {% set right_status = muscle.right_status %}
+                        {% set left_status = muscle.left_status %}
+                        {% if right_status == "improved" or left_status == "improved" %}
+                            {% if right_status == "worsened" or left_status == "worsened" %}
+                                {{ status_icon("changed") }}
+                            {% else %}
+                                {{ status_icon("improved") }}
+                            {% endif %}
+                        {% elif right_status == "worsened" or left_status == "worsened" %}
+                            {{ status_icon("worsened") }}
+                        {% elif right_status == "new" or left_status == "new" %}
+                            {{ status_icon("new") }}
+                        {% elif right_status == "unchanged" and left_status == "unchanged" %}
+                            {{ status_icon("unchanged") }}
                         {% else %}
-                            <span style="color: #6c757d;">•</span>
+                            {{ status_icon("changed") }}
                         {% endif %}
                     </td>
                 </tr>
-                {% endif %}
-            {% endfor %}
-        </tbody>
-    </table>
-    
-    <p style="margin-top: 10px; font-size: 8pt; color: #6c757d;">
-        Legend: ✓ = Improved, ✗ = Worsened, → = No change, • = Status changed
-    </p>
+                {% endfor %}
+            </tbody>
+        </table>
     {% endif %}
+
+    <!-- Motor Exam - Lower Extremity Table -->
+    {% if data.motor_exam and data.motor_exam.lower_extremity_parsed and not data.motor_exam.lower_extremity_all_not_documented %}
+        <h5>Motor Examination - Lower Extremity</h5>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 22%;">Muscle</th>
+                    <th class="text-center" style="width: 17%;">Right Prev</th>
+                    <th class="text-center" style="width: 17%;">Right Curr</th>
+                    <th class="text-center" style="width: 17%;">Left Prev</th>
+                    <th class="text-center" style="width: 17%;">Left Curr</th>
+                    <th class="text-center" style="width: 10%;">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for muscle in data.motor_exam.lower_extremity_parsed %}
+                <tr>
+                    <td>{{ muscle.muscle }}</td>
+                    <td class="text-center">{{ muscle.right_previous|strip_denominator }}</td>
+                    <td class="text-center"><b>{{ muscle.right_current|strip_denominator }}</b></td>
+                    <td class="text-center">{{ muscle.left_previous|strip_denominator }}</td>
+                    <td class="text-center"><b>{{ muscle.left_current|strip_denominator }}</b></td>
+                    <td class="text-center">
+                        {% set right_status = muscle.right_status %}
+                        {% set left_status = muscle.left_status %}
+                        {% if right_status == "improved" or left_status == "improved" %}
+                            {% if right_status == "worsened" or left_status == "worsened" %}
+                                {{ status_icon("changed") }}
+                            {% else %}
+                                {{ status_icon("improved") }}
+                            {% endif %}
+                        {% elif right_status == "worsened" or left_status == "worsened" %}
+                            {{ status_icon("worsened") }}
+                        {% elif right_status == "new" or left_status == "new" %}
+                            {{ status_icon("new") }}
+                        {% elif right_status == "unchanged" and left_status == "unchanged" %}
+                            {{ status_icon("unchanged") }}
+                        {% else %}
+                            {{ status_icon("changed") }}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+
+    <!-- Reflexes - Deep Tendon Table -->
+    {% if data.reflexes and data.reflexes.deep_tendon_parsed and not data.reflexes.deep_tendon_all_not_documented %}
+        <h5>Reflexes - Deep Tendon</h5>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 22%;">Reflex</th>
+                    <th class="text-center" style="width: 17%;">Right Prev</th>
+                    <th class="text-center" style="width: 17%;">Right Curr</th>
+                    <th class="text-center" style="width: 17%;">Left Prev</th>
+                    <th class="text-center" style="width: 17%;">Left Curr</th>
+                    <th class="text-center" style="width: 10%;">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for reflex in data.reflexes.deep_tendon_parsed %}
+                <tr>
+                    <td>{{ reflex.reflex }}</td>
+                    <td class="text-center">{{ reflex.right_previous }}</td>
+                    <td class="text-center"><b>{{ reflex.right_current }}</b></td>
+                    <td class="text-center">{{ reflex.left_previous }}</td>
+                    <td class="text-center"><b>{{ reflex.left_current }}</b></td>
+                    <td class="text-center">
+                        {% set right_status = reflex.right_status %}
+                        {% set left_status = reflex.left_status %}
+                        {% if right_status == "improved" or left_status == "improved" %}
+                            {% if right_status == "worsened" or left_status == "worsened" %}
+                                {{ status_icon("changed") }}
+                            {% else %}
+                                {{ status_icon("improved") }}
+                            {% endif %}
+                        {% elif right_status == "worsened" or left_status == "worsened" %}
+                            {{ status_icon("worsened") }}
+                        {% elif right_status == "new" or left_status == "new" %}
+                            {{ status_icon("new") }}
+                        {% elif right_status == "unchanged" and left_status == "unchanged" %}
+                            {{ status_icon("unchanged") }}
+                        {% else %}
+                            {{ status_icon("changed") }}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+
+    <!-- Reflexes - Pathological Table -->
+    {% if data.reflexes and data.reflexes.pathological_parsed and not data.reflexes.pathological_all_not_documented %}
+        <h5>Reflexes - Pathological</h5>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 22%;">Reflex</th>
+                    <th class="text-center" style="width: 17%;">Right Prev</th>
+                    <th class="text-center" style="width: 17%;">Right Curr</th>
+                    <th class="text-center" style="width: 17%;">Left Prev</th>
+                    <th class="text-center" style="width: 17%;">Left Curr</th>
+                    <th class="text-center" style="width: 10%;">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for reflex in data.reflexes.pathological_parsed %}
+                <tr>
+                    <td>{{ reflex.reflex }}</td>
+                    <td class="text-center">{{ reflex.right_previous }}</td>
+                    <td class="text-center"><b>{{ reflex.right_current }}</b></td>
+                    <td class="text-center">{{ reflex.left_previous }}</td>
+                    <td class="text-center"><b>{{ reflex.left_current }}</b></td>
+                    <td class="text-center">
+                        {% set right_status = reflex.right_status %}
+                        {% set left_status = reflex.left_status %}
+                        {% if right_status == "improved" or left_status == "improved" %}
+                            {% if right_status == "worsened" or left_status == "worsened" %}
+                                {{ status_icon("changed") }}
+                            {% else %}
+                                {{ status_icon("improved") }}
+                            {% endif %}
+                        {% elif right_status == "worsened" or left_status == "worsened" %}
+                            {{ status_icon("worsened") }}
+                        {% elif right_status == "new" or left_status == "new" %}
+                            {{ status_icon("new") }}
+                        {% elif right_status == "unchanged" and left_status == "unchanged" %}
+                            {{ status_icon("unchanged") }}
+                        {% else %}
+                            {{ status_icon("changed") }}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+
+    <!-- Cranial Nerve Examination Table -->
+    {% if data.cranial_nerve_examination_parsed and not data.cranial_nerve_examination_all_not_documented %}
+        <h5>Cranial Nerves</h5>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 30%;">Nerve</th>
+                    <th style="width: 32%;">Previous</th>
+                    <th style="width: 32%;">Current</th>
+                    <th class="text-center" style="width: 6%;">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for cn in data.cranial_nerve_examination_parsed %}
+                <tr>
+                    <td>{{ cn.cranial_nerve }}</td>
+                    <td>{{ cn.previous_finding|capitalize }}</td>
+                    <td><b>{{ cn.current_finding|capitalize }}</b></td>
+                    <td class="text-center">{{ status_icon(cn.comparison_status) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+    <!-- ===================== END OF FIX ===================== -->
+
+    {% if data.sections.sensory_examination %}
+        <h5>Sensory Examination</h5>
+        <p>{{ data.sections.sensory_examination }}</p>
+    {% endif %}
+    
+    {% if data.postural_and_gait_analysis and (data.postural_and_gait_analysis.posture_general or data.postural_and_gait_analysis.gait_analysis) %}
+    <h4>Postural & Gait Analysis</h4>
+    {% if data.postural_and_gait_analysis.posture_general %}
+    <p><strong>Posture:</strong> {{ data.postural_and_gait_analysis.posture_general }}</p>
+    {% endif %}
+    {% if data.postural_and_gait_analysis.gait_analysis %}
+    <p><strong>Gait:</strong> {{ data.postural_and_gait_analysis.gait_analysis }}</p>
+    {% endif %}
+    {% endif %}
+
 
     <hr>
 
@@ -1053,18 +478,20 @@
     
     {% if data.sections.assessment_diagnosis %}
     <h4>Diagnosis</h4>
-    <p class="diagnosis-list">{{ data.sections.assessment_diagnosis }}</p>
+        {% for dx in data.sections.assessment_diagnosis %}
+        <p>- {{ dx.diagnosis }} ({{ dx.icd10_code }}) - {{ dx.status }}</p>
+        {% endfor %}
     {% endif %}
     
     {% if data.sections.plan %}
     <h4>Plan</h4>
-    <p>{{ data.sections.plan }}</p>
+    <p>{{ data.sections.plan.replace('\n', '<br>') | safe }}</p>
     {% endif %}
 
     <!-- Treatment Performed Today -->
     {% if data.sections.treatment_performed_today %}
     <h4>Treatment Performed Today</h4>
-    <p>{{ data.sections.treatment_performed_today }}</p>
+    <p>{{ data.sections.treatment_performed_today.replace('\n', '<br>') | safe }}</p>
     {% endif %}
 
 </body>

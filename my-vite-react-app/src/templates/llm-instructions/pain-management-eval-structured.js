@@ -51,18 +51,18 @@ Target JSON Schema:
     "gait_analysis": "string | null"
   },
   "cranial_nerve_examination": [
-    {"cranial nerve": "CN I: Olfactory", "finding": "string"},
-    {"cranial nerve": "CN II: Optic", "finding": "string"},
-    {"cranial nerve": "CN III: Oculomotor", "finding": "string"},
-    {"cranial nerve": "CN IV: Trochlear", "finding": "string"},
-    {"cranial nerve": "CN V: Trigeminal", "finding": "string"},
-    {"cranial nerve": "CN VI: Abducens", "finding": "string"},
-    {"cranial nerve": "CN VII: Facial", "finding": "string"},
-    {"cranial nerve": "CN VIII: Vestibulocochlear", "finding": "string"},
-    {"cranial nerve": "CN IX: Glossopharyngeal", "finding": "string"},
-    {"cranial nerve": "CN X: Vagus", "finding": "string"},
-    {"cranial nerve": "CN XI: Accessory", "finding": "string"},
-    {"cranial nerve": "CN XII: Hypoglossal", "finding": "string"}
+    {"nerve": "CN I: Olfactory", "finding": "string"},
+    {"nerve": "CN II: Optic", "finding": "string"},
+    {"nerve": "CN III: Oculomotor", "finding": "string"},
+    {"nerve": "CN IV: Trochlear", "finding": "string"},
+    {"nerve": "CN V: Trigeminal", "finding": "string"},
+    {"nerve": "CN VI: Abducens", "finding": "string"},
+    {"nerve": "CN VII: Facial", "finding": "string"},
+    {"nerve": "CN VIII: Vestibulocochlear", "finding": "string"},
+    {"nerve": "CN IX: Glossopharyngeal", "finding": "string"},
+    {"nerve": "CN X: Vagus", "finding": "string"},
+    {"nerve": "CN XI: Accessory", "finding": "string"},
+    {"nerve": "CN XII: Hypoglossal", "finding": "string"}
   ] | null,
   "motor_exam": {
     "upper_extremity": [

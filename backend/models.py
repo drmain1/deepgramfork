@@ -153,11 +153,14 @@ class ClinicInfo(BaseModel):
 
 
 class CranialNerveExamination(BaseModel):
-    nerve: str = Field(..., alias="cranial nerve")  # Maps "cranial nerve" from JSON to "nerve" 
-    finding: str
+    cranial_nerve: str = Field(..., alias="nerve")  # Accept both "cranial_nerve" and "nerve"
+    finding: Optional[str] = None  # For initial evaluations
+    # For re-evaluations
+    previous_finding: Optional[str] = None
+    current_finding: Optional[str] = None
 
     class Config:
-        populate_by_name = True  # Allow both "nerve" and "cranial nerve" field names
+        populate_by_name = True  # Allow both field names
 
 
 class PosturalAndGaitAnalysis(BaseModel):
@@ -169,7 +172,7 @@ class MedicalDocument(BaseModel):
     evaluation_type: Optional[str] = None  # "initial", "follow_up", "re_evaluation", "final"
     patient_info: PatientInfo
     clinic_info: Optional[ClinicInfo] = None
-    sections: Dict[str, Optional[str]]
+    sections: Dict[str, Any]
     cranial_nerve_examination: Optional[List[CranialNerveExamination]] = None
     motor_exam: Optional[MotorExamination] = None
     reflexes: Optional[ReflexExamination] = None

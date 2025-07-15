@@ -10,6 +10,7 @@ from weasyprint.text.fonts import FontConfiguration
 from jinja2 import Environment, FileSystemLoader
 from .html_templates import MedicalDocumentHTMLTemplate
 from .css_styles import get_medical_document_css, get_re_evaluation_css
+from .template_preprocessor import prepare_re_evaluation_data_for_template
 from services.user_settings_service import UserSettingsService
 from firestore_client import firestore_client
 from gcs_utils import GCSClient
@@ -78,6 +79,9 @@ class WeasyPrintMedicalPDFGenerator:
             self.jinja_env.globals['parse_chief_complaints'] = self._parse_chief_complaints
             self.jinja_env.globals['parse_outcome_assessments'] = self._parse_outcome_assessments
             self.jinja_env.globals['get_physical_exam_comparisons'] = self._get_physical_exam_comparisons
+            
+            # Add custom filters
+            self.jinja_env.filters['strip_denominator'] = self._strip_denominator
             
             logger.info(f"Jinja2 environment setup successfully with templates from {templates_dir}")
         except Exception as e:
@@ -189,6 +193,17 @@ class WeasyPrintMedicalPDFGenerator:
                                 })
         
         return comparisons
+    
+    def _strip_denominator(self, value: str) -> str:
+        """Strip /5 from motor strength values (e.g., '5/5' -> '5', '4+/5' -> '4+')"""
+        if not value or not isinstance(value, str):
+            return value
+        
+        # Remove /5 from the end if present
+        if value.endswith('/5'):
+            return value[:-2]
+        
+        return value
     
     async def _get_clinic_info_from_database(self, user_id: str) -> Dict[str, Any]:
         """Fetch clinic information from user settings in Firestore/GCS"""
@@ -418,6 +433,33 @@ class WeasyPrintMedicalPDFGenerator:
         if not self.jinja_env:
             raise Exception("Jinja2 environment not initialized")
         
+        # Preprocess the data for re-evaluation template
+        logger.info("Preprocessing re-evaluation data for template")
+        preprocessed_data = prepare_re_evaluation_data_for_template(data)
+        
+        # Debug logging
+        logger.info(f"Re-evaluation data keys: {list(data.keys())}")
+        logger.info(f"Sections keys: {list(data.get('sections', {}).keys())}")
+        if 'outcome_assessments_parsed' in preprocessed_data.get('sections', {}):
+            logger.info(f"Outcome assessments found: {len(preprocessed_data['sections']['outcome_assessments_parsed'])}")
+        else:
+            logger.warning("No outcome_assessments_parsed found in preprocessed data!")
+        
+        # Write debug data to file
+        import os
+        debug_file = "/tmp/re_eval_debug.json"
+        with open(debug_file, 'w') as f:
+            import json
+            json.dump({
+                'original_sections_keys': list(data.get('sections', {}).keys()),
+                'preprocessed_sections_keys': list(preprocessed_data.get('sections', {}).keys()),
+                'has_outcome_assessments': 'outcome_assessments' in data.get('sections', {}),
+                'has_outcome_assessments_parsed': 'outcome_assessments_parsed' in preprocessed_data.get('sections', {}),
+                'outcome_assessments_count': len(data.get('sections', {}).get('outcome_assessments', [])),
+                'outcome_assessments_parsed_count': len(preprocessed_data.get('sections', {}).get('outcome_assessments_parsed', []))
+            }, f, indent=2)
+        logger.info(f"Debug data written to {debug_file}")
+        
         # Load the re-evaluation template
         template = self.jinja_env.get_template('re_evaluation_template.html')
         
@@ -425,9 +467,9 @@ class WeasyPrintMedicalPDFGenerator:
         besley_font_path = self._get_besley_font_path()
         css_styles = get_re_evaluation_css(besley_font_path)
         
-        # Render the template with data and CSS
+        # Render the template with preprocessed data and CSS
         html_content = template.render(
-            data=data,
+            data=preprocessed_data,
             css_styles=css_styles
         )
         
@@ -444,6 +486,10 @@ class WeasyPrintMedicalPDFGenerator:
         else:
             logger.warning("⚠️ postural_and_gait_analysis not found in data")
         
+        # Preprocess the data to ensure all cranial nerves are present
+        from .template_preprocessor import prepare_initial_exam_data_for_template
+        preprocessed_data = prepare_initial_exam_data_for_template(data)
+        
         # Load the initial exam template
         template = self.jinja_env.get_template('initial_exam_template.html')
         
@@ -451,9 +497,9 @@ class WeasyPrintMedicalPDFGenerator:
         besley_font_path = self._get_besley_font_path()
         css_styles = get_medical_document_css(besley_font_path)
         
-        # Render the template with data and CSS
+        # Render the template with preprocessed data and CSS
         html_content = template.render(
-            data=data,
+            data=preprocessed_data,
             css_styles=css_styles
         )
         
@@ -477,6 +523,25 @@ class WeasyPrintMedicalPDFGenerator:
         for i, visit_data in enumerate(sorted_visits):
             # Convert to dict if needed
             data = visit_data.model_dump() if hasattr(visit_data, 'model_dump') else visit_data
+            
+            # Apply the same data structure normalization as single PDFs
+            # Ensure sections exists - if not, move relevant fields into sections
+            if "sections" not in data:
+                data["sections"] = {}
+            
+            # Move fields that should be in sections if they're at root level
+            fields_to_move = [
+                "chief_complaint", "outcome_assessments", "cervical_rom", "lumbar_rom",
+                "cervico_thoracic", "lumbopelvic", "extremity", "sensory_examination",
+                "assessment_diagnosis", "plan", "treatment_performed_today",
+                "history_of_present_illness", "diagnostic_imaging_review", "physical_examination",
+                "duties_under_duress", "vitals"
+            ]
+            
+            for field in fields_to_move:
+                if field in data and field not in data["sections"]:
+                    data["sections"][field] = data[field]
+                    del data[field]
             
             # Extract visit date and type information
             visit_date = self._extract_visit_date(data)
@@ -560,6 +625,35 @@ class WeasyPrintMedicalPDFGenerator:
         if not self.jinja_env:
             raise Exception("Jinja2 environment not initialized")
         
+        # Debug cranial nerve data BEFORE preprocessing
+        logger.info("\n=== MULTI-VISIT INITIAL EXAM DEBUG ===")
+        logger.info(f"Data keys before preprocessing: {list(data.keys())}")
+        if 'cranial_nerve_examination' in data:
+            logger.info(f"Cranial nerve data BEFORE preprocessing:")
+            logger.info(f"  Type: {type(data['cranial_nerve_examination'])}")
+            logger.info(f"  Length: {len(data['cranial_nerve_examination']) if isinstance(data['cranial_nerve_examination'], list) else 'N/A'}")
+            if isinstance(data['cranial_nerve_examination'], list) and data['cranial_nerve_examination']:
+                logger.info(f"  First item: {data['cranial_nerve_examination'][0]}")
+                logger.info(f"  Full data: {json.dumps(data['cranial_nerve_examination'], indent=2)}")
+        else:
+            logger.warning("NO cranial_nerve_examination key in data!")
+        
+        # Preprocess the data to ensure all cranial nerves are present
+        from .template_preprocessor import prepare_initial_exam_data_for_template
+        preprocessed_data = prepare_initial_exam_data_for_template(data)
+        
+        # Debug cranial nerve data AFTER preprocessing
+        if 'cranial_nerve_examination' in preprocessed_data:
+            logger.info(f"Cranial nerve data AFTER preprocessing:")
+            logger.info(f"  Type: {type(preprocessed_data['cranial_nerve_examination'])}")
+            logger.info(f"  Length: {len(preprocessed_data['cranial_nerve_examination']) if isinstance(preprocessed_data['cranial_nerve_examination'], list) else 'N/A'}")
+            if isinstance(preprocessed_data['cranial_nerve_examination'], list) and preprocessed_data['cranial_nerve_examination']:
+                logger.info(f"  First item: {preprocessed_data['cranial_nerve_examination'][0]}")
+                # Check if any have "Intact" finding
+                intact_count = sum(1 for item in preprocessed_data['cranial_nerve_examination'] if item.get('finding') == 'Intact')
+                not_tested_count = sum(1 for item in preprocessed_data['cranial_nerve_examination'] if item.get('finding') == 'Not tested')
+                logger.info(f"  Intact count: {intact_count}, Not tested count: {not_tested_count}")
+        
         # Load the initial exam template
         template = self.jinja_env.get_template('initial_exam_template.html')
         
@@ -568,17 +662,17 @@ class WeasyPrintMedicalPDFGenerator:
         css_styles = get_medical_document_css(besley_font_path)
         
         # Debug clinic info before rendering
-        if data.get('clinic_info'):
-            logger.info(f"Initial exam - Clinic info being passed to template: {data['clinic_info']}")
-            if 'lines' in data['clinic_info']:
-                logger.info(f"Initial exam - Clinic info lines: {data['clinic_info']['lines']}")
-                logger.info(f"Initial exam - Number of lines: {len(data['clinic_info']['lines'])}")
-                for i, line in enumerate(data['clinic_info']['lines']):
+        if preprocessed_data.get('clinic_info'):
+            logger.info(f"Initial exam - Clinic info being passed to template: {preprocessed_data['clinic_info']}")
+            if 'lines' in preprocessed_data['clinic_info']:
+                logger.info(f"Initial exam - Clinic info lines: {preprocessed_data['clinic_info']['lines']}")
+                logger.info(f"Initial exam - Number of lines: {len(preprocessed_data['clinic_info']['lines'])}")
+                for i, line in enumerate(preprocessed_data['clinic_info']['lines']):
                     logger.info(f"Initial exam - Line {i}: '{line}'")
         
         # Render just the body content (no full HTML document structure)
         html_content = template.render(
-            data=data,
+            data=preprocessed_data,
             css_styles=css_styles
         )
         
@@ -615,6 +709,10 @@ class WeasyPrintMedicalPDFGenerator:
         if not self.jinja_env:
             raise Exception("Jinja2 environment not initialized")
         
+        # Preprocess the data for re-evaluation template
+        logger.info("Preprocessing re-evaluation data for multi-visit template")
+        preprocessed_data = prepare_re_evaluation_data_for_template(data)
+        
         # Load the re-evaluation template
         template = self.jinja_env.get_template('re_evaluation_template.html')
         
@@ -624,7 +722,7 @@ class WeasyPrintMedicalPDFGenerator:
         
         # Render just the body content (no full HTML document structure)
         html_content = template.render(
-            data=data,
+            data=preprocessed_data,
             css_styles=css_styles
         )
         

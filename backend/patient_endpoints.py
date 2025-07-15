@@ -938,11 +938,16 @@ async def extract_transcript_findings(
         user_settings = await firestore_client.get_user_settings(current_user_id)
         specialty = user_settings.get('medicalSpecialty', 'general') if user_settings else 'general'
         
+        # Check evaluation type from transcript data
+        evaluation_type = transcript_data.get('evaluation_type', 'initial')
+        logger.info(f"Transcript evaluation_type: {evaluation_type}")
+        
         # Use simplified extraction prompt that generates markdown summary + JSON
         logger.info(f"Extracting findings for transcript {transcript_id}")
         logger.info(f"User specialty: {specialty}")
-        extraction_prompt = get_simple_extraction_prompt(specialty=specialty)
-        logger.info(f"Using extraction prompt type: simplified (markdown + JSON)")
+        logger.info(f"Evaluation type: {evaluation_type}")
+        extraction_prompt = get_simple_extraction_prompt(specialty=specialty, evaluation_type=evaluation_type)
+        logger.info(f"Using extraction prompt type: simplified (markdown + JSON) for {evaluation_type}")
         logger.info(f"Extraction prompt length: {len(extraction_prompt)} characters")
         
         # Run the synchronous function in an executor
