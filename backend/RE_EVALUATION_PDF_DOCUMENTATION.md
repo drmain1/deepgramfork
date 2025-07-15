@@ -35,18 +35,31 @@ The re-evaluation PDF generation system consists of several layers:
   - sections: Dictionary of medical findings
   - motor_exam: Motor examination data
   - reflexes: Reflex examination data
-  - cranial_nerve_examination: Cranial nerve findings
+  - cranial_nerve_examination: Cranial nerve findings (List[CranialNerveExamination])
   - postural_and_gait_analysis: Postural/gait assessment
+
+- CranialNerveExamination: Pydantic model with field aliasing
+  - cranial_nerve: str = Field(..., alias="nerve")  # Internal field name
+  - finding: Optional[str] = None  # For initial evaluations
+  - previous_finding: Optional[str] = None  # For re-evaluations
+  - current_finding: Optional[str] = None  # For re-evaluations
+  Note: Accepts "nerve" in JSON but stores as "cranial_nerve" internally
 ```
 
 ### 2. Template Preprocessor (`/backend/services/pdf_service/template_preprocessor.py`)
-- `prepare_re_evaluation_data_for_template()`: Main preprocessing function
-- Parses comparison data in format: "Previously X | Currently Y"
-- Calculates improvement percentages and comparison statuses
-- Creates `_parsed` versions of data for template consumption
-- Handles flexible JSON structure (fields at root or in sections)
-- Skips processing when motor_exam or reflexes data is null
-- **NEW**: Adds `all_not_documented` flags for table visibility control
+- `prepare_re_evaluation_data_for_template()`: Main preprocessing function for re-evaluations
+  - Parses comparison data in format: "Previously X | Currently Y"
+  - Calculates improvement percentages and comparison statuses
+  - Creates `_parsed` versions of data for template consumption
+  - Handles flexible JSON structure (fields at root or in sections)
+  - Skips processing when motor_exam or reflexes data is null
+  - **NEW**: Adds `all_not_documented` flags for table visibility control
+
+- `prepare_initial_exam_data_for_template()`: Preprocessing for initial examinations
+  - **NEW**: Handles Pydantic field aliasing for cranial nerves
+  - Checks both "nerve" and "cranial_nerve" field names
+  - Normalizes output to always use "nerve" for template compatibility
+  - Preserves existing findings without overwriting
 
 ### 3. WeasyPrint Generator (`/backend/services/pdf_service/weasyprint_generator.py`)
 - `WeasyPrintMedicalPDFGenerator`: Main PDF generation class
@@ -80,13 +93,32 @@ The re-evaluation PDF generation system consists of several layers:
 
 ## Data Flow
 
+### Single Visit PDF Generation
 1. **Frontend sends JSON data** → `/api/generate-pdf` endpoint
 2. **PDF Router** validates data using Pydantic models
-3. **WeasyPrint Generator** detects re-evaluation type
-4. **Template Preprocessor** parses comparison data
+3. **WeasyPrint Generator** detects evaluation type (initial/re-evaluation)
+4. **Template Preprocessor** prepares data for template
 5. **Jinja2 Template** renders HTML with tables and styling
 6. **WeasyPrint** converts HTML to PDF
 7. **PDF uploaded to GCS** and URL returned
+
+### Multi-Visit PDF Generation
+1. **Frontend sends array of visits** → `/api/generate-multi-visit-pdf` endpoint
+2. **PDF Router** converts each visit using `model_dump(exclude_unset=True)`
+3. **WeasyPrint Generator** processes each visit:
+   - Sorts visits by date
+   - Determines visit type for each
+   - Routes to appropriate template
+4. **For Initial Examinations**:
+   - Data passes through `prepare_initial_exam_data_for_template()`
+   - Handles Pydantic field aliasing (nerve/cranial_nerve)
+   - Preserves original findings
+5. **For Re-Evaluations**:
+   - Data passes through `prepare_re_evaluation_data_for_template()`
+   - Parses comparison format
+   - Calculates status indicators
+6. **Combined HTML generated** with all visits
+7. **PDF created and returned**
 
 ## Dependencies
 
@@ -292,17 +324,18 @@ if data.get(exam_type) is None:
     continue  # Skip processing
 ```
 
-### Issue 7: Initial Exam Cranial Nerves Not Displaying (PARTIALLY FIXED)
-**Problem**: Initial examination cranial nerve table showing "Not tested" instead of actual findings
-**Cause**: Multiple issues:
-1. Cranial nerve examination was missing from extraction prompts
-2. Initial exam template was using div-based list instead of table format
-3. Preprocessing function may be overwriting existing findings with "Not tested"
-**Partial Fix**: 
-- Added cranial nerve examination to extraction prompts
-- Updated initial exam template to use table format
-- Added preprocessing to ensure all 12 nerves display
-**Status**: Still investigating why actual findings are being replaced with "Not tested"
+### Issue 7: Initial Exam Cranial Nerves Not Displaying (FIXED)
+**Problem**: Initial examination cranial nerve table showing "Not tested" instead of actual findings in multi-visit PDFs
+**Cause**: Pydantic model field aliasing issue
+1. The `CranialNerveExamination` model uses `cranial_nerve` as the field name with `nerve` as an alias
+2. When data comes in as `{"nerve": "CN I: Olfactory", "finding": "Intact"}`, Pydantic converts it to `{"cranial_nerve": "CN I: Olfactory", "finding": "Intact"}`
+3. The template preprocessor was looking for "nerve" field and not finding it
+4. This caused it to create default entries with "Not tested"
+**Fix**: 
+- Updated `prepare_initial_exam_data_for_template()` to handle both field names
+- Preprocessor now checks for both "nerve" and "cranial_nerve" fields
+- Always outputs "nerve" as the field name for template compatibility
+- Preserves actual findings instead of defaulting to "Not tested"
 
 ## Configuration
 
@@ -385,7 +418,17 @@ For issues or questions:
 
 ## Recent Updates
 
-### July 15, 2025 Updates
+### July 15, 2025 Updates (Part 2)
+
+#### Fixed Multi-Visit PDF Cranial Nerve Display Issue
+1. **Pydantic Field Aliasing Problem**: Fixed issue where cranial nerve findings were showing as "Not tested" in multi-visit PDFs
+   - Root cause: `CranialNerveExamination` model uses `cranial_nerve` field with `nerve` alias
+   - Pydantic converts incoming `"nerve"` to `"cranial_nerve"` internally
+   - Template preprocessor couldn't find the data with the transformed field name
+   - Fix: Updated preprocessor to check both "nerve" and "cranial_nerve" field names
+   - Now correctly preserves findings like "Intact" instead of defaulting to "Not tested"
+
+### July 15, 2025 Updates (Part 1)
 
 #### Fixed LLM Extraction Issues
 1. **Previous Findings Injection Problem**: Fixed issue where LLM was incorrectly using injected previous findings as current findings
@@ -521,6 +564,9 @@ For issues or questions:
 
 #### Issue: Motor values showing with "/5"
 **Solution**: Ensure `strip_denominator` filter is registered and applied in template
+
+#### Issue: Cranial nerves showing "Not tested" in multi-visit PDFs
+**Solution**: Check for Pydantic field aliasing - preprocessor must handle both "nerve" and "cranial_nerve" field names
 
 ---
 *Last Updated: July 15, 2025*
