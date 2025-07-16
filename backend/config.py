@@ -36,7 +36,7 @@ class Config:
         # Security Settings
         self.allowed_origins = os.getenv(
             "ALLOWED_ORIGINS",
-            "http://localhost:5173,https://scribe.medlegaldoc.com,https://www.scribe.medlegaldoc.com"
+            "http://localhost:5173,http://localhost:5174,https://scribe.medlegaldoc.com,https://www.scribe.medlegaldoc.com"
         ).split(",")
         self.session_timeout_minutes = int(os.getenv("SESSION_TIMEOUT_MINUTES", "25"))
         self.rate_limit_per_minute = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))

@@ -23,11 +23,6 @@ export const WS_CLOSE_CODES = {
   USER_PAUSE: 'User paused recording'
 };
 
-// API Endpoints
-export const API_ENDPOINTS = {
-  SAVE_SESSION: '/api/v1/save_session_data',
-  SAVE_DRAFT: '/api/v1/save_draft'
-};
 
 // UI Constants
 export const LOCATION_LEAVE_OUT = '__LEAVE_OUT__';

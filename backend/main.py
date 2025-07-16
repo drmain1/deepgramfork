@@ -344,15 +344,10 @@ async def record_failed_attempt(request: Request):
         # Audit log failed authentication attempt
         AuditLogger.log_authentication(
             user_id=email,  # Use email as user identifier for failed attempts
-            event_type="FAILED_LOGIN_ATTEMPT",
+            action="FAILED_LOGIN_ATTEMPT",
             request=request,
             success=False,
-            additional_data={
-                "email": email,
-                "client_ip": client_ip,
-                "is_locked": result.get("is_locked", False),
-                "remaining_attempts": result.get("remaining_attempts", 0)
-            }
+            failure_reason=f"Failed login attempt from {client_ip}, locked: {result.get('is_locked', False)}, remaining attempts: {result.get('remaining_attempts', 0)}"
         )
         
         return result
@@ -381,10 +376,9 @@ async def login(request: Request, current_user: dict = Depends(get_current_user)
         # Audit log successful login
         AuditLogger.log_authentication(
             user_id=user_id,
-            event_type="LOGIN",
+            action="LOGIN",
             request=request,
-            success=True,
-            additional_data={"email": email, "session_created": True}
+            success=True
         )
         
         return {
@@ -399,10 +393,10 @@ async def login(request: Request, current_user: dict = Depends(get_current_user)
         # Audit log failed login
         AuditLogger.log_authentication(
             user_id=user_id,
-            event_type="LOGIN",
+            action="LOGIN",
             request=request,
             success=False,
-            additional_data={"email": email, "error": str(e)}
+            failure_reason=f"Login failed: {str(e)}"
         )
         
         logger.error(f"Error during login for user {user_id}: {str(e)}")
@@ -424,10 +418,9 @@ async def logout(request: Request, current_user: dict = Depends(get_current_user
         # Audit log successful logout
         AuditLogger.log_authentication(
             user_id=user_id,
-            event_type="LOGOUT",
+            action="LOGOUT",
             request=request,
-            success=True,
-            additional_data={"email": email, "session_cleared": True}
+            success=True
         )
         
         return {
@@ -441,10 +434,10 @@ async def logout(request: Request, current_user: dict = Depends(get_current_user
         # Audit log failed logout attempt
         AuditLogger.log_authentication(
             user_id=user_id,
-            event_type="LOGOUT",
+            action="LOGOUT",
             request=request,
             success=False,
-            additional_data={"email": email, "error": str(e)}
+            failure_reason=f"Logout failed: {str(e)}"
         )
         
         logger.error(f"Error during logout for user {user_id}: {str(e)}")

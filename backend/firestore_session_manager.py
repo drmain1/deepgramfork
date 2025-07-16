@@ -85,13 +85,9 @@ class FirestoreSessionManager:
             # Audit log for new session
             AuditLogger.log_authentication(
                 user_id=user_id,
-                event_type="SESSION_CREATED",
+                action="SESSION_CREATED",
                 request=None,  # No request context in session manager
-                success=True,
-                additional_data={
-                    "timeout_minutes": self.timeout_minutes,
-                    "expires_at": session_data['expires_at'].isoformat()
-                }
+                success=True
             )
             
         except Exception as e:
@@ -128,14 +124,9 @@ class FirestoreSessionManager:
                 # Audit log session timeout
                 AuditLogger.log_authentication(
                     user_id=user_id,
-                    event_type="SESSION_TIMEOUT",
+                    action="SESSION_TIMEOUT",
                     request=None,
-                    success=True,  # Timeout is expected behavior
-                    additional_data={
-                        "expired_at": now.isoformat(),
-                        "original_expires_at": expires_at.isoformat(),
-                        "timeout_minutes": self.timeout_minutes
-                    }
+                    success=True  # Timeout is expected behavior
                 )
                 return False
             
@@ -169,13 +160,9 @@ class FirestoreSessionManager:
                 # Audit log session clearing
                 AuditLogger.log_authentication(
                     user_id=user_id,
-                    event_type="SESSION_CLEARED",
+                    action="SESSION_CLEARED",
                     request=None,
-                    success=True,
-                    additional_data={
-                        "logged_out_at": logout_time.isoformat(),
-                        "session_was_active": True
-                    }
+                    success=True
                 )
             
         except Exception as e:
@@ -230,14 +217,9 @@ class FirestoreSessionManager:
                             # Audit log bulk session cleanup
                             AuditLogger.log_authentication(
                                 user_id="system_cleanup",
-                                event_type="BULK_SESSION_CLEANUP",
+                                action="BULK_SESSION_CLEANUP",
                                 request=None,
-                                success=True,
-                                additional_data={
-                                    "expired_session_count": expired_count,
-                                    "cleanup_time": now.isoformat(),
-                                    "expired_user_ids": expired_user_ids[:10]  # Log first 10 user IDs to avoid huge logs
-                                }
+                                success=True
                             )
                         
                         consecutive_failures = 0  # Reset on success

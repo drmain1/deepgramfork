@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  backend:
+    # Security options for HIPAA compliance
+    security_opt:
+      - no-new-privileges:true
+      - apparmor:docker-default
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100M
+    environment:
+      # Security headers
+      - SECURE_HEADERS_ENABLED=true
+      - CORS_ALLOW_CREDENTIALS=false
+      - SESSION_COOKIE_SECURE=true
+      - SESSION_COOKIE_HTTPONLY=true
+      - SESSION_COOKIE_SAMESITE=strict
+    # Resource limits to prevent DoS
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    # Restart policy for high availability
+    restart: unless-stopped
+    # Logging configuration for HIPAA audit trails
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "hipaa_app=backend"

@@ -75,7 +75,8 @@ export const AuthProvider = ({ children }) => {
       // Call backend login endpoint to create Firestore session
       try {
         const token = await user.getIdToken();
-        const response = await fetch('/api/v1/login', {
+        const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+        const response = await fetch(`${API_BASE_URL}/api/v1/login`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -110,7 +111,8 @@ export const AuthProvider = ({ children }) => {
       if (currentUser) {
         try {
           const token = await currentUser.getIdToken();
-          const response = await fetch('/api/v1/logout', {
+          const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+          const response = await fetch(`${API_BASE_URL}/api/v1/logout`, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${token}`,
@@ -210,7 +212,8 @@ export const AuthProvider = ({ children }) => {
       const token = await currentUser.getIdToken(true);
       
       // Call backend to refresh session
-      const response = await fetch('/api/v1/refresh-session', {
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_BASE_URL}/api/v1/refresh-session`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -249,7 +252,8 @@ export const AuthProvider = ({ children }) => {
             
             // Create backend session if email is verified
             try {
-              const response = await fetch('/api/v1/login', {
+              const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+              const response = await fetch(`${API_BASE_URL}/api/v1/login`, {
                 method: 'POST',
                 headers: {
                   'Authorization': `Bearer ${token}`,

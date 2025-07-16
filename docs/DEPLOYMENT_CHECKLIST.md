@@ -17,7 +17,7 @@
   ```bash
   # Create secrets
   echo "your-deepgram-key" | gcloud secrets create deepgram-api-key --data-file=-
-# echo "your-speechmatics-key" | gcloud secrets create speechmatics-api-key --data-file=-  # removed
+ 
   ```
 
 ### 3. Frontend Configuration

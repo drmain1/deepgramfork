@@ -62,7 +62,8 @@ const FirebaseAuthenticator = () => {
 
   const checkAccountLockout = async (email) => {
     try {
-      const response = await fetch('/api/v1/auth/check-lockout', {
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_BASE_URL}/api/v1/auth/check-lockout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
@@ -82,7 +83,8 @@ const FirebaseAuthenticator = () => {
 
   const recordFailedAttempt = async (email) => {
     try {
-      const response = await fetch('/api/v1/auth/failed-attempt', {
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_BASE_URL}/api/v1/auth/failed-attempt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })

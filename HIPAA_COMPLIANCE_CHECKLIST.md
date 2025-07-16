@@ -64,6 +64,11 @@
 - [ ] Configure Cloud CDN for static assets
 - [ ] Set up staging environment with same security
 - [ ] Implement blue-green deployment strategy
+- [x] Docker container security hardening - ✅ COMPLETED
+  - Non-root user, read-only filesystem
+  - Security headers, capability dropping
+  - Regular vulnerability scanning
+  - Documented CVE-2023-45853 as accepted risk
 
 ## 📊 Tracking & Documentation
 
@@ -116,6 +121,67 @@
      --resources=projects/[PROJECT_NUMBER] \
      --restricted-services=firestore.googleapis.com,storage.googleapis.com
    ```
+
+## 🐳 Docker Security Assessment (July 15, 2025)
+
+### Security Scan Results
+- **Scanner**: Docker Scout + Trivy
+- **Image**: backend-app:latest (1.05 GB)
+- **Base**: python:3.11-slim-bookworm (Debian 12)
+
+### Vulnerability Summary
+- **1 CRITICAL**: CVE-2023-45853 (zlib1g) - Status: will_not_fix
+- **2 HIGH**: libxslt, PAM vulnerabilities
+- **4 MEDIUM**: gnutls28, tar packages
+
+### Critical Vulnerability Assessment (CVE-2023-45853)
+**zlib1g Integer Overflow in ZIP Processing**
+- **Impact**: Heap buffer overflow when processing malicious ZIP files
+- **Risk Assessment**: VERY LOW for this application
+- **Rationale**:
+  1. ✅ Application does not process ZIP files (verified via code scan)
+  2. ✅ No ZIP-related imports (zipfile, gzip, tarfile, zlib)
+  3. ✅ No compression operations in codebase
+  4. ✅ Dependencies don't use ZIP functionality
+  5. ✅ Only handles individual files: PDFs, images, JSON
+
+### Compensating Security Controls
+1. **Container Hardening**:
+   - ✅ Non-root user (appuser with UID 1000)
+   - ✅ Read-only filesystem
+   - ✅ All capabilities dropped
+   - ✅ No new privileges
+   - ✅ AppArmor profile enabled
+   - ✅ Most ZIP tools removed (no zip, unzip, 7z)
+
+2. **File Permissions**:
+   - ✅ Directories: 750 (rwxr-x---)
+   - ✅ Python files: 640 (rw-r-----)
+   - ✅ Owned by appuser:appuser
+
+3. **Security Headers & Environment**:
+   - ✅ SECURE_HEADERS_ENABLED=true
+   - ✅ SESSION_COOKIE_SECURE=true
+   - ✅ SESSION_COOKIE_HTTPONLY=true
+   - ✅ SESSION_COOKIE_SAMESITE=strict
+
+4. **Resource Limits**:
+   - ✅ CPU: 2.0 cores limit
+   - ✅ Memory: 2GB limit
+   - ✅ Tmpfs: 100MB, noexec, nosuid
+
+### Security Recommendations
+1. **Accept Risk**: Document CVE-2023-45853 as accepted risk with compensating controls
+2. **Weekly Rebuilds**: Schedule automated rebuilds for security patches
+3. **Runtime Monitoring**: Consider Falco or similar for runtime security
+4. **Image Signing**: Enable Docker Content Trust for production
+
+### Verification Completed
+- ✅ No hardcoded secrets in image layers
+- ✅ No development tools in runtime image
+- ✅ 149 packages total (minimal attack surface)
+- ✅ Health check implemented for monitoring
+- ✅ Proper logging configuration
 
 ## 🎯 Implementation Order
 
@@ -176,6 +242,9 @@
 - Cloud Armor provides DDoS protection and WAF capabilities
 - VPC Service Controls add an extra perimeter of security
 - Consider using Cloud HSM for key management in the future
+- Docker security: CVE-2023-45853 (zlib1g) accepted as low risk due to no ZIP file processing
+- Container security controls: read-only FS, non-root user, dropped capabilities
+- Schedule weekly Docker image rebuilds for security patches
 
 ## 🔍 Verification Steps
 

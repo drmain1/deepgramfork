@@ -3,7 +3,6 @@ import logging
 import os
 import json
 from datetime import datetime, timezone
-from dotenv import load_dotenv
 from fastapi import WebSocket, WebSocketDisconnect
 from deepgram import (
     AsyncLiveClient,
@@ -13,11 +12,11 @@ from deepgram import (
 )
 from deepgram.clients.listen.v1.websocket.response import CloseResponse
 
-# Load environment variables
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
-load_dotenv(dotenv_path=dotenv_path)
+# Load configuration
+from config import Config
+config = Config()
 
-DEEPGRAM_API_KEY = os.getenv("deepgram_api_key")
+DEEPGRAM_API_KEY = config.deepgram_api_key
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -200,19 +199,29 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
             if authenticated_user_id and selected_profile_id_from_client:
                 logger.info(f"Updating settings for authenticated user: {authenticated_user_id}, profile: {selected_profile_id_from_client}")
                 try:
-                    user_settings = await get_user_settings_func(authenticated_user_id, current_user_id=authenticated_user_id)
-                    if user_settings and user_settings.transcriptionProfiles:
+                    user_settings = await get_user_settings_func(authenticated_user_id)
+                    if user_settings and hasattr(user_settings, 'transcriptionProfiles'):
                         selected_profile = next((p for p in user_settings.transcriptionProfiles if p.id == selected_profile_id_from_client), None)
-                        if selected_profile:
+                    elif isinstance(user_settings, dict) and 'transcriptionProfiles' in user_settings:
+                        selected_profile = next((p for p in user_settings['transcriptionProfiles'] if p['id'] == selected_profile_id_from_client), None)
+                    else:
+                        selected_profile = None
+                    
+                    if selected_profile:
+                        # Handle both object and dict formats
+                        if hasattr(selected_profile, 'name'):
                             logger.info(f"Found profile '{selected_profile.name}'. Updating Deepgram settings.")
                             dg_smart_format = selected_profile.smart_format
                             dg_diarize = selected_profile.diarize
                             user_profile_utterances = selected_profile.utterances
-                            logger.info(f"Updated settings: smart_format={dg_smart_format}, diarize={dg_diarize}, utterances={user_profile_utterances}, multilingual_enabled={multilingual_enabled}")
                         else:
-                            logger.warning(f"Profile ID {selected_profile_id_from_client} not found.")
+                            logger.info(f"Found profile '{selected_profile.get('name', 'Unknown')}'. Updating Deepgram settings.")
+                            dg_smart_format = selected_profile.get('smart_format', dg_smart_format)
+                            dg_diarize = selected_profile.get('diarize', dg_diarize)
+                            user_profile_utterances = selected_profile.get('utterances', user_profile_utterances)
+                        logger.info(f"Updated settings: smart_format={dg_smart_format}, diarize={dg_diarize}, utterances={user_profile_utterances}, multilingual_enabled={multilingual_enabled}")
                     else:
-                        logger.warning(f"No transcription profiles for user {authenticated_user_id}.")
+                        logger.warning(f"Profile ID {selected_profile_id_from_client} not found or no transcription profiles for user {authenticated_user_id}.")
                 except Exception as e_settings:
                     logger.error(f"Error fetching/processing user settings: {e_settings}")
             else:

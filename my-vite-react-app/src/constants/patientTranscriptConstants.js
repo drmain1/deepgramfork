@@ -57,9 +57,10 @@ export const ERROR_MESSAGES = {
 };
 
 // API endpoints
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 export const API_ENDPOINTS = {
-  GET_PATIENT: (patientId) => `/api/v1/patients/${patientId}`,
-  GET_PATIENT_TRANSCRIPTS: (patientId) => `/api/v1/patients/${patientId}/transcripts`,
-  GET_TRANSCRIPT: (userId, transcriptId) => `/api/v1/transcript/${userId}/${transcriptId}`,
-  GENERATE_BILLING: (patientId) => `/api/v1/patients/${patientId}/generate-billing`
+  GET_PATIENT: (patientId) => `${API_BASE_URL}/api/v1/patients/${patientId}`,
+  GET_PATIENT_TRANSCRIPTS: (patientId) => `${API_BASE_URL}/api/v1/patients/${patientId}/transcripts`,
+  GET_TRANSCRIPT: (userId, transcriptId) => `${API_BASE_URL}/api/v1/transcript/${userId}/${transcriptId}`,
+  GENERATE_BILLING: (patientId) => `${API_BASE_URL}/api/v1/patients/${patientId}/generate-billing`
 };

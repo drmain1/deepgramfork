@@ -24,7 +24,8 @@ export const useServerPdfGeneration = () => {
       
       // Determine API endpoint based on input type
       const isStructured = typeof transcriptData === 'object' && transcriptData.patient_info;
-      const endpoint = isStructured ? '/api/generate-pdf' : '/api/generate-pdf-from-transcript';
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const endpoint = isStructured ? `${API_BASE_URL}/api/generate-pdf` : `${API_BASE_URL}/api/generate-pdf-from-transcript`;
       
       // Prepare request body
       const requestBody = isStructured 

@@ -1,0 +1,73 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+*.pyc
+.python-version
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Documentation
+*.md
+docs/
+README.md
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Logs and databases
+*.log
+*.db
+*.sqlite
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Project specific
+tests/
+test_*.py
+*_test.py
+*.bak
+*.tmp
+.env
+.env.*
+debug_*.py
+check_*.py
+migrate_*.py
+*credentials*.json
+app.yaml
+cors-config.json
+setup_*.py
+setup_*.sh
+scripts/
+*.md
+BILLING_*
+BUG_*
+CLOCK_*
+CPT_*
+MAIN_PY_*
+RE_EVALUATION_*

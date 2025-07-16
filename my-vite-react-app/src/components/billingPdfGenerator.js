@@ -6,7 +6,8 @@ import { auth } from '../firebaseConfig';
 
 class MedicalBillingPDF {
   constructor() {
-    this.serverEndpoint = '/api/generate-billing-pdf';
+    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    this.serverEndpoint = `${API_BASE_URL}/api/generate-billing-pdf`;
   }
 
   // Convert our billing data format to the expected format

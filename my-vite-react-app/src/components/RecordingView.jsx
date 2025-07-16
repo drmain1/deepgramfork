@@ -210,9 +210,11 @@ function RecordingView({
       console.log('[RecordingView] Got access token');
       
       // Choose the correct WebSocket endpoint based on multilingual setting
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const wsProtocol = API_BASE_URL.startsWith('https') ? 'wss' : 'ws';
       const wsBaseUrl = isMultilingual 
-        ? 'ws://localhost:8000/stream/multilingual'
-        : 'ws://localhost:8000/stream';
+        ? `${wsProtocol}://${API_BASE_URL.replace(/^https?:\/\//, '')}/stream/multilingual`
+        : `${wsProtocol}://${API_BASE_URL.replace(/^https?:\/\//, '')}/stream`;
       
       console.log('[RecordingView] Connecting to WebSocket:', wsBaseUrl);
 
@@ -330,7 +332,7 @@ function RecordingView({
     setIsSessionSaved(false);
     
     try {
-      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       const accessToken = await getToken();
       
       const payload = buildSaveSessionPayload({
@@ -458,7 +460,7 @@ function RecordingView({
       });
       
       try {
-        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+        const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
         const accessToken = await getToken();
         
         await saveDraftToBackend({

@@ -1,0 +1,60 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: medlegaldoc-backend
+  annotations:
+    run.googleapis.com/launch-stage: GA
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/startup-cpu-boost: 'true'
+    spec:
+      containerConcurrency: 100
+      timeoutSeconds: 300
+      serviceAccountName: backend-service@medlegaldoc-b31df.iam.gserviceaccount.com
+      containers:
+      - image: us-central1-docker.pkg.dev/medlegaldoc-b31df/medlegaldoc-backend/backend:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: PORT
+          value: "8080"
+        - name: GCS_BUCKET_NAME
+          value: medlegaldoc-b31df-storage
+        - name: GCP_PROJECT_ID
+          value: medlegaldoc-b31df
+        - name: RUNNING_IN_CLOUD_RUN
+          value: "true"
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: SECURE_HEADERS_ENABLED
+          value: "true"
+        - name: CORS_ALLOW_CREDENTIALS
+          value: "false"
+        - name: SESSION_COOKIE_SECURE
+          value: "true"
+        - name: SESSION_COOKIE_HTTPONLY
+          value: "true"
+        - name: SESSION_COOKIE_SAMESITE
+          value: "strict"
+        - name: SKIP_GCS_CHECK
+          value: "true"
+        - name: SKIP_SECRET_CHECK
+          value: "true"
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: "1"
+            memory: 1Gi
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          timeoutSeconds: 10
+          periodSeconds: 10
+          failureThreshold: 10

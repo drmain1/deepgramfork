@@ -1,4 +1,4 @@
-import { API_ENDPOINTS, LOCATION_LEAVE_OUT } from '../constants/recordingConstants';
+import { LOCATION_LEAVE_OUT } from '../constants/recordingConstants';
 
 export const prepareTranscriptWithLocation = (transcript, location) => {
   if (!location || location.trim() === '' || location === LOCATION_LEAVE_OUT) {
@@ -57,7 +57,7 @@ export const buildSaveSessionPayload = ({
 };
 
 export const saveSessionToBackend = async (payload, accessToken, apiBaseUrl) => {
-  const url = `${apiBaseUrl}${API_ENDPOINTS.SAVE_SESSION}`;
+  const url = `${apiBaseUrl}/api/v1/save_session_data`;
   
   const response = await fetch(url, {
     method: 'POST',
@@ -97,7 +97,7 @@ export const saveDraftToBackend = async ({
   accessToken,
   apiBaseUrl
 }) => {
-  const url = `${apiBaseUrl}${API_ENDPOINTS.SAVE_DRAFT}`;
+  const url = `${apiBaseUrl}/api/v1/save_draft`;
   
   const response = await fetch(url, {
     method: 'POST',

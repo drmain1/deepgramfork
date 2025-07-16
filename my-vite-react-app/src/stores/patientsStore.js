@@ -30,7 +30,8 @@ const usePatientsStore = create((set, get) => ({
     
     try {
       const token = await auth.currentUser?.getIdToken();
-      const response = await fetch('/api/v1/patients', {
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_BASE_URL}/api/v1/patients`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
