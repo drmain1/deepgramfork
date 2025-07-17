@@ -151,6 +151,14 @@ const FirebaseAuthenticator = () => {
               loginError.code === 'auth/invalid-credential') {
             await recordFailedAttempt(email);
           }
+          
+          // Provide user-friendly error messages
+          if (loginError.code === 'auth/user-not-found') {
+            throw new Error('No account found with this email address. Please check your email or create a new account.');
+          } else if (loginError.code === 'auth/wrong-password' || loginError.code === 'auth/invalid-credential') {
+            throw new Error('Invalid email or password. Please try again.');
+          }
+          
           throw loginError;
         }
       }
@@ -183,8 +191,29 @@ const FirebaseAuthenticator = () => {
         </Typography>
 
         {(error || authError) && (
-          <Alert severity="error" sx={{ width: '100%', mb: 2 }}>
+          <Alert 
+            severity={
+              (error || authError)?.includes('verify your email') ? 'warning' :
+              (error || authError)?.includes('No account found') ? 'info' :
+              'error'
+            } 
+            sx={{ width: '100%', mb: 2 }}
+          >
             {error || authError}
+            {(error || authError)?.includes('No account found') && (
+              <Box sx={{ mt: 1 }}>
+                <Button 
+                  size="small" 
+                  onClick={() => {
+                    setIsSignUp(true);
+                    setError('');
+                  }}
+                  sx={{ color: 'inherit', textDecoration: 'underline' }}
+                >
+                  Create a new account
+                </Button>
+              </Box>
+            )}
             {(error || authError)?.includes('verify your email') && (
               <Box sx={{ mt: 1 }}>
                 <Stack direction="row" spacing={2}>

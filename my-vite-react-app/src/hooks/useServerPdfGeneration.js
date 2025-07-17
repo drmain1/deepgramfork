@@ -49,7 +49,7 @@ export const useServerPdfGeneration = () => {
       }
       
       // Send to backend
-      const response = await fetch(`${import.meta.env.VITE_API_URL}${endpoint}`, {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -246,6 +246,49 @@ For custom domain setup with CloudFlare:
    - **Solution**: Add frontend domain to backend CORS allowed origins
    - **Check**: Verify backend allows `http://localhost:5173` for development
 
+9. **Session Login Errors (500 Internal Server Error)**
+   - **Symptom**: `Failed to create backend session: 500` when frontend tries to login
+   - **Cause**: AuditLogger method signature mismatch
+   - **Error**: `AuditLogger.log_authentication() got an unexpected keyword argument 'event_type'`
+   - **Solution**: Fix firestore_session_manager.py to use `action` instead of `event_type` parameter
+   - **Files affected**: firestore_session_manager.py (4 occurrences)
+
+10. **WebSocket/Deepgram Transcription Not Working**
+    - **Symptom**: WebSocket connects but no transcript text appears
+    - **Multiple causes and solutions**:
+    
+    a) **FFmpeg not installed**
+       - **Error**: `Error starting FFmpeg: [Errno 2] No such file or directory`
+       - **Solution**: Add `ffmpeg` to Dockerfile runtime dependencies
+       
+    b) **Deepgram API key not loading**
+       - **Error**: `HTTP 401` from Deepgram
+       - **Cause**: Using lowercase env var `deepgram_api_key` instead of uppercase
+       - **Solution**: Update deepgram_utils.py to use config system: `config.deepgram_api_key`
+       
+    c) **Secret Manager permissions**
+       - **Error**: Deepgram API key returns empty/None
+       - **Solution**: Grant service account access to secret:
+         ```bash
+         gcloud secrets add-iam-policy-binding deepgram-api-key \
+           --member="serviceAccount:backend-service@medlegaldoc-b31df.iam.gserviceaccount.com" \
+           --role="roles/secretmanager.secretAccessor"
+         ```
+    
+    d) **User settings format mismatch**
+       - **Error**: `'dict' object has no attribute 'transcriptionProfiles'`
+       - **Cause**: Code expects object but receives dict from API
+       - **Solution**: Update deepgram_utils.py to handle both dict and object formats
+
+11. **Patient Transcripts Not Loading**
+    - **Symptom**: Clicking on patient shows no transcripts/recordings
+    - **Cause**: Frontend API calls using relative paths instead of absolute URLs
+    - **Solution**: Update all frontend files to use `${API_BASE_URL}/api/v1/...` pattern
+    - **Files to update**:
+      - patientTranscriptConstants.js - Add API_BASE_URL to all endpoints
+      - PatientSelector.jsx - Fix POST to `/api/v1/patients`
+      - Any other files with `fetch('/api/...)` calls
+
 ### Useful Commands
 
 ```bash
@@ -432,6 +475,26 @@ npm run build
 
 # Serve built files (example with nginx or other static server)
 # Point to the dist/ directory
+```
+
+## Quick Deployment Commands
+
+When making backend changes:
+
+```bash
+# 1. Build and push Docker image
+cd backend
+docker buildx build --platform linux/amd64 \
+  -t us-central1-docker.pkg.dev/medlegaldoc-b31df/medlegaldoc-backend/backend:latest \
+  --push .
+
+# 2. Deploy to Cloud Run
+gcloud run deploy medlegaldoc-backend \
+  --image=us-central1-docker.pkg.dev/medlegaldoc-b31df/medlegaldoc-backend/backend:latest \
+  --region=us-central1
+
+# 3. Check logs for errors
+gcloud run services logs read medlegaldoc-backend --region=us-central1 --limit=50
 ```
 
 ## CI/CD Integration
