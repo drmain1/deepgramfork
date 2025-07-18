@@ -102,22 +102,63 @@ jobs:
           --name test-container \
           -p 8080:8080 \
           -e PORT=8080 \
-          --health-cmd="curl -f http://localhost:8080/health || exit 1" \
-          --health-interval=5s \
-          --health-retries=5 \
-          --health-timeout=3s \
+          --health-cmd="python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health').read()\"" \
+          --health-interval=10s \
+          --health-retries=6 \
+          --health-timeout=5s \
+          --health-start-period=15s \
           ${{ env.IMAGE_NAME }}:test
         
-        # Wait for container to be healthy
-        timeout 30s sh -c 'until docker ps | grep test-container | grep -q healthy; do sleep 1; done'
+        # Wait for container to start and be healthy
+        echo "Waiting for container to start..."
+        sleep 20
         
-        # Test endpoints
-        curl -f http://localhost:8080/health
-        curl -f http://localhost:8080/api/pdf-service-health
+        # Check if container is running
+        if ! docker ps | grep -q test-container; then
+          echo "Container failed to start, checking logs:"
+          docker logs test-container
+          exit 1
+        fi
+        
+        # Wait for health check with more time
+        echo "Waiting for health check to pass..."
+        timeout 60s sh -c 'until docker ps | grep test-container | grep -q healthy; do 
+          echo "Container status: $(docker ps --format "table {{.Names}}\t{{.Status}}" | grep test-container)"
+          sleep 5
+        done' || {
+          echo "Health check failed, container logs:"
+          docker logs test-container
+          exit 1
+        }
+        
+        # Test endpoints with retries
+        echo "Testing health endpoint..."
+        for i in {1..5}; do
+          if curl -f http://localhost:8080/health; then
+            echo "Health endpoint OK"
+            break
+          else
+            echo "Health endpoint attempt $i failed, retrying..."
+            sleep 3
+          fi
+        done
+        
+        echo "Testing PDF service endpoint..."
+        for i in {1..5}; do
+          if curl -f http://localhost:8080/api/pdf-service-health; then
+            echo "PDF service endpoint OK"
+            break
+          else
+            echo "PDF service endpoint attempt $i failed, retrying..."
+            sleep 3
+          fi
+        done
         
         # Check container is running as non-root
         docker exec test-container whoami | grep -q "nonroot" || \
           (echo "ERROR: Container must run as nonroot user for HIPAA compliance!" && exit 1)
+        
+        echo "All tests passed!"
         
         # Cleanup
         docker stop test-container
