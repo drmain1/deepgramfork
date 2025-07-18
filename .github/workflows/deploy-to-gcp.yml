@@ -102,6 +102,9 @@ jobs:
           --name test-container \
           -p 8080:8080 \
           -e PORT=8080 \
+          -e TESTING=true \
+          -e DISABLE_GCP=true \
+          -e GOOGLE_APPLICATION_CREDENTIALS="" \
           --health-cmd="python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health').read()\"" \
           --health-interval=10s \
           --health-retries=6 \

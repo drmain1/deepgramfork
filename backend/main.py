@@ -99,52 +99,65 @@ image_handler_instance = None
 async def lifespan(app: FastAPI):
     # Startup
     global gcs_client, vertex_ai_client, user_settings_service, image_handler_instance
-    print("FastAPI startup: Initializing GCP clients...")
     
-    # Initialize GCS client
-    try:
-        gcs_client = GCSClient()
-        print("✓ GCS client initialized successfully during startup.")
-        
-        # Initialize new services
-        user_settings_service = UserSettingsService(gcs_client)
-        print("✓ User Settings Service initialized")
-        
-        image_handler_instance = ImageHandler(gcs_client)
-        print("✓ Image Handler initialized")
-        
-        # Initialize the image router with dependencies
-        image_router.init_router(image_handler_instance, DEFAULT_USER_SETTINGS)
-        print("✓ Image router initialized")
-        
-        # Log bucket information
-        print(f"✓ Using GCS bucket: {gcs_client.bucket_name}")
-        
-        # HIPAA Compliance notes
-        print("\n📋 HIPAA Compliance Status:")
-        print("   ✓ Customer-managed encryption keys (CMEK) configured")
-        print("   ✓ Audit logging enabled via Cloud Audit Logs")
-        print("   ✓ Data retention policies configured")
-        print("   ✓ Access controls via IAM and bucket policies")
-        print("   ✓ All data encrypted at rest and in transit")
-        
-    except Exception as e:
-        print(f"Failed to initialize services during startup: {e}")
+    # Check if we're in test mode
+    testing_mode = os.getenv('TESTING', 'false').lower() == 'true'
+    disable_gcp = os.getenv('DISABLE_GCP', 'false').lower() == 'true'
+    
+    if testing_mode or disable_gcp:
+        print("🧪 FastAPI startup: Running in test mode - skipping GCP initialization...")
         gcs_client = None
+        vertex_ai_client = None
         user_settings_service = None
         image_handler_instance = None
-    
-    # Initialize Vertex AI for transcription polish
-    if os.getenv('GCP_PROJECT_ID'):
+        print("✓ Test mode startup complete - GCP services disabled")
+    else:
+        print("FastAPI startup: Initializing GCP clients...")
+        
+        # Initialize GCS client
         try:
-            # Vertex AI initialization happens in gcp_utils when needed
-            print("✓ Vertex AI configuration available for transcript polish")
+            gcs_client = GCSClient()
+            print("✓ GCS client initialized successfully during startup.")
+            
+            # Initialize new services
+            user_settings_service = UserSettingsService(gcs_client)
+            print("✓ User Settings Service initialized")
+            
+            image_handler_instance = ImageHandler(gcs_client)
+            print("✓ Image Handler initialized")
+            
+            # Initialize the image router with dependencies
+            image_router.init_router(image_handler_instance, DEFAULT_USER_SETTINGS)
+            print("✓ Image router initialized")
+            
+            # Log bucket information
+            print(f"✓ Using GCS bucket: {gcs_client.bucket_name}")
+            
+            # HIPAA Compliance notes
+            print("\n📋 HIPAA Compliance Status:")
+            print("   ✓ Customer-managed encryption keys (CMEK) configured")
+            print("   ✓ Audit logging enabled via Cloud Audit Logs")
+            print("   ✓ Data retention policies configured")
+            print("   ✓ Access controls via IAM and bucket policies")
+            print("   ✓ All data encrypted at rest and in transit")
+            
         except Exception as e:
-            print(f"Failed to configure Vertex AI: {e}")
-    
-    # Firestore is always used for metadata and queries
-    print("✓ Using Firestore for metadata and queries (faster performance)")
-    print("✓ Using GCS for file storage (logos, signatures)")
+            print(f"Failed to initialize services during startup: {e}")
+            gcs_client = None
+            user_settings_service = None
+            image_handler_instance = None
+        
+        # Initialize Vertex AI for transcription polish
+        if os.getenv('GCP_PROJECT_ID'):
+            try:
+                # Vertex AI initialization happens in gcp_utils when needed
+                print("✓ Vertex AI configuration available for transcript polish")
+            except Exception as e:
+                print(f"Failed to configure Vertex AI: {e}")
+        
+        # Firestore is always used for metadata and queries
+        print("✓ Using Firestore for metadata and queries (faster performance)")
+        print("✓ Using GCS for file storage (logos, signatures)")
     
     print("FastAPI startup finished.")
     
