@@ -17,6 +17,15 @@ class GCSClient:
         from config import config
         self.bucket_name = config.gcs_bucket_name
         self.storage_client = None
+        
+        # Check if we're in testing mode or GCP is disabled
+        testing_mode = os.getenv('TESTING', 'false').lower() == 'true'
+        disable_gcp = os.getenv('DISABLE_GCP', 'false').lower() == 'true'
+        
+        if testing_mode or disable_gcp:
+            logger.info("Running in test mode - GCS client initialization skipped")
+            return
+            
         self._initialize_client()
     
     def _initialize_client(self):
@@ -58,6 +67,10 @@ class GCSClient:
         Returns:
             Success status
         """
+        if not self.storage_client:
+            logger.info("GCS client not initialized (test mode) - skipping save")
+            return True
+            
         try:
             # Construct the object path
             if data_type == "metadata":
@@ -111,6 +124,10 @@ class GCSClient:
         Returns:
             Object content as string or None if error
         """
+        if not self.storage_client:
+            logger.info("GCS client not initialized (test mode) - returning None")
+            return None
+            
         try:
             bucket = self.storage_client.bucket(self.bucket_name)
             blob = bucket.blob(object_key)
@@ -137,6 +154,10 @@ class GCSClient:
         Returns:
             List of object metadata
         """
+        if not self.storage_client:
+            logger.info("GCS client not initialized (test mode) - returning empty list")
+            return []
+            
         try:
             bucket = self.storage_client.bucket(self.bucket_name)
             blobs = bucket.list_blobs(prefix=prefix, max_results=max_results)
@@ -166,6 +187,10 @@ class GCSClient:
         Returns:
             Success status
         """
+        if not self.storage_client:
+            logger.info("GCS client not initialized (test mode) - skipping delete")
+            return True
+            
         try:
             bucket = self.storage_client.bucket(self.bucket_name)
             blob = bucket.blob(object_key)
@@ -193,6 +218,10 @@ class GCSClient:
         Returns:
             Success status
         """
+        if not self.storage_client:
+            logger.info("GCS client not initialized (test mode) - skipping settings save")
+            return True
+            
         try:
             object_name = f"{user_id}/settings/user_settings.json"
             
@@ -229,6 +258,10 @@ class GCSClient:
         Returns:
             Settings dictionary or None if not found
         """
+        if not self.storage_client:
+            logger.info("GCS client not initialized (test mode) - returning empty settings")
+            return {}
+            
         try:
             object_name = f"{user_id}/settings/user_settings.json"
             content = self.get_gcs_object_content(object_name)
@@ -252,6 +285,10 @@ class GCSClient:
         Returns:
             Signed URL or None if error
         """
+        if not self.storage_client:
+            logger.info("GCS client not initialized (test mode) - returning None")
+            return None
+            
         try:
             bucket = self.storage_client.bucket(self.bucket_name)
             blob = bucket.blob(object_key)
@@ -280,6 +317,10 @@ class GCSClient:
         Returns:
             True if encryption is enabled
         """
+        if not self.storage_client:
+            logger.info("GCS client not initialized (test mode) - returning True")
+            return True
+            
         try:
             bucket = self.storage_client.bucket(self.bucket_name)
             bucket.reload()
@@ -303,6 +344,10 @@ class GCSClient:
         Returns:
             True if versioning is enabled
         """
+        if not self.storage_client:
+            logger.info("GCS client not initialized (test mode) - returning True")
+            return True
+            
         try:
             bucket = self.storage_client.bucket(self.bucket_name)
             bucket.reload()
@@ -318,40 +363,74 @@ class GCSClient:
             logger.error(f"Error checking bucket versioning: {str(e)}")
             return False
 
-# Create a singleton instance
-gcs_client = GCSClient()
+# Create a singleton instance conditionally
+testing_mode = os.getenv('TESTING', 'false').lower() == 'true'
+disable_gcp = os.getenv('DISABLE_GCP', 'false').lower() == 'true'
+
+if testing_mode or disable_gcp:
+    logger.info("Running in test mode - global GCS client not created")
+    gcs_client = None
+else:
+    gcs_client = GCSClient()
 
 # Export convenience functions that use the singleton
 def save_data_to_gcs(user_id: str, data_type: str, session_id: str, content: str) -> bool:
     """Save data to GCS."""
+    if not gcs_client:
+        logger.info("GCS client not initialized (test mode) - skipping save")
+        return True
     return gcs_client.save_data_to_gcs(user_id, data_type, session_id, content)
 
 def get_gcs_object_content(object_key: str) -> Optional[str]:
     """Get object content from GCS."""
+    if not gcs_client:
+        logger.info("GCS client not initialized (test mode) - returning None")
+        return None
     return gcs_client.get_gcs_object_content(object_key)
 
 def list_gcs_objects(prefix: str, max_results: int = 100) -> List[Dict[str, Any]]:
     """List objects in GCS."""
+    if not gcs_client:
+        logger.info("GCS client not initialized (test mode) - returning empty list")
+        return []
     return gcs_client.list_gcs_objects(prefix, max_results)
 
 def delete_gcs_object(object_key: str) -> bool:
     """Delete object from GCS."""
+    if not gcs_client:
+        logger.info("GCS client not initialized (test mode) - skipping delete")
+        return True
     return gcs_client.delete_gcs_object(object_key)
 
 def save_user_settings(user_id: str, settings: Dict[str, Any]) -> bool:
     """Save user settings."""
+    if not gcs_client:
+        logger.info("GCS client not initialized (test mode) - skipping settings save")
+        return True
     return gcs_client.save_user_settings(user_id, settings)
 
 def get_user_settings(user_id: str) -> Optional[Dict[str, Any]]:
     """Get user settings."""
+    if not gcs_client:
+        logger.info("GCS client not initialized (test mode) - returning empty settings")
+        return {}
     return gcs_client.get_user_settings(user_id)
 
 def generate_signed_url(object_key: str, expiration_minutes: int = 15) -> Optional[str]:
     """Generate signed URL for object access."""
+    if not gcs_client:
+        logger.info("GCS client not initialized (test mode) - returning None")
+        return None
     return gcs_client.generate_signed_url(object_key, expiration_minutes)
 
 def check_bucket_compliance() -> Dict[str, bool]:
     """Check bucket compliance settings."""
+    if not gcs_client:
+        logger.info("GCS client not initialized (test mode) - returning compliant status")
+        return {
+            'encryption': True,
+            'versioning': True
+        }
     return {
         'encryption': gcs_client.check_bucket_encryption(),
         'versioning': gcs_client.check_bucket_versioning()

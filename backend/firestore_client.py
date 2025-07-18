@@ -26,6 +26,20 @@ class FirestoreClient:
     
     def __init__(self):
         firebase_project_id = os.getenv('FIREBASE_PROJECT_ID', 'medlegaldoc-b31df')
+        
+        # Check if we're in testing mode or GCP is disabled
+        testing_mode = os.getenv('TESTING', 'false').lower() == 'true'
+        disable_gcp = os.getenv('DISABLE_GCP', 'false').lower() == 'true'
+        
+        if testing_mode or disable_gcp:
+            logger.info("Running in test mode - Firestore client initialization skipped")
+            self.db = None
+            self.users_collection = None
+            self.transcripts_collection = None
+            self.sessions_collection = None
+            self.patients_collection = None
+            return
+            
         logger.info(f"Initializing Firestore client for project: {firebase_project_id}")
         self.db = firestore.Client(project=firebase_project_id)
         
@@ -580,5 +594,11 @@ class FirestoreClient:
             logger.error(f"Error getting patient transcripts: {str(e)}")
             return []
 
-# Create singleton instance
-firestore_client = FirestoreClient()
+# Create singleton instance conditionally
+testing_mode = os.getenv('TESTING', 'false').lower() == 'true'
+disable_gcp = os.getenv('DISABLE_GCP', 'false').lower() == 'true'
+
+if testing_mode or disable_gcp:
+    firestore_client = None
+else:
+    firestore_client = FirestoreClient()

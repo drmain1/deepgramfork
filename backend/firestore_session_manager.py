@@ -31,6 +31,18 @@ class FirestoreSessionManager:
         self.timeout_minutes = timeout_minutes
         # Use Firebase project ID for Firestore
         self.firebase_project_id = os.getenv('FIREBASE_PROJECT_ID', 'medlegaldoc-b31df')
+        
+        # Check if we're in testing mode or GCP is disabled
+        testing_mode = os.getenv('TESTING', 'false').lower() == 'true'
+        disable_gcp = os.getenv('DISABLE_GCP', 'false').lower() == 'true'
+        
+        if testing_mode or disable_gcp:
+            logger.info("Running in test mode - Firestore session manager initialization skipped")
+            self.db = None
+            self.sessions_collection = None
+            self._cleanup_task_started = False
+            return
+        
         logger.info(f"Initializing Firestore client for project: {self.firebase_project_id}")
         self._init_firestore_client()
         
@@ -255,7 +267,13 @@ class FirestoreSessionManager:
                         logger.error(f"Failed to reinitialize Firestore client: {str(reinit_error)}")
                         # Continue anyway, will retry on next iteration
 
-# Create singleton instance
-firestore_session_manager = FirestoreSessionManager(
-    timeout_minutes=int(os.getenv("SESSION_TIMEOUT_MINUTES", "25"))
-)
+# Create singleton instance conditionally
+testing_mode = os.getenv('TESTING', 'false').lower() == 'true'
+disable_gcp = os.getenv('DISABLE_GCP', 'false').lower() == 'true'
+
+if testing_mode or disable_gcp:
+    firestore_session_manager = None
+else:
+    firestore_session_manager = FirestoreSessionManager(
+        timeout_minutes=int(os.getenv("SESSION_TIMEOUT_MINUTES", "25"))
+    )
