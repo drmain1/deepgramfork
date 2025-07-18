@@ -1,0 +1,243 @@
+name: Pull Request Checks (HIPAA Compliant)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'backend/**'
+      - 'my-vite-react-app/**'
+      - '.github/workflows/**'
+
+jobs:
+  backend-checks:
+    name: Backend Code Quality & Security
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Cache Python dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('backend/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      working-directory: ./backend
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install black flake8 bandit safety
+
+    - name: Run Black formatter check
+      working-directory: ./backend
+      run: black --check .
+
+    - name: Run Flake8 linter
+      working-directory: ./backend
+      run: flake8 . --max-line-length=120 --exclude=venv,__pycache__
+
+    - name: Run Bandit security linter
+      working-directory: ./backend
+      run: bandit -r . -x /venv/
+
+    - name: Check for hardcoded secrets
+      run: |
+        # Check for potential secrets
+        if grep -r -E "(api_key|apikey|secret|password|token)" backend/ --exclude-dir=venv | grep -v -E "(os\.environ|getenv|SECRET_MANAGER)"; then
+          echo "⚠️ Potential hardcoded secrets found!"
+          exit 1
+        fi
+
+    - name: Verify Chainguard usage
+      run: |
+        if ! grep -q "FROM.*chainguard/wolfi-base" backend/Dockerfile.chainguard; then
+          echo "❌ Dockerfile.chainguard must use Chainguard base image!"
+          exit 1
+        fi
+
+  frontend-checks:
+    name: Frontend Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Cache npm dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.npm
+        key: ${{ runner.os }}-node-${{ hashFiles('my-vite-react-app/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+
+    - name: Install dependencies
+      working-directory: ./my-vite-react-app
+      run: npm ci
+
+    - name: Run ESLint
+      working-directory: ./my-vite-react-app
+      run: npm run lint
+
+    - name: Check for console.log statements
+      working-directory: ./my-vite-react-app
+      run: |
+        if grep -r "console\.log" src/ --exclude-dir=node_modules; then
+          echo "⚠️ console.log statements found - consider removing for production"
+        fi
+
+    - name: Build frontend
+      working-directory: ./my-vite-react-app
+      run: npm run build
+
+  docker-build-test:
+    name: Test Docker Build with Chainguard
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build with Chainguard (test only)
+      working-directory: ./backend
+      run: |
+        docker buildx build \
+          -f Dockerfile.chainguard \
+          -t test-build:${{ github.sha }} \
+          --platform linux/amd64 \
+          .
+
+  security-scan:
+    name: Security Vulnerability Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        severity: 'CRITICAL,HIGH,MEDIUM'
+
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+    - name: Check Python dependencies for vulnerabilities
+      working-directory: ./backend
+      run: |
+        pip install safety
+        safety check -r requirements.txt --json
+
+  hipaa-compliance-check:
+    name: HIPAA Compliance Verification
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Check for PHI in code
+      run: |
+        # Check for potential PHI patterns
+        echo "Checking for potential PHI exposure..."
+        
+        # Look for patterns that might indicate PHI
+        if grep -r -E "(ssn|social.?security|patient.?name|date.?of.?birth)" . \
+          --exclude-dir=node_modules \
+          --exclude-dir=venv \
+          --exclude-dir=.git \
+          --exclude="*.md" | \
+          grep -v -E "(model|interface|type|schema|example|test|mock)"; then
+          echo "⚠️ Potential PHI patterns found - please review!"
+        fi
+
+    - name: Verify security headers
+      run: |
+        # Check for security middleware
+        if ! grep -q "SecurityMiddleware" backend/main.py; then
+          echo "⚠️ Security middleware not found in main.py"
+        fi
+
+    - name: Check audit logging
+      run: |
+        # Verify audit logging is present
+        if ! grep -q "audit_logger" backend/main.py; then
+          echo "⚠️ Audit logging not found - required for HIPAA"
+        fi
+
+  pr-summary:
+    name: PR Summary Report
+    runs-on: ubuntu-latest
+    needs: [backend-checks, frontend-checks, docker-build-test, security-scan, hipaa-compliance-check]
+    if: always()
+    
+    steps:
+    - name: Comment PR status
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const checks = [
+            { name: 'Backend Checks', status: '${{ needs.backend-checks.result }}' },
+            { name: 'Frontend Checks', status: '${{ needs.frontend-checks.result }}' },
+            { name: 'Docker Build', status: '${{ needs.docker-build-test.result }}' },
+            { name: 'Security Scan', status: '${{ needs.security-scan.result }}' },
+            { name: 'HIPAA Compliance', status: '${{ needs.hipaa-compliance-check.result }}' }
+          ];
+          
+          const checkEmoji = (status) => {
+            switch(status) {
+              case 'success': return '✅';
+              case 'failure': return '❌';
+              case 'skipped': return '⏭️';
+              default: return '⚠️';
+            }
+          };
+          
+          const allPassed = checks.every(c => c.status === 'success');
+          
+          let body = '## PR Check Summary\n\n';
+          body += '| Check | Status |\n';
+          body += '|-------|--------|\n';
+          
+          checks.forEach(check => {
+            body += `| ${check.name} | ${checkEmoji(check.status)} ${check.status} |\n`;
+          });
+          
+          body += '\n';
+          body += allPassed 
+            ? '### ✅ All checks passed! Ready for review.\n' 
+            : '### ⚠️ Some checks need attention.\n';
+          
+          body += '\n---\n';
+          body += '*This PR uses Chainguard base images for HIPAA-compliant container security.*';
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: body
+          });

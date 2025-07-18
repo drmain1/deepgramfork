@@ -1,0 +1,275 @@
+name: Deploy to GCP Cloud Run (HIPAA Compliant)
+
+on:
+  push:
+    branches:
+      - main
+      - gcp-migration
+  pull_request:
+    branches:
+      - main
+      - gcp-migration
+  workflow_dispatch:  # Allow manual trigger
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  PROJECT_ID: medlegaldoc-b31df
+  SERVICE_NAME: medlegaldoc-backend
+  REGION: us-central1
+  IMAGE_NAME: medlegaldoc-backend
+  # Chainguard base image for HIPAA compliance
+  CHAINGUARD_BASE: cgr.dev/chainguard/wolfi-base:latest
+
+jobs:
+  security-scan:
+    name: Security Scan with Trivy
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner on source
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: './backend'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        severity: 'CRITICAL,HIGH'
+
+    - name: Upload Trivy scan results to GitHub Security
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  build-and-test:
+    name: Build and Test with Chainguard
+    runs-on: ubuntu-latest
+    needs: security-scan
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Verify Chainguard Dockerfile
+      run: |
+        echo "Verifying Dockerfile.chainguard uses HIPAA-compliant base image..."
+        if ! grep -q "FROM.*chainguard/wolfi-base" backend/Dockerfile.chainguard; then
+          echo "ERROR: Dockerfile.chainguard must use Chainguard base image for HIPAA compliance!"
+          exit 1
+        fi
+        echo "✅ Chainguard base image confirmed"
+
+    - name: Build Docker image with Chainguard
+      working-directory: ./backend
+      run: |
+        docker buildx build \
+          -f Dockerfile.chainguard \
+          -t ${{ env.IMAGE_NAME }}:test \
+          --platform linux/amd64 \
+          --load \
+          .
+
+    - name: Run security scan on built image
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.IMAGE_NAME }}:test
+        format: 'json'
+        output: 'trivy-image-scan.json'
+        severity: 'CRITICAL,HIGH'
+        exit-code: '1'
+
+    - name: Run container tests
+      run: |
+        # Start container with health check
+        docker run -d \
+          --name test-container \
+          -p 8080:8080 \
+          -e PORT=8080 \
+          --health-cmd="curl -f http://localhost:8080/health || exit 1" \
+          --health-interval=5s \
+          --health-retries=5 \
+          --health-timeout=3s \
+          ${{ env.IMAGE_NAME }}:test
+        
+        # Wait for container to be healthy
+        timeout 30s sh -c 'until docker ps | grep test-container | grep -q healthy; do sleep 1; done'
+        
+        # Test endpoints
+        curl -f http://localhost:8080/health
+        curl -f http://localhost:8080/api/pdf-service-health
+        
+        # Check container is running as non-root
+        docker exec test-container whoami | grep -q "nonroot" || \
+          (echo "ERROR: Container must run as nonroot user for HIPAA compliance!" && exit 1)
+        
+        # Cleanup
+        docker stop test-container
+        docker rm test-container
+
+  deploy:
+    name: Deploy to GCP Cloud Run
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    
+    permissions:
+      contents: read
+      id-token: write  # For Workload Identity Federation
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Configure Docker for GCP
+      run: |
+        gcloud auth configure-docker gcr.io
+
+    - name: Build production image with Chainguard
+      working-directory: ./backend
+      run: |
+        docker buildx build \
+          -f Dockerfile.chainguard \
+          -t gcr.io/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+          -t gcr.io/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:latest \
+          --platform linux/amd64 \
+          --push \
+          --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+          --build-arg VCS_REF=${{ github.sha }} \
+          --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+          --label "org.opencontainers.image.revision=${{ github.sha }}" \
+          --label "org.opencontainers.image.created=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+          .
+
+    - name: Deploy to Cloud Run
+      id: deploy
+      run: |
+        gcloud run deploy ${{ env.SERVICE_NAME }} \
+          --image gcr.io/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+          --region ${{ env.REGION }} \
+          --platform managed \
+          --allow-unauthenticated \
+          --memory 2Gi \
+          --cpu 2 \
+          --timeout 300 \
+          --max-instances 10 \
+          --min-instances 1 \
+          --concurrency 80 \
+          --port 8080 \
+          --set-env-vars "WEBSOCKET_INACTIVITY_ENABLED=true" \
+          --set-env-vars "WEBSOCKET_INACTIVITY_WARNING=8" \
+          --set-env-vars "WEBSOCKET_INACTIVITY_TIMEOUT=15" \
+          --set-env-vars "ENVIRONMENT=${{ github.event.inputs.environment || 'production' }}" \
+          --set-env-vars "BUILD_SHA=${{ github.sha }}" \
+          --set-env-vars "BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+          --service-account medlegaldoc-backend@${{ env.PROJECT_ID }}.iam.gserviceaccount.com \
+          --no-allow-unauthenticated \
+          --update-labels "managed-by=github-actions,environment=${{ github.event.inputs.environment || 'production' }},build-sha=${{ github.sha }}"
+
+    - name: Get Service URL
+      run: |
+        SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+          --region ${{ env.REGION }} \
+          --format 'value(status.url)')
+        echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_ENV
+        echo "Service deployed to: $SERVICE_URL"
+
+    - name: Run post-deployment tests
+      run: |
+        echo "Running post-deployment health checks..."
+        
+        # Test health endpoint
+        curl -f "${{ env.SERVICE_URL }}/health" || \
+          (echo "Health check failed!" && exit 1)
+        
+        # Test PDF service
+        curl -f "${{ env.SERVICE_URL }}/api/pdf-service-health" || \
+          (echo "PDF service check failed!" && exit 1)
+        
+        echo "✅ All post-deployment tests passed!"
+
+    - name: Create deployment record
+      if: success()
+      run: |
+        # Log deployment for audit trail (HIPAA compliance)
+        cat << EOF > deployment-record.json
+        {
+          "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')",
+          "service": "${{ env.SERVICE_NAME }}",
+          "image": "gcr.io/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }}",
+          "region": "${{ env.REGION }}",
+          "environment": "${{ github.event.inputs.environment || 'production' }}",
+          "deployed_by": "${{ github.actor }}",
+          "github_ref": "${{ github.ref }}",
+          "github_sha": "${{ github.sha }}",
+          "service_url": "${{ env.SERVICE_URL }}",
+          "status": "success"
+        }
+        EOF
+        
+        # In production, this would be sent to audit logging system
+        cat deployment-record.json
+
+    - name: Notify deployment status
+      if: always()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const status = '${{ job.status }}';
+          const emoji = status === 'success' ? '✅' : '❌';
+          const message = `${emoji} Deployment ${status} for commit ${{ github.sha }}`;
+          
+          // Create deployment status
+          await github.rest.repos.createCommitStatus({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            sha: context.sha,
+            state: status === 'success' ? 'success' : 'failure',
+            target_url: '${{ env.SERVICE_URL }}',
+            description: message,
+            context: 'GCP Cloud Run Deployment'
+          });
+
+  cleanup:
+    name: Cleanup old images
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: success()
+    
+    steps:
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Clean up old container images
+      run: |
+        # Keep only the last 5 images for rollback capability
+        gcloud container images list-tags \
+          gcr.io/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }} \
+          --limit=999 \
+          --format='get(digest)' | \
+          tail -n +6 | \
+          xargs -I {} gcloud container images delete \
+          "gcr.io/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}@{}" \
+          --quiet || true

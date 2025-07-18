@@ -80,6 +80,10 @@ class WeasyPrintMedicalPDFGenerator:
             self.jinja_env.globals['parse_outcome_assessments'] = self._parse_outcome_assessments
             self.jinja_env.globals['get_physical_exam_comparisons'] = self._get_physical_exam_comparisons
             
+            # Add status icon helper
+            from .status_icon_helper import get_status_icon_text
+            self.jinja_env.globals['get_status_icon'] = get_status_icon_text
+            
             # Add custom filters
             self.jinja_env.filters['strip_denominator'] = self._strip_denominator
             

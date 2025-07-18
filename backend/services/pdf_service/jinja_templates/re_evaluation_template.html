@@ -83,9 +83,9 @@
         <div class="complaint-block">
             <p class="complaint-current">
                 <strong>{{ complaint.name }}:</strong> {{ complaint.current_score|capitalize }}
-                {% if complaint.comparison_status == "resolved" %}<span class="status-icon status-resolved" title="Resolved">✓</span>
-                {% elif complaint.comparison_status == "improved" %}<span class="status-icon status-improved" title="Improved">↓</span>
-                {% elif complaint.comparison_status == "worsened" %}<span class="status-icon status-worsened" title="Worsened">↑</span>
+                {% if complaint.comparison_status == "resolved" %}<span class="status-icon status-resolved" title="Resolved">{{ get_status_icon('resolved') }}</span>
+                {% elif complaint.comparison_status == "improved" %}<span class="status-icon status-improved" title="Improved">{{ get_status_icon('improved') }}</span>
+                {% elif complaint.comparison_status == "worsened" %}<span class="status-icon status-worsened" title="Worsened">{{ get_status_icon('worsened') }}</span>
                 {% endif %}
             </p>
             <p class="complaint-initial">(Previous: {{ complaint.previous_score|capitalize }})</p>
@@ -143,20 +143,20 @@
     <!-- Consolidated Physical Examination Findings -->
     <h4>Physical Examination Progress</h4>
     <div class="legend">
-        Legend: <span class="status-icon status-improved">✓</span> Improved / Resolved |
-        <span class="status-icon status-worsened">✗</span> Worsened |
-        <span class="status-icon status-unchanged">→</span> Unchanged |
-        <span class="status-icon status-new">●</span> New Finding |
-        <span class="status-icon status-changed">~</span> Changed
+        Legend: <span class="status-icon status-improved">{{ get_status_icon('improved') }}</span> Improved / Resolved |
+        <span class="status-icon status-worsened">{{ get_status_icon('worsened') }}</span> Worsened |
+        <span class="status-icon status-unchanged">{{ get_status_icon('unchanged') }}</span> Unchanged |
+        <span class="status-icon status-new">{{ get_status_icon('new') }}</span> New Finding |
+        <span class="status-icon status-changed">{{ get_status_icon('changed') }}</span> Changed
     </div>
 
     <!-- Define a macro for the status icon to avoid repetition -->
     {% macro status_icon(status) %}
-        {% if status == "improved" or status == "resolved" %}<span class="status-icon status-improved">✓</span>
-        {% elif status == "worsened" %}<span class="status-icon status-worsened">✗</span>
-        {% elif status == "unchanged" %}<span class="status-icon status-unchanged">→</span>
-        {% elif status == "new" %}<span class="status-icon status-new">●</span>
-        {% elif status == "changed" %}<span class="status-icon status-changed">~</span>
+        {% if status == "improved" or status == "resolved" %}<span class="status-icon status-improved">{{ get_status_icon('improved') }}</span>
+        {% elif status == "worsened" %}<span class="status-icon status-worsened">{{ get_status_icon('worsened') }}</span>
+        {% elif status == "unchanged" %}<span class="status-icon status-unchanged">{{ get_status_icon('unchanged') }}</span>
+        {% elif status == "new" %}<span class="status-icon status-new">{{ get_status_icon('new') }}</span>
+        {% elif status == "changed" %}<span class="status-icon status-changed">{{ get_status_icon('changed') }}</span>
         {% else %} 
         {% endif %}
     {% endmacro %}

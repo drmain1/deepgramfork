@@ -161,7 +161,28 @@ gcloud builds submit --config=cloudbuild.yaml
 
 ## Docker to GCP Deployment Guide
 
-### Quick Deploy Checklist (Chainguard + GCP)
+### 🚀 Automated CI/CD Pipeline (Recommended)
+
+**We now have GitHub Actions CI/CD that automatically deploys when you push to main or gcp-migration branches!**
+
+#### How it works:
+1. Push code to GitHub
+2. Pipeline automatically:
+   - Runs security scans
+   - Builds with Chainguard (HIPAA compliant)
+   - Runs tests
+   - Deploys to Cloud Run
+   - Cleans up old images
+
+#### Manual trigger:
+1. Go to GitHub Actions tab
+2. Select "Deploy to GCP Cloud Run"
+3. Click "Run workflow"
+4. Select branch and environment
+
+See `.github/workflows/README.md` for full CI/CD documentation.
+
+### Manual Deployment (Legacy Method)
 
 #### Prerequisites
 - Docker Desktop running
