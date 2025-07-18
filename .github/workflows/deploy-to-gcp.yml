@@ -32,6 +32,9 @@ jobs:
   security-scan:
     name: Security Scan with Trivy
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write  # Required for uploading SARIF results
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
