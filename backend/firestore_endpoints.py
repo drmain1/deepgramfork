@@ -702,6 +702,8 @@ async def save_session_data_firestore(
                 if polished_result['success']:
                     update_data['transcript_polished'] = polished_result['polished_transcript']
                     logger.info(f"Transcript polished successfully for session {session_id}")
+                    logger.info(f"Polished transcript length: {len(polished_result['polished_transcript'])}")
+                    logger.info(f"Polished transcript preview: {polished_result['polished_transcript'][:100]}...")
                     
                     # Save to GCS as well for backwards compatibility
                     if gcs_client and polished_result['polished_transcript']:
@@ -725,6 +727,9 @@ async def save_session_data_firestore(
         
         # Update Firestore with transcript content
         logger.info(f"Updating transcript {session_id} with content (length: {len(transcript_content)})")
+        logger.info(f"Update data keys: {list(update_data.keys())}")
+        if 'transcript_polished' in update_data:
+            logger.info(f"transcript_polished is in update_data, length: {len(update_data['transcript_polished'])}")
         await firestore_client.update_transcript(session_id, update_data)
         
         # Delete draft if exists

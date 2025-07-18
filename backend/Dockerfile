@@ -75,7 +75,7 @@ COPY firestore_session_manager.py memory_session_manager.py ./
 COPY gcp_utils.py gcs_utils.py secret_manager.py ./
 COPY patient_endpoints.py extraction_prompts_simple.py ./
 COPY image_handler.py deepgram_utils.py ./
-COPY audit_logger.py rate_limiter.py account_lockout.py base_billing_rules.py ./
+COPY audit_logger.py rate_limiter.py account_lockout.py base_billing_rules.py websocket_security.py ./
 COPY routers/ ./routers/
 COPY services/ ./services/
 COPY middleware/ ./middleware/

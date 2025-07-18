@@ -28,7 +28,7 @@ import json
 import tempfile
 import time
 
-# Configure logging to show INFO level logs
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',

@@ -12,6 +12,7 @@ from deepgram import (
 )
 from deepgram.clients.listen.v1.websocket.response import CloseResponse
 
+
 # Load configuration
 from config import Config
 config = Config()
@@ -29,6 +30,7 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
     # Generate default session ID - may be overridden by client
     # Using UTC for consistent timestamps across timezones
     session_id = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
+    
     
     # Initialize Deepgram settings
     dg_smart_format = True  # Default value
@@ -233,6 +235,7 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
             logger.error(f"Error processing configuration message: {e}")
 
     try:
+        
         # Start with basic initialization - services will start when first audio data arrives
         services_started = False
         
@@ -283,6 +286,7 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
                         if not audio_data: 
                             logger.info("Empty bytes from client, ending session.")
                             break
+                        
                         
                         # Send session_init if not sent yet (in case client didn't send initial_metadata)
                         if not session_init_sent:
@@ -380,6 +384,7 @@ async def handle_deepgram_websocket(websocket: WebSocket, get_user_settings_func
                  pass # Ignore errors during close if already problematic
     finally:
         logger.info(f"Cleaning up for session_id: {session_id}")
+        
         
         # No need to cancel tasks since we're not using asyncio.gather with task list anymore
 

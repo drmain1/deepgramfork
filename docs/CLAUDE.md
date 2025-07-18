@@ -108,12 +108,160 @@ firebase deploy --only firestore     # Deploy only Firestore rules
 - **Token Management**: Firebase JWT tokens for authenticated API calls
 - **HIPAA Compliance**: Audit logging and secure data handling
 
+## Docker and Security Updates
+
+### Chainguard Security Migration (December 2024)
+The backend has been migrated to use **Chainguard Wolfi** base images for enhanced security:
+
+- **Base Image**: `cgr.dev/chainguard/wolfi-base:latest` - Minimal, security-focused Linux distribution
+- **Security Features**:
+  - Non-root user execution (`nonroot` user)
+  - Read-only root filesystem capability
+  - Minimal attack surface with distroless approach
+  - Regular security updates and CVE patches
+  - HIPAA-compliant security configurations
+
+### Docker Configuration Files
+- **`Dockerfile.chainguard`**: Production Dockerfile using Chainguard Wolfi base
+  - Multi-stage build for smaller image size
+  - Python 3.11 runtime
+  - Includes WeasyPrint and FFmpeg dependencies
+  - Non-root user by default
+  
+- **`docker-compose.chainguard.yml`**: Docker Compose for local development
+  - Enhanced security options (no-new-privileges, capability dropping)
+  - Resource limits and health checks
+  - Temporary filesystem mounts for WeasyPrint cache
+  - Volume mounts for Google Cloud credentials
+
+### Building and Running with Chainguard
+```bash
+# Build the Chainguard-based image
+docker build -f Dockerfile.chainguard -t backend-app-chainguard:latest .
+
+# Run with Docker Compose
+docker-compose -f docker-compose.chainguard.yml up
+
+# For production deployment to GCP
+gcloud builds submit --config=cloudbuild.yaml
+```
+
+**Important**: When debugging deployment issues, ensure you're using the Chainguard-based configuration files, not the legacy Dockerfile.
+
 ## Quick Reference
 
 - **Frontend**: http://localhost:5173 (React + Vite)
-- **Backend**: http://localhost:8000 (FastAPI)
+- **Backend**: http://localhost:8000 (FastAPI) / http://localhost:8080 (Docker)
 - **Database**: Firestore (NoSQL)
 - **Storage**: Google Cloud Storage (logos/signatures only)
 - **Auth**: Firebase Authentication
 - **Speech-to-Text**: Deepgram (medical and multilingual)
 - **AI**: Google Vertex AI (Gemini models)
+- **Container Security**: Chainguard Wolfi base images
+
+## Docker to GCP Deployment Guide
+
+### Quick Deploy Checklist (Chainguard + GCP)
+
+#### Prerequisites
+- Docker Desktop running
+- gcloud CLI authenticated (`gcloud auth login`)
+- Project set: `gcloud config set project medlegaldoc-b31df`
+
+#### Standard Deployment (5-minute process)
+
+1. **Build with Chainguard base image**:
+   ```bash
+   cd backend
+   docker build -f Dockerfile.chainguard -t medlegaldoc-backend:latest .
+   ```
+
+2. **Tag for GCP Container Registry**:
+   ```bash
+   docker tag medlegaldoc-backend:latest gcr.io/medlegaldoc-b31df/medlegaldoc-backend:latest
+   ```
+
+3. **Push to GCP**:
+   ```bash
+   docker push gcr.io/medlegaldoc-b31df/medlegaldoc-backend:latest
+   ```
+
+4. **Deploy to Cloud Run**:
+   ```bash
+   gcloud run deploy medlegaldoc-backend \
+     --image gcr.io/medlegaldoc-b31df/medlegaldoc-backend:latest \
+     --region us-central1 \
+     --platform managed \
+     --allow-unauthenticated
+   ```
+
+#### Alternative: Cloud Build (Recommended for CI/CD)
+
+Use Cloud Build for automated, secure builds:
+```bash
+cd backend
+gcloud builds submit --config=cloudbuild.yaml .
+```
+
+This automatically:
+- Builds with Chainguard base
+- Pushes to Container Registry
+- Deploys to Cloud Run
+- Sets up proper service accounts
+
+#### Common Issues & Solutions
+
+1. **Docker Desktop paused**: Check Docker whale icon → Resume
+2. **Architecture mismatch**: Always build for amd64:
+   ```bash
+   docker buildx build --platform linux/amd64 -f Dockerfile.chainguard -t medlegaldoc-backend:latest .
+   ```
+3. **Missing files in container**: Ensure Dockerfile.chainguard includes all needed files (check COPY commands)
+4. **Container fails to start**: Check PORT=8080 is properly configured in main.py
+
+#### Environment Variables for Features
+
+Set these after deployment:
+```bash
+gcloud run services update medlegaldoc-backend \
+  --region us-central1 \
+  --set-env-vars KEY1=value1,KEY2=value2
+```
+
+Common variables:
+- `WEBSOCKET_INACTIVITY_ENABLED=true`
+- `WEBSOCKET_INACTIVITY_WARNING=8`
+- `WEBSOCKET_INACTIVITY_TIMEOUT=15`
+
+#### Monitoring Deployment
+
+Check service status:
+```bash
+gcloud run services describe medlegaldoc-backend --region us-central1
+```
+
+View logs:
+```bash
+gcloud run logs read --service medlegaldoc-backend --region us-central1
+```
+
+#### One-Line Deploy Script
+
+Save this as `deploy-to-gcp.sh`:
+```bash
+#!/bin/bash
+cd backend && \
+docker buildx build --platform linux/amd64 -f Dockerfile.chainguard -t medlegaldoc-backend:latest . && \
+docker tag medlegaldoc-backend:latest gcr.io/medlegaldoc-b31df/medlegaldoc-backend:latest && \
+docker push gcr.io/medlegaldoc-b31df/medlegaldoc-backend:latest && \
+gcloud run deploy medlegaldoc-backend \
+  --image gcr.io/medlegaldoc-b31df/medlegaldoc-backend:latest \
+  --region us-central1 \
+  --platform managed \
+  --allow-unauthenticated && \
+echo "Deployment complete! Service URL:" && \
+gcloud run services describe medlegaldoc-backend --region us-central1 --format="value(status.url)"
+```
+
+Make executable: `chmod +x deploy-to-gcp.sh`
+Run: `./deploy-to-gcp.sh`

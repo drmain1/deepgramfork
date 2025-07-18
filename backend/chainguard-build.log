@@ -1,0 +1,727 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile.chainguard
+#1 transferring dockerfile: 3.91kB 0.0s done
+#1 WARN: FromAsCasing: 'as' and 'FROM' keywords' casing do not match (line 3)
+#1 DONE 0.0s
+
+#2 [internal] load metadata for cgr.dev/chainguard/wolfi-base:latest
+#2 DONE 0.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 681B done
+#3 DONE 0.0s
+
+#4 [builder 1/6] FROM cgr.dev/chainguard/wolfi-base:latest@sha256:2159a11e112eb3336fdd5e390e4d72161d31d14b46686936a44d719d4ec9d906
+#4 resolve cgr.dev/chainguard/wolfi-base:latest@sha256:2159a11e112eb3336fdd5e390e4d72161d31d14b46686936a44d719d4ec9d906 done
+#4 CACHED
+
+#5 [internal] load build context
+#5 transferring context: 3.92kB 0.0s done
+#5 DONE 0.0s
+
+#6 [stage-1  2/19] RUN apk update && apk add     python3     python-3.11     cairo     pango     gdk-pixbuf     libxml2     libxslt     libjpeg-turbo     zlib     font-liberation     fontconfig     ffmpeg     libffi     glib     harfbuzz     freetype     ca-certificates-bundle
+#6 0.154 fetch https://apk.cgr.dev/chainguard/aarch64/APKINDEX.tar.gz
+#6 2.147  [https://apk.cgr.dev/chainguard]
+#6 2.147 OK: 116128 distinct packages available
+#6 2.598 (1/81) Installing libxau (1.0.12-r2)
+#6 3.166 (2/81) Installing libxdmcp (1.1.5-r7)
+#6 3.936 (3/81) Installing libxcb (1.17.0-r6)
+#6 4.593 (4/81) Installing libx11 (1.8.12-r1)
+#6 5.120 (5/81) Installing libxext (1.3.6-r5)
+#6 5.572 (6/81) Installing libxrender (0.9.12-r3)
+#6 5.967 (7/81) Installing fontconfig-config (2.17.1-r0)
+#6 6.405 (8/81) Installing libexpat1 (2.7.1-r1)
+#6 6.817 (9/81) Installing libbrotlicommon1 (1.1.0-r5)
+#6 7.551 (10/81) Installing libbrotlidec1 (1.1.0-r5)
+#6 7.917 (11/81) Installing libbz2-1 (1.0.8-r18)
+#6 8.367 (12/81) Installing libpng (1.6.50-r0)
+#6 8.921 (13/81) Installing freetype (2.13.3-r1)
+#6 9.322 (14/81) Installing libfontconfig1 (2.17.1-r0)
+#6 9.740 (15/81) Installing pixman (0.46.2-r0)
+#6 ...
+
+#7 [builder 2/6] RUN apk update && apk add     python3     python-3.11-dev     py3.11-pip     gcc     glibc-dev     libffi-dev     cairo-dev     pango-dev     gdk-pixbuf-dev     libxml2-dev     libxslt-dev     libjpeg-turbo-dev     zlib-dev     build-base     git
+#7 0.154 fetch https://apk.cgr.dev/chainguard/aarch64/APKINDEX.tar.gz
+#7 1.595  [https://apk.cgr.dev/chainguard]
+#7 1.595 OK: 116128 distinct packages available
+#7 2.130 (1/152) Installing libstdc++ (15.1.0-r1)
+#7 2.618 (2/152) Installing libzstd1 (1.5.7-r2)
+#7 3.030 (3/152) Installing binutils (2.44-r9)
+#7 3.964 (4/152) Installing libxcrypt-dev (4.4.38-r2)
+#7 4.444 (5/152) Installing linux-headers (6.15.6-r0)
+#7 4.981 (6/152) Installing nss-db (2.41-r53)
+#7 5.424 (7/152) Installing nss-hesiod (2.41-r53)
+#7 5.804 (8/152) Installing glibc-dev (2.41-r53)
+#7 6.484 (9/152) Installing libquadmath (15.1.0-r1)
+#7 6.851 (10/152) Installing libstdc++-dev (15.1.0-r1)
+#7 7.601 (11/152) Installing openssf-compiler-options (20240627-r25)
+#7 7.961 (12/152) Installing posix-cc-wrappers (1-r6)
+#7 8.343 (13/152) Installing libatomic (15.1.0-r1)
+#7 9.203 (14/152) Installing gmp (6.3.0-r7)
+#7 9.622 (15/152) Installing libgo (15.1.0-r1)
+#7 10.21 (16/152) Installing libgomp (15.1.0-r1)
+#7 ...
+
+#6 [stage-1  2/19] RUN apk update && apk add     python3     python-3.11     cairo     pango     gdk-pixbuf     libxml2     libxslt     libjpeg-turbo     zlib     font-liberation     fontconfig     ffmpeg     libffi     glib     harfbuzz     freetype     ca-certificates-bundle
+#6 10.53 (16/81) Installing cairo (1.18.4-r1)
+#6 11.33 (17/81) Installing svt-av1 (3.0.2-r0)
+#6 11.82 (18/81) Installing aom-libs (3.12.1-r4)
+#6 12.49 (19/81) Installing ffmpeg-7.1-libavutil59 (7.1.1-r9)
+#6 12.94 (20/81) Installing libdav1d (1.5.1-r4)
+#6 13.51 (21/81) Installing xz (5.8.1-r1)
+#6 14.32 (22/81) Installing ncurses-terminfo-base (6.5_p20250621-r0)
+#6 14.82 (23/81) Installing ncurses (6.5_p20250621-r0)
+#6 15.23 (24/81) Installing lame-libs (3.100-r1)
+#6 15.72 (25/81) Installing openjpeg (2.5.3-r1)
+#6 16.10 (26/81) Installing opus (1.5.2-r2)
+#6 16.54 (27/81) Installing libstdc++ (15.1.0-r1)
+#6 17.00 (28/81) Installing snappy (1.2.2-r0)
+#6 17.35 (29/81) Installing speex (1.2.1-r4)
+#6 17.77 (30/81) Installing libgomp (15.1.0-r1)
+#6 18.23 (31/81) Installing soxr (0.1.3-r3)
+#6 19.02 (32/81) Installing ffmpeg-7.1-libswresample5 (7.1.1-r9)
+#6 19.40 (33/81) Installing libogg (1.3.6-r0)
+#6 19.83 (34/81) Installing libtheora (1.2.0-r0)
+#6 20.22 (35/81) Installing libvorbis (1.3.7-r5)
+#6 20.62 (36/81) Installing libwebp (1.6.0-r0)
+#6 ...
+
+#7 [builder 2/6] RUN apk update && apk add     python3     python-3.11-dev     py3.11-pip     gcc     glibc-dev     libffi-dev     cairo-dev     pango-dev     gdk-pixbuf-dev     libxml2-dev     libxslt-dev     libjpeg-turbo-dev     zlib-dev     build-base     git
+#7 10.58 (17/152) Installing isl (0.27-r3)
+#7 10.98 (18/152) Installing mpfr (4.2.2-r1)
+#7 11.38 (19/152) Installing mpc (1.3.1-r6)
+#7 11.74 (20/152) Installing gcc (15.1.0-r1)
+#7 14.62 (21/152) Installing make (4.4.1-r7)
+#7 15.01 (22/152) Installing pkgconf (2.5.1-r0)
+#7 15.40 (23/152) Installing build-base (1-r8)
+#7 15.76 (24/152) Installing libxau (1.0.12-r2)
+#7 16.13 (25/152) Installing libxdmcp (1.1.5-r7)
+#7 16.53 (26/152) Installing libxcb (1.17.0-r6)
+#7 16.94 (27/152) Installing libx11 (1.8.12-r1)
+#7 17.40 (28/152) Installing libxext (1.3.6-r5)
+#7 18.14 (29/152) Installing libxrender (0.9.12-r3)
+#7 18.50 (30/152) Installing fontconfig-config (2.17.1-r0)
+#7 18.88 (31/152) Installing libexpat1 (2.7.1-r1)
+#7 19.27 (32/152) Installing libbrotlicommon1 (1.1.0-r5)
+#7 19.65 (33/152) Installing libbrotlidec1 (1.1.0-r5)
+#7 20.04 (34/152) Installing libbz2-1 (1.0.8-r18)
+#7 20.41 (35/152) Installing libpng (1.6.50-r0)
+#7 20.78 (36/152) Installing freetype (2.13.3-r1)
+#7 ...
+
+#6 [stage-1  2/19] RUN apk update && apk add     python3     python-3.11     cairo     pango     gdk-pixbuf     libxml2     libxslt     libjpeg-turbo     zlib     font-liberation     fontconfig     ffmpeg     libffi     glib     harfbuzz     freetype     ca-certificates-bundle
+#6 21.04 (37/81) Installing x264 (2023.10.01-r0)
+#6 21.47 (38/81) Installing x265 (4.1-r4)
+#6 22.11 (39/81) Installing ffmpeg-7.1-libavcodec61 (7.1.1-r9)
+#6 22.70 (40/81) Installing libsdl2 (2.32.8-r0)
+#6 23.11 (41/81) Installing bash (5.3-r0)
+#6 23.57 (42/81) Installing jitterentropy-library (3.6.3-r1)
+#6 23.98 (43/81) Installing jitterentropy-library-dev (3.6.3-r1)
+#6 24.36 (44/81) Installing openssl-dev (3.5.1-r0)
+#6 25.54 (45/81) Installing libsrt (1.5.4-r3)
+#6 25.90 (46/81) Installing libssh (0.11.2-r0)
+#6 26.34 (47/81) Installing libxml2 (2.14.5-r0)
+#6 26.74 (48/81) Installing libsodium (1.0.20-r1)
+#6 27.12 (49/81) Installing zeromq (4.3.5-r5)
+#6 27.54 (50/81) Installing ffmpeg-7.1-libavformat61 (7.1.1-r9)
+#6 27.95 (51/81) Installing libffi (3.5.1-r0)
+#6 28.36 (52/81) Installing libblkid (2.41.1-r1)
+#6 28.82 (53/81) Installing libmount (2.41.1-r1)
+#6 29.21 (54/81) Installing libpcre2-8-0 (10.45-r2)
+#6 29.65 (55/81) Installing glib (2.85.1-r0)
+#6 30.09 (56/81) Installing graphite2 (1.3.14-r5)
+#6 ...
+
+#7 [builder 2/6] RUN apk update && apk add     python3     python-3.11-dev     py3.11-pip     gcc     glibc-dev     libffi-dev     cairo-dev     pango-dev     gdk-pixbuf-dev     libxml2-dev     libxslt-dev     libjpeg-turbo-dev     zlib-dev     build-base     git
+#7 21.16 (37/152) Installing libfontconfig1 (2.17.1-r0)
+#7 21.53 (38/152) Installing pixman (0.46.2-r0)
+#7 21.89 (39/152) Installing cairo (1.18.4-r1)
+#7 22.31 (40/152) Installing cairo-tools (1.18.4-r1)
+#7 22.67 (41/152) Installing expat-dev (2.7.1-r1)
+#7 23.04 (42/152) Installing libbrotlienc1 (1.1.0-r5)
+#7 23.46 (43/152) Installing brotli (1.1.0-r5)
+#7 23.85 (44/152) Installing brotli-dev (1.1.0-r5)
+#7 24.33 (45/152) Installing bzip2-dev (1.0.8-r18)
+#7 24.71 (46/152) Installing zlib-dev (1.3.1-r50)
+#7 25.11 (47/152) Installing libpng-dev (1.6.50-r0)
+#7 25.61 (48/152) Installing xorgproto (2024.1-r2)
+#7 25.96 (49/152) Installing libxau-dev (1.0.12-r2)
+#7 26.66 (50/152) Installing libxdmcp-dev (1.1.5-r7)
+#7 27.05 (51/152) Installing xcb-proto (1.17.0-r3)
+#7 27.44 (52/152) Installing libxcb-dev (1.17.0-r6)
+#7 27.82 (53/152) Installing xtrans (1.6.0-r0)
+#7 28.16 (54/152) Installing libx11-dev (1.8.12-r1)
+#7 28.56 (55/152) Installing freetype-dev (2.13.3-r1)
+#7 28.94 (56/152) Installing fontconfig-dev (2.17.1-r0)
+#7 29.31 (57/152) Installing libxext-dev (1.3.6-r5)
+#7 29.67 (58/152) Installing libxrender-dev (0.9.12-r3)
+#7 30.05 (59/152) Installing py3-pip-wheel (25.1.1-r3)
+#7 30.42 (60/152) Installing libffi (3.5.1-r0)
+#7 ...
+
+#6 [stage-1  2/19] RUN apk update && apk add     python3     python-3.11     cairo     pango     gdk-pixbuf     libxml2     libxslt     libjpeg-turbo     zlib     font-liberation     fontconfig     ffmpeg     libffi     glib     harfbuzz     freetype     ca-certificates-bundle
+#6 30.45 (57/81) Installing harfbuzz (11.2.1-r1)
+#6 30.86 (58/81) Installing ffmpeg-7.1-libpostproc58 (7.1.1-r9)
+#6 31.20 (59/81) Installing ffmpeg-7.1-libswscale8 (7.1.1-r9)
+#6 31.61 (60/81) Installing ffmpeg-7.1-libavfilter10 (7.1.1-r9)
+#6 32.04 (61/81) Installing ffmpeg-7.1-libavdevice61 (7.1.1-r9)
+#6 32.47 (62/81) Installing ffmpeg-7.1 (7.1.1-r9)
+#6 32.87 (63/81) Installing font-liberation (2.1.5-r0)
+#6 33.34 (64/81) Installing fontconfig (2.17.1-r0)
+#6 33.76 (65/81) Installing shared-mime-info (2.4-r5)
+#6 34.22 (66/81) Installing libjpeg-turbo (3.1.1-r0)
+#6 34.74 (67/81) Installing libzstd1 (1.5.7-r2)
+#6 35.14 (68/81) Installing tiff (4.7.0-r4)
+#6 35.94 (69/81) Installing gdk-pixbuf (2.42.12-r1)
+#6 36.38 (70/81) Installing libxslt (1.1.43-r3)
+#6 36.93 (71/81) Installing libxft (2.3.9-r0)
+#6 37.36 (72/81) Installing fribidi (1.0.16-r2)
+#6 37.84 (73/81) Installing pango (1.56.4-r0)
+#6 38.28 (74/81) Installing py3-pip-wheel (25.1.1-r3)
+#6 38.95 (75/81) Installing py3-setuptools-wheel (80.9.0-r1)
+#6 39.66 (76/81) Installing gdbm (1.25-r2)
+#6 ...
+
+#7 [builder 2/6] RUN apk update && apk add     python3     python-3.11-dev     py3.11-pip     gcc     glibc-dev     libffi-dev     cairo-dev     pango-dev     gdk-pixbuf-dev     libxml2-dev     libxslt-dev     libjpeg-turbo-dev     zlib-dev     build-base     git
+#7 30.80 (61/152) Installing gdbm (1.25-r2)
+#7 31.24 (62/152) Installing xz (5.8.1-r1)
+#7 31.66 (63/152) Installing mpdecimal (4.0.1-r2)
+#7 32.08 (64/152) Installing ncurses-terminfo-base (6.5_p20250621-r0)
+#7 32.48 (65/152) Installing ncurses (6.5_p20250621-r0)
+#7 32.89 (66/152) Installing readline (8.3-r0)
+#7 33.29 (67/152) Installing sqlite-libs (3.50.3-r0)
+#7 33.75 (68/152) Installing python-3.13-base (3.13.5-r2)
+#7 34.45 (69/152) Installing docbook-xml (4.5-r4)
+#7 34.94 (70/152) Installing glibc-iconv (2.41-r53)
+#7 35.40 (71/152) Installing libunistring (1.3-r3)
+#7 35.78 (72/152) Installing libxml2 (2.14.5-r0)
+#7 36.18 (73/152) Installing gettext (0.22.5-r3)
+#7 36.70 (74/152) Installing gettext-dev (0.22.5-r3)
+#7 37.06 (75/152) Installing libblkid (2.41.1-r1)
+#7 37.46 (76/152) Installing libmount (2.41.1-r1)
+#7 37.88 (77/152) Installing libpcre2-8-0 (10.45-r2)
+#7 38.26 (78/152) Installing glib (2.85.1-r0)
+#7 39.04 (79/152) Installing libffi-dev (3.5.1-r0)
+#7 39.60 (80/152) Installing libxml2-utils (2.14.5-r0)
+#7 39.98 (81/152) Installing libxslt (1.1.43-r3)
+#7 ...
+
+#6 [stage-1  2/19] RUN apk update && apk add     python3     python-3.11     cairo     pango     gdk-pixbuf     libxml2     libxslt     libjpeg-turbo     zlib     font-liberation     fontconfig     ffmpeg     libffi     glib     harfbuzz     freetype     ca-certificates-bundle
+#6 40.19 (77/81) Installing mpdecimal (4.0.1-r2)
+#6 40.75 (78/81) Installing readline (8.3-r0)
+#6 41.32 (79/81) Installing sqlite-libs (3.50.3-r0)
+#6 41.74 (80/81) Installing python-3.11-base (3.11.13-r2)
+#6 43.29 (81/81) Installing python-3.11 (3.11.13-r2)
+#6 43.84 Executing busybox-1.37.0-r46.trigger
+#6 43.86 Executing fontconfig-2.17.1-r0.trigger
+#6 43.89 OK: 233 MiB in 96 packages
+#6 DONE 44.7s
+
+#7 [builder 2/6] RUN apk update && apk add     python3     python-3.11-dev     py3.11-pip     gcc     glibc-dev     libffi-dev     cairo-dev     pango-dev     gdk-pixbuf-dev     libxml2-dev     libxslt-dev     libjpeg-turbo-dev     zlib-dev     build-base     git
+#7 40.71 (82/152) Installing libedit (3.1-r11)
+#7 41.30 (83/152) Installing ncurses-dev (6.5_p20250621-r0)
+#7 41.68 (84/152) Installing libedit-dev (3.1-r11)
+#7 42.15 (85/152) Installing libpcre2-16-0 (10.45-r2)
+#7 42.50 (86/152) Installing libpcre2-32-0 (10.45-r2)
+#7 42.91 (87/152) Installing libpcre2-posix-3 (10.45-r2)
+#7 43.34 (88/152) Installing pcre2-dev (10.45-r2)
+#7 43.74 (89/152) Installing sqlite (3.50.3-r0)
+#7 44.13 (90/152) Installing sqlite-dev (3.50.3-r0)
+#7 44.52 (91/152) Installing libuuid (2.41.1-r1)
+#7 ...
+
+#8 [stage-1  3/19] RUN ln -sf /usr/bin/python3.11 /usr/bin/python &&     ln -sf /usr/bin/python3.11 /usr/bin/python3
+#8 DONE 0.1s
+
+#9 [stage-1  4/19] WORKDIR /app
+#9 DONE 0.0s
+
+#7 [builder 2/6] RUN apk update && apk add     python3     python-3.11-dev     py3.11-pip     gcc     glibc-dev     libffi-dev     cairo-dev     pango-dev     gdk-pixbuf-dev     libxml2-dev     libxslt-dev     libjpeg-turbo-dev     zlib-dev     build-base     git
+#7 44.84 (92/152) Installing libfdisk (2.41.1-r1)
+#7 45.23 (93/152) Installing util-linux (2.41.1-r1)
+#7 45.71 (94/152) Installing libsmartcols (2.41.1-r1)
+#7 46.09 (95/152) Installing util-linux-dev (2.41.1-r1)
+#7 46.56 (96/152) Installing glib-dev (2.85.1-r0)
+#7 46.95 (97/152) Installing pixman-dev (0.46.2-r0)
+#7 47.35 (98/152) Installing cairo-gobject (1.18.4-r1)
+#7 47.87 (99/152) Installing xcb-util (0.4.1-r3)
+#7 48.45 (100/152) Installing util-macros (1.20.2-r0)
+#7 48.87 (101/152) Installing xcb-util-dev (0.4.1-r3)
+#7 49.26 (102/152) Installing cairo-dev (1.18.4-r1)
+#7 49.63 (103/152) Installing shared-mime-info (2.4-r5)
+#7 50.11 (104/152) Installing libjpeg-turbo (3.1.1-r0)
+#7 50.48 (105/152) Installing libwebp (1.6.0-r0)
+#7 50.85 (106/152) Installing tiff (4.7.0-r4)
+#7 51.28 (107/152) Installing gdk-pixbuf (2.42.12-r1)
+#7 51.66 (108/152) Installing libjpeg-turbo-dev (3.1.1-r0)
+#7 52.52 (109/152) Installing libwebp-dev (1.6.0-r0)
+#7 52.93 (110/152) Installing zstd-dev (1.5.7-r2)
+#7 53.30 (111/152) Installing tiff-dev (4.7.0-r4)
+#7 53.71 (112/152) Installing gdk-pixbuf-dev (2.42.12-r1)
+#7 54.13 (113/152) Installing krb5-conf (1.0-r6)
+#7 54.52 (114/152) Installing libcom_err (1.47.2-r22)
+#7 55.16 (115/152) Installing keyutils-libs (1.6.3-r35)
+#7 55.55 (116/152) Installing libverto (0.3.2-r5)
+#7 56.06 (117/152) Installing krb5-libs (1.21.3-r42)
+#7 56.50 (118/152) Installing heimdal (7.8.0-r6)
+#7 56.95 (119/152) Installing cyrus-sasl (2.1.28-r42)
+#7 57.47 (120/152) Installing libldap (2.6.10-r3)
+#7 57.86 (121/152) Installing libnghttp2-14 (1.66.0-r0)
+#7 58.27 (122/152) Installing libidn2 (2.3.8-r2)
+#7 58.66 (123/152) Installing libpsl (0.21.5-r5)
+#7 59.09 (124/152) Installing libcurl-openssl4 (8.15.0-r0)
+#7 59.52 (125/152) Installing git (2.50.1-r0)
+#7 60.03 (126/152) Installing xz-dev (5.8.1-r1)
+#7 60.43 (127/152) Installing libxml2-dev (2.14.5-r0)
+#7 60.80 (128/152) Installing libxslt-dev (1.1.43-r3)
+#7 61.24 (129/152) Installing libxft (2.3.9-r0)
+#7 61.60 (130/152) Installing fribidi (1.0.16-r2)
+#7 61.96 (131/152) Installing graphite2 (1.3.14-r5)
+#7 62.34 (132/152) Installing harfbuzz (11.2.1-r1)
+#7 62.91 (133/152) Installing pango (1.56.4-r0)
+#7 63.34 (134/152) Installing pango-tools (1.56.4-r0)
+#7 63.72 (135/152) Installing fribidi-dev (1.0.16-r2)
+#7 64.11 (136/152) Installing graphite2-dev (1.3.14-r5)
+#7 64.43 (137/152) Installing icu-data-full (75.1-r41)
+#7 65.13 (138/152) Installing icu-libs (75.1-r41)
+#7 65.60 (139/152) Installing harfbuzz-icu (11.2.1-r1)
+#7 66.14 (140/152) Installing icu (75.1-r41)
+#7 66.83 (141/152) Installing icu-dev (75.1-r41)
+#7 67.26 (142/152) Installing harfbuzz-dev (11.2.1-r1)
+#7 67.65 (143/152) Installing libxft-dev (2.3.9-r0)
+#7 67.98 (144/152) Installing pango-dev (1.56.4-r0)
+#7 68.43 (145/152) Installing py3-setuptools-wheel (80.9.0-r1)
+#7 68.85 (146/152) Installing python-3.11-base (3.11.13-r2)
+#7 69.48 (147/152) Installing py3.11-setuptools (80.9.0-r0)
+#7 69.98 (148/152) Installing py3.11-pip-base (25.1.1-r3)
+#7 70.51 (149/152) Installing py3.11-pip (25.1.1-r3)
+#7 70.93 (150/152) Installing python-3.11-base-dev (3.11.13-r2)
+#7 71.40 (151/152) Installing python-3.11 (3.11.13-r2)
+#7 71.77 (152/152) Installing python-3.11-dev (3.11.13-r2)
+#7 72.18 Executing busybox-1.37.0-r46.trigger
+#7 72.23 OK: 936 MiB in 167 packages
+#7 DONE 72.9s
+
+#10 [builder 3/6] RUN ln -sf /usr/bin/python3.11 /usr/bin/python &&     ln -sf /usr/bin/python3.11 /usr/bin/python3
+#10 DONE 0.2s
+
+#11 [builder 4/6] WORKDIR /app
+#11 DONE 0.0s
+
+#12 [builder 5/6] COPY requirements.txt .
+#12 DONE 0.0s
+
+#13 [builder 6/6] RUN python3.11 -m pip install --upgrade pip setuptools wheel &&     python3.11 -m pip install --no-cache-dir -r requirements.txt
+#13 0.290 Requirement already satisfied: pip in /usr/lib/python3.11/site-packages (25.1.1)
+#13 0.453 Requirement already satisfied: setuptools in /usr/lib/python3.11/site-packages (80.9.0.post20250527)
+#13 0.612 Collecting wheel
+#13 0.766   Downloading wheel-0.45.1-py3-none-any.whl.metadata (2.3 kB)
+#13 0.803 Downloading wheel-0.45.1-py3-none-any.whl (72 kB)
+#13 0.879 Installing collected packages: wheel
+#13 0.921 Successfully installed wheel-0.45.1
+#13 0.921 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+#13 1.388 Collecting fastapi (from -r requirements.txt (line 1))
+#13 1.458   Downloading fastapi-0.116.1-py3-none-any.whl.metadata (28 kB)
+#13 1.503 Collecting python-dotenv (from -r requirements.txt (line 3))
+#13 1.521   Downloading python_dotenv-1.1.1-py3-none-any.whl.metadata (24 kB)
+#13 1.771 Collecting websockets (from -r requirements.txt (line 4))
+#13 1.807   Downloading websockets-15.0.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (6.8 kB)
+#13 1.929 Collecting deepgram-sdk (from -r requirements.txt (line 5))
+#13 1.947   Downloading deepgram_sdk-4.6.0-py3-none-any.whl.metadata (27 kB)
+#13 1.997 Collecting httpx (from -r requirements.txt (line 7))
+#13 2.017   Downloading httpx-0.28.1-py3-none-any.whl.metadata (7.1 kB)
+#13 2.070 Collecting google-cloud-storage (from -r requirements.txt (line 10))
+#13 2.091   Downloading google_cloud_storage-3.2.0-py3-none-any.whl.metadata (13 kB)
+#13 2.176 Collecting google-cloud-aiplatform>=1.38.0 (from -r requirements.txt (line 11))
+#13 2.200   Downloading google_cloud_aiplatform-1.104.0-py2.py3-none-any.whl.metadata (38 kB)
+#13 2.280 Collecting google-cloud-firestore (from -r requirements.txt (line 12))
+#13 2.298   Downloading google_cloud_firestore-2.21.0-py3-none-any.whl.metadata (9.9 kB)
+#13 2.332 Collecting google-cloud-secret-manager (from -r requirements.txt (line 13))
+#13 2.355   Downloading google_cloud_secret_manager-2.24.0-py3-none-any.whl.metadata (9.7 kB)
+#13 2.458 Collecting google-api-python-client (from -r requirements.txt (line 14))
+#13 2.480   Downloading google_api_python_client-2.176.0-py3-none-any.whl.metadata (7.0 kB)
+#13 2.560 Collecting google-auth (from -r requirements.txt (line 15))
+#13 2.579   Downloading google_auth-2.40.3-py2.py3-none-any.whl.metadata (6.2 kB)
+#13 2.607 Collecting google-auth-httplib2 (from -r requirements.txt (line 16))
+#13 2.637   Downloading google_auth_httplib2-0.2.0-py2.py3-none-any.whl.metadata (2.2 kB)
+#13 2.663 Collecting google-auth-oauthlib (from -r requirements.txt (line 17))
+#13 2.683   Downloading google_auth_oauthlib-1.2.2-py3-none-any.whl.metadata (2.7 kB)
+#13 2.722 Collecting firebase-admin (from -r requirements.txt (line 18))
+#13 2.742   Downloading firebase_admin-7.0.0-py3-none-any.whl.metadata (1.7 kB)
+#13 2.848 Collecting slowapi (from -r requirements.txt (line 21))
+#13 2.870   Downloading slowapi-0.1.9-py3-none-any.whl.metadata (3.0 kB)
+#13 2.911 Collecting nest-asyncio (from -r requirements.txt (line 24))
+#13 2.930   Downloading nest_asyncio-1.6.0-py3-none-any.whl.metadata (2.8 kB)
+#13 2.984 Collecting gunicorn (from -r requirements.txt (line 30))
+#13 3.013   Downloading gunicorn-23.0.0-py3-none-any.whl.metadata (4.4 kB)
+#13 3.069 Collecting weasyprint==62.1 (from -r requirements.txt (line 33))
+#13 3.161   Downloading weasyprint-62.1-py3-none-any.whl.metadata (3.7 kB)
+#13 3.506 Collecting pillow==10.4.0 (from -r requirements.txt (line 34))
+#13 3.531   Downloading pillow-10.4.0-cp311-cp311-manylinux_2_28_aarch64.whl.metadata (9.2 kB)
+#13 3.553 Collecting python-multipart==0.0.18 (from -r requirements.txt (line 35))
+#13 3.582   Downloading python_multipart-0.0.18-py3-none-any.whl.metadata (1.8 kB)
+#13 3.624 Collecting jinja2>=3.1.0 (from -r requirements.txt (line 36))
+#13 3.642   Downloading jinja2-3.1.6-py3-none-any.whl.metadata (2.9 kB)
+#13 3.644 Requirement already satisfied: setuptools>=70.0.0 in /usr/lib/python3.11/site-packages (from -r requirements.txt (line 39)) (80.9.0.post20250527)
+#13 3.683 Collecting uvicorn[standard] (from -r requirements.txt (line 2))
+#13 3.703   Downloading uvicorn-0.35.0-py3-none-any.whl.metadata (6.5 kB)
+#13 3.731 Collecting python-jose[cryptography] (from -r requirements.txt (line 27))
+#13 3.750   Downloading python_jose-3.5.0-py2.py3-none-any.whl.metadata (5.5 kB)
+#13 3.774 Collecting pydyf>=0.10.0 (from weasyprint==62.1->-r requirements.txt (line 33))
+#13 3.794   Downloading pydyf-0.11.0-py3-none-any.whl.metadata (2.5 kB)
+#13 4.024 Collecting cffi>=0.6 (from weasyprint==62.1->-r requirements.txt (line 33))
+#13 4.042   Downloading cffi-1.17.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (1.5 kB)
+#13 4.069 Collecting html5lib>=1.1 (from weasyprint==62.1->-r requirements.txt (line 33))
+#13 4.089   Downloading html5lib-1.1-py2.py3-none-any.whl.metadata (16 kB)
+#13 4.115 Collecting tinycss2>=1.3.0 (from weasyprint==62.1->-r requirements.txt (line 33))
+#13 4.133   Downloading tinycss2-1.4.0-py3-none-any.whl.metadata (3.0 kB)
+#13 4.156 Collecting cssselect2>=0.1 (from weasyprint==62.1->-r requirements.txt (line 33))
+#13 4.175   Downloading cssselect2-0.8.0-py3-none-any.whl.metadata (2.9 kB)
+#13 4.215 Collecting Pyphen>=0.9.1 (from weasyprint==62.1->-r requirements.txt (line 33))
+#13 4.233   Downloading pyphen-0.17.2-py3-none-any.whl.metadata (3.2 kB)
+#13 4.476 Collecting fonttools>=4.0.0 (from fonttools[woff]>=4.0.0->weasyprint==62.1->-r requirements.txt (line 33))
+#13 4.499   Downloading fonttools-4.59.0-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl.metadata (107 kB)
+#13 4.570 Collecting starlette<0.48.0,>=0.40.0 (from fastapi->-r requirements.txt (line 1))
+#13 4.589   Downloading starlette-0.47.1-py3-none-any.whl.metadata (6.2 kB)
+#13 4.841 Collecting pydantic!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0,>=1.7.4 (from fastapi->-r requirements.txt (line 1))
+#13 4.858   Downloading pydantic-2.11.7-py3-none-any.whl.metadata (67 kB)
+#13 4.889 Collecting typing-extensions>=4.8.0 (from fastapi->-r requirements.txt (line 1))
+#13 4.906   Downloading typing_extensions-4.14.1-py3-none-any.whl.metadata (3.0 kB)
+#13 4.929 Collecting annotated-types>=0.6.0 (from pydantic!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0,>=1.7.4->fastapi->-r requirements.txt (line 1))
+#13 4.963   Downloading annotated_types-0.7.0-py3-none-any.whl.metadata (15 kB)
+#13 5.753 Collecting pydantic-core==2.33.2 (from pydantic!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0,>=1.7.4->fastapi->-r requirements.txt (line 1))
+#13 5.772   Downloading pydantic_core-2.33.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (6.8 kB)
+#13 5.794 Collecting typing-inspection>=0.4.0 (from pydantic!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0,>=1.7.4->fastapi->-r requirements.txt (line 1))
+#13 5.815   Downloading typing_inspection-0.4.1-py3-none-any.whl.metadata (2.6 kB)
+#13 5.848 Collecting anyio<5,>=3.6.2 (from starlette<0.48.0,>=0.40.0->fastapi->-r requirements.txt (line 1))
+#13 5.876   Downloading anyio-4.9.0-py3-none-any.whl.metadata (4.7 kB)
+#13 5.904 Collecting idna>=2.8 (from anyio<5,>=3.6.2->starlette<0.48.0,>=0.40.0->fastapi->-r requirements.txt (line 1))
+#13 5.920   Downloading idna-3.10-py3-none-any.whl.metadata (10 kB)
+#13 5.941 Collecting sniffio>=1.1 (from anyio<5,>=3.6.2->starlette<0.48.0,>=0.40.0->fastapi->-r requirements.txt (line 1))
+#13 5.961   Downloading sniffio-1.3.1-py3-none-any.whl.metadata (3.9 kB)
+#13 5.998 Collecting click>=7.0 (from uvicorn[standard]->-r requirements.txt (line 2))
+#13 6.016   Downloading click-8.2.1-py3-none-any.whl.metadata (2.5 kB)
+#13 6.037 Collecting h11>=0.8 (from uvicorn[standard]->-r requirements.txt (line 2))
+#13 6.053   Downloading h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
+#13 6.094 Collecting httptools>=0.6.3 (from uvicorn[standard]->-r requirements.txt (line 2))
+#13 6.112   Downloading httptools-0.6.4-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (3.6 kB)
+#13 6.166 Collecting pyyaml>=5.1 (from uvicorn[standard]->-r requirements.txt (line 2))
+#13 6.184   Downloading PyYAML-6.0.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (2.1 kB)
+#13 6.244 Collecting uvloop>=0.15.1 (from uvicorn[standard]->-r requirements.txt (line 2))
+#13 6.260   Downloading uvloop-0.21.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (4.9 kB)
+#13 6.358 Collecting watchfiles>=0.13 (from uvicorn[standard]->-r requirements.txt (line 2))
+#13 6.376   Downloading watchfiles-1.1.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (4.9 kB)
+#13 6.412 Collecting dataclasses-json>=0.6.3 (from deepgram-sdk->-r requirements.txt (line 5))
+#13 6.434   Downloading dataclasses_json-0.6.7-py3-none-any.whl.metadata (25 kB)
+#13 7.034 Collecting aiohttp>=3.9.1 (from deepgram-sdk->-r requirements.txt (line 5))
+#13 7.058   Downloading aiohttp-3.12.14-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (7.6 kB)
+#13 7.081 Collecting aiofiles>=23.2.1 (from deepgram-sdk->-r requirements.txt (line 5))
+#13 7.099   Downloading aiofiles-24.1.0-py3-none-any.whl.metadata (10 kB)
+#13 7.195 Collecting aenum>=3.1.0 (from deepgram-sdk->-r requirements.txt (line 5))
+#13 7.211   Downloading aenum-3.1.16-py3-none-any.whl.metadata (3.8 kB)
+#13 7.232 Collecting deprecation>=2.1.0 (from deepgram-sdk->-r requirements.txt (line 5))
+#13 7.251   Downloading deprecation-2.1.0-py2.py3-none-any.whl.metadata (4.6 kB)
+#13 7.292 Collecting certifi (from httpx->-r requirements.txt (line 7))
+#13 7.313   Downloading certifi-2025.7.14-py3-none-any.whl.metadata (2.4 kB)
+#13 7.346 Collecting httpcore==1.* (from httpx->-r requirements.txt (line 7))
+#13 7.367   Downloading httpcore-1.0.9-py3-none-any.whl.metadata (21 kB)
+#13 7.426 Collecting google-api-core<3.0.0,>=2.15.0 (from google-cloud-storage->-r requirements.txt (line 10))
+#13 7.451   Downloading google_api_core-2.25.1-py3-none-any.whl.metadata (3.0 kB)
+#13 7.479 Collecting google-cloud-core<3.0.0,>=2.4.2 (from google-cloud-storage->-r requirements.txt (line 10))
+#13 7.500   Downloading google_cloud_core-2.4.3-py2.py3-none-any.whl.metadata (2.7 kB)
+#13 7.539 Collecting google-resumable-media<3.0.0,>=2.7.2 (from google-cloud-storage->-r requirements.txt (line 10))
+#13 7.557   Downloading google_resumable_media-2.7.2-py2.py3-none-any.whl.metadata (2.2 kB)
+#13 7.646 Collecting requests<3.0.0,>=2.22.0 (from google-cloud-storage->-r requirements.txt (line 10))
+#13 7.682   Downloading requests-2.32.4-py3-none-any.whl.metadata (4.9 kB)
+#13 7.743 Collecting google-crc32c<2.0.0,>=1.1.3 (from google-cloud-storage->-r requirements.txt (line 10))
+#13 7.759   Downloading google_crc32c-1.7.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (2.3 kB)
+#13 7.788 Collecting cachetools<6.0,>=2.0.0 (from google-auth->-r requirements.txt (line 15))
+#13 7.808   Downloading cachetools-5.5.2-py3-none-any.whl.metadata (5.4 kB)
+#13 7.843 Collecting pyasn1-modules>=0.2.1 (from google-auth->-r requirements.txt (line 15))
+#13 7.861   Downloading pyasn1_modules-0.4.2-py3-none-any.whl.metadata (3.5 kB)
+#13 7.890 Collecting rsa<5,>=3.1.4 (from google-auth->-r requirements.txt (line 15))
+#13 7.908   Downloading rsa-4.9.1-py3-none-any.whl.metadata (5.6 kB)
+#13 7.940 Collecting googleapis-common-protos<2.0.0,>=1.56.2 (from google-api-core<3.0.0,>=2.15.0->google-cloud-storage->-r requirements.txt (line 10))
+#13 7.957   Downloading googleapis_common_protos-1.70.0-py3-none-any.whl.metadata (9.3 kB)
+#13 8.190 Collecting protobuf!=3.20.0,!=3.20.1,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5,<7.0.0,>=3.19.5 (from google-api-core<3.0.0,>=2.15.0->google-cloud-storage->-r requirements.txt (line 10))
+#13 8.207   Downloading protobuf-6.31.1-cp39-abi3-manylinux2014_aarch64.whl.metadata (593 bytes)
+#13 8.245 Collecting proto-plus<2.0.0,>=1.22.3 (from google-api-core<3.0.0,>=2.15.0->google-cloud-storage->-r requirements.txt (line 10))
+#13 8.262   Downloading proto_plus-1.26.1-py3-none-any.whl.metadata (2.2 kB)
+#13 8.423 Collecting charset_normalizer<4,>=2 (from requests<3.0.0,>=2.22.0->google-cloud-storage->-r requirements.txt (line 10))
+#13 8.440   Downloading charset_normalizer-3.4.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (35 kB)
+#13 8.487 Collecting urllib3<3,>=1.21.1 (from requests<3.0.0,>=2.22.0->google-cloud-storage->-r requirements.txt (line 10))
+#13 8.506   Downloading urllib3-2.5.0-py3-none-any.whl.metadata (6.5 kB)
+#13 8.547 Collecting pyasn1>=0.1.3 (from rsa<5,>=3.1.4->google-auth->-r requirements.txt (line 15))
+#13 8.573   Downloading pyasn1-0.6.1-py3-none-any.whl.metadata (8.4 kB)
+#13 8.655 Collecting packaging>=14.3 (from google-cloud-aiplatform>=1.38.0->-r requirements.txt (line 11))
+#13 8.673   Downloading packaging-25.0-py3-none-any.whl.metadata (3.3 kB)
+#13 8.680 Collecting google-cloud-storage (from -r requirements.txt (line 10))
+#13 8.699   Downloading google_cloud_storage-2.19.0-py2.py3-none-any.whl.metadata (9.1 kB)
+#13 8.764 Collecting google-cloud-bigquery!=3.20.0,<4.0.0,>=1.15.0 (from google-cloud-aiplatform>=1.38.0->-r requirements.txt (line 11))
+#13 8.779   Downloading google_cloud_bigquery-3.35.0-py3-none-any.whl.metadata (8.0 kB)
+#13 8.814 Collecting google-cloud-resource-manager<3.0.0,>=1.3.3 (from google-cloud-aiplatform>=1.38.0->-r requirements.txt (line 11))
+#13 8.832   Downloading google_cloud_resource_manager-1.14.2-py3-none-any.whl.metadata (9.6 kB)
+#13 8.946 Collecting shapely<3.0.0 (from google-cloud-aiplatform>=1.38.0->-r requirements.txt (line 11))
+#13 8.964   Downloading shapely-2.1.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (6.7 kB)
+#13 8.993 Collecting google-genai<2.0.0,>=1.0.0 (from google-cloud-aiplatform>=1.38.0->-r requirements.txt (line 11))
+#13 9.020   Downloading google_genai-1.26.0-py3-none-any.whl.metadata (42 kB)
+#13 9.056 Collecting docstring_parser<1 (from google-cloud-aiplatform>=1.38.0->-r requirements.txt (line 11))
+#13 9.074   Downloading docstring_parser-0.16-py3-none-any.whl.metadata (3.0 kB)
+#13 9.743 Collecting grpcio<2.0.0,>=1.33.2 (from google-api-core[grpc]!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,<3.0.0,>=1.34.1->google-cloud-aiplatform>=1.38.0->-r requirements.txt (line 11))
+#13 9.766   Downloading grpcio-1.73.1-cp311-cp311-manylinux_2_17_aarch64.whl.metadata (3.8 kB)
+#13 9.810 Collecting grpcio-status<2.0.0,>=1.33.2 (from google-api-core[grpc]!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,<3.0.0,>=1.34.1->google-cloud-aiplatform>=1.38.0->-r requirements.txt (line 11))
+#13 9.829   Downloading grpcio_status-1.73.1-py3-none-any.whl.metadata (1.1 kB)
+#13 9.870 Collecting python-dateutil<3.0.0,>=2.8.2 (from google-cloud-bigquery!=3.20.0,<4.0.0,>=1.15.0->google-cloud-aiplatform>=1.38.0->-r requirements.txt (line 11))
+#13 9.887   Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
+#13 9.929 Collecting grpc-google-iam-v1<1.0.0,>=0.14.0 (from google-cloud-resource-manager<3.0.0,>=1.3.3->google-cloud-aiplatform>=1.38.0->-r requirements.txt (line 11))
+#13 9.949   Downloading grpc_google_iam_v1-0.14.2-py3-none-any.whl.metadata (9.1 kB)
+#13 9.997 Collecting tenacity<9.0.0,>=8.2.3 (from google-genai<2.0.0,>=1.0.0->google-cloud-aiplatform>=1.38.0->-r requirements.txt (line 11))
+#13 10.02   Downloading tenacity-8.5.0-py3-none-any.whl.metadata (1.2 kB)
+#13 10.08 Collecting six>=1.5 (from python-dateutil<3.0.0,>=2.8.2->google-cloud-bigquery!=3.20.0,<4.0.0,>=1.15.0->google-cloud-aiplatform>=1.38.0->-r requirements.txt (line 11))
+#13 10.10   Downloading six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+#13 10.30 Collecting numpy>=1.21 (from shapely<3.0.0->google-cloud-aiplatform>=1.38.0->-r requirements.txt (line 11))
+#13 10.32   Downloading numpy-2.3.1-cp311-cp311-manylinux_2_28_aarch64.whl.metadata (62 kB)
+#13 10.39 Collecting httplib2<1.0.0,>=0.19.0 (from google-api-python-client->-r requirements.txt (line 14))
+#13 10.42   Downloading httplib2-0.22.0-py3-none-any.whl.metadata (2.6 kB)
+#13 10.46 Collecting uritemplate<5,>=3.0.1 (from google-api-python-client->-r requirements.txt (line 14))
+#13 10.48   Downloading uritemplate-4.2.0-py3-none-any.whl.metadata (2.6 kB)
+#13 10.54 Collecting pyparsing!=3.0.0,!=3.0.1,!=3.0.2,!=3.0.3,<4,>=2.4.2 (from httplib2<1.0.0,>=0.19.0->google-api-python-client->-r requirements.txt (line 14))
+#13 10.57   Downloading pyparsing-3.2.3-py3-none-any.whl.metadata (5.0 kB)
+#13 10.61 Collecting requests-oauthlib>=0.7.0 (from google-auth-oauthlib->-r requirements.txt (line 17))
+#13 10.63   Downloading requests_oauthlib-2.0.0-py2.py3-none-any.whl.metadata (11 kB)
+#13 10.67 Collecting cachecontrol>=0.14.3 (from firebase-admin->-r requirements.txt (line 18))
+#13 10.69   Downloading cachecontrol-0.14.3-py3-none-any.whl.metadata (3.1 kB)
+#13 10.71 INFO: pip is looking at multiple versions of firebase-admin to determine which version is compatible with other requirements. This could take a while.
+#13 10.71 Collecting firebase-admin (from -r requirements.txt (line 18))
+#13 10.73   Downloading firebase_admin-6.9.0-py3-none-any.whl.metadata (1.5 kB)
+#13 10.78 Collecting pyjwt>=2.5.0 (from pyjwt[crypto]>=2.5.0->firebase-admin->-r requirements.txt (line 18))
+#13 10.80   Downloading PyJWT-2.10.1-py3-none-any.whl.metadata (4.0 kB)
+#13 10.83 Collecting h2<5,>=3 (from httpx[http2]==0.28.1->firebase-admin->-r requirements.txt (line 18))
+#13 10.85   Downloading h2-4.2.0-py3-none-any.whl.metadata (5.1 kB)
+#13 10.88 Collecting hyperframe<7,>=6.1 (from h2<5,>=3->httpx[http2]==0.28.1->firebase-admin->-r requirements.txt (line 18))
+#13 10.90   Downloading hyperframe-6.1.0-py3-none-any.whl.metadata (4.3 kB)
+#13 10.92 Collecting hpack<5,>=4.1 (from h2<5,>=3->httpx[http2]==0.28.1->firebase-admin->-r requirements.txt (line 18))
+#13 10.94   Downloading hpack-4.1.0-py3-none-any.whl.metadata (4.6 kB)
+#13 10.98 Collecting limits>=2.3 (from slowapi->-r requirements.txt (line 21))
+#13 11.00   Downloading limits-5.4.0-py3-none-any.whl.metadata (10 kB)
+#13 11.03 Collecting ecdsa!=0.15 (from python-jose[cryptography]->-r requirements.txt (line 27))
+#13 11.05   Downloading ecdsa-0.19.1-py2.py3-none-any.whl.metadata (29 kB)
+#13 11.31 Collecting cryptography>=3.4.0 (from python-jose[cryptography]->-r requirements.txt (line 27))
+#13 11.33   Downloading cryptography-45.0.5-cp311-abi3-manylinux_2_34_aarch64.whl.metadata (5.7 kB)
+#13 11.39 Collecting MarkupSafe>=2.0 (from jinja2>=3.1.0->-r requirements.txt (line 36))
+#13 11.41   Downloading MarkupSafe-3.0.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (4.0 kB)
+#13 11.44 Collecting aiohappyeyeballs>=2.5.0 (from aiohttp>=3.9.1->deepgram-sdk->-r requirements.txt (line 5))
+#13 11.46   Downloading aiohappyeyeballs-2.6.1-py3-none-any.whl.metadata (5.9 kB)
+#13 11.48 Collecting aiosignal>=1.4.0 (from aiohttp>=3.9.1->deepgram-sdk->-r requirements.txt (line 5))
+#13 11.50   Downloading aiosignal-1.4.0-py3-none-any.whl.metadata (3.7 kB)
+#13 11.53 Collecting attrs>=17.3.0 (from aiohttp>=3.9.1->deepgram-sdk->-r requirements.txt (line 5))
+#13 11.55   Downloading attrs-25.3.0-py3-none-any.whl.metadata (10 kB)
+#13 11.64 Collecting frozenlist>=1.1.1 (from aiohttp>=3.9.1->deepgram-sdk->-r requirements.txt (line 5))
+#13 11.67   Downloading frozenlist-1.7.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (18 kB)
+#13 11.93 Collecting multidict<7.0,>=4.5 (from aiohttp>=3.9.1->deepgram-sdk->-r requirements.txt (line 5))
+#13 11.96   Downloading multidict-6.6.3-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl.metadata (5.3 kB)
+#13 12.03 Collecting propcache>=0.2.0 (from aiohttp>=3.9.1->deepgram-sdk->-r requirements.txt (line 5))
+#13 12.04   Downloading propcache-0.3.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (12 kB)
+#13 12.30 Collecting yarl<2.0,>=1.17.0 (from aiohttp>=3.9.1->deepgram-sdk->-r requirements.txt (line 5))
+#13 12.32   Downloading yarl-1.20.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (73 kB)
+#13 12.41 Collecting msgpack<2.0.0,>=0.5.2 (from cachecontrol>=0.14.3->firebase-admin->-r requirements.txt (line 18))
+#13 12.43   Downloading msgpack-1.1.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (8.4 kB)
+#13 12.46 Collecting pycparser (from cffi>=0.6->weasyprint==62.1->-r requirements.txt (line 33))
+#13 12.48   Downloading pycparser-2.22-py3-none-any.whl.metadata (943 bytes)
+#13 12.52 Collecting webencodings (from cssselect2>=0.1->weasyprint==62.1->-r requirements.txt (line 33))
+#13 12.55   Downloading webencodings-0.5.1-py2.py3-none-any.whl.metadata (2.1 kB)
+#13 12.67 Collecting marshmallow<4.0.0,>=3.18.0 (from dataclasses-json>=0.6.3->deepgram-sdk->-r requirements.txt (line 5))
+#13 12.69   Downloading marshmallow-3.26.1-py3-none-any.whl.metadata (7.3 kB)
+#13 12.71 Collecting typing-inspect<1,>=0.4.0 (from dataclasses-json>=0.6.3->deepgram-sdk->-r requirements.txt (line 5))
+#13 12.73   Downloading typing_inspect-0.9.0-py3-none-any.whl.metadata (1.5 kB)
+#13 12.76 Collecting mypy-extensions>=0.3.0 (from typing-inspect<1,>=0.4.0->dataclasses-json>=0.6.3->deepgram-sdk->-r requirements.txt (line 5))
+#13 12.78   Downloading mypy_extensions-1.1.0-py3-none-any.whl.metadata (1.1 kB)
+#13 12.83 Collecting brotli>=1.0.1 (from fonttools[woff]>=4.0.0->weasyprint==62.1->-r requirements.txt (line 33))
+#13 12.85   Downloading Brotli-1.1.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (5.5 kB)
+#13 12.90 Collecting zopfli>=0.1.4 (from fonttools[woff]>=4.0.0->weasyprint==62.1->-r requirements.txt (line 33))
+#13 12.92   Downloading zopfli-0.2.3.post1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (2.9 kB)
+#13 12.96 Collecting deprecated>=1.2 (from limits>=2.3->slowapi->-r requirements.txt (line 21))
+#13 12.98   Downloading Deprecated-1.2.18-py2.py3-none-any.whl.metadata (5.7 kB)
+#13 13.17 Collecting wrapt<2,>=1.10 (from deprecated>=1.2->limits>=2.3->slowapi->-r requirements.txt (line 21))
+#13 13.19   Downloading wrapt-1.17.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (6.4 kB)
+#13 13.23 Collecting oauthlib>=3.0.0 (from requests-oauthlib>=0.7.0->google-auth-oauthlib->-r requirements.txt (line 17))
+#13 13.25   Downloading oauthlib-3.3.1-py3-none-any.whl.metadata (7.9 kB)
+#13 13.30 Downloading weasyprint-62.1-py3-none-any.whl (289 kB)
+#13 13.34 Downloading pillow-10.4.0-cp311-cp311-manylinux_2_28_aarch64.whl (4.4 MB)
+#13 13.47    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.4/4.4 MB 31.3 MB/s eta 0:00:00
+#13 13.50 Downloading python_multipart-0.0.18-py3-none-any.whl (24 kB)
+#13 13.52 Downloading fastapi-0.116.1-py3-none-any.whl (95 kB)
+#13 13.55 Downloading pydantic-2.11.7-py3-none-any.whl (444 kB)
+#13 13.58 Downloading pydantic_core-2.33.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (1.9 MB)
+#13 13.63    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.9/1.9 MB 53.8 MB/s eta 0:00:00
+#13 13.65 Downloading starlette-0.47.1-py3-none-any.whl (72 kB)
+#13 13.67 Downloading anyio-4.9.0-py3-none-any.whl (100 kB)
+#13 13.70 Downloading uvicorn-0.35.0-py3-none-any.whl (66 kB)
+#13 13.79 Downloading python_dotenv-1.1.1-py3-none-any.whl (20 kB)
+#13 13.81 Downloading websockets-15.0.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (182 kB)
+#13 13.83 Downloading deepgram_sdk-4.6.0-py3-none-any.whl (156 kB)
+#13 13.85 Downloading httpx-0.28.1-py3-none-any.whl (73 kB)
+#13 13.87 Downloading httpcore-1.0.9-py3-none-any.whl (78 kB)
+#13 13.90 Downloading google_auth-2.40.3-py2.py3-none-any.whl (216 kB)
+#13 13.92 Downloading cachetools-5.5.2-py3-none-any.whl (10 kB)
+#13 13.94 Downloading google_api_core-2.25.1-py3-none-any.whl (160 kB)
+#13 13.97 Downloading google_cloud_core-2.4.3-py2.py3-none-any.whl (29 kB)
+#13 14.00 Downloading google_crc32c-1.7.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (33 kB)
+#13 14.03 Downloading google_resumable_media-2.7.2-py2.py3-none-any.whl (81 kB)
+#13 14.06 Downloading googleapis_common_protos-1.70.0-py3-none-any.whl (294 kB)
+#13 14.09 Downloading proto_plus-1.26.1-py3-none-any.whl (50 kB)
+#13 14.11 Downloading protobuf-6.31.1-cp39-abi3-manylinux2014_aarch64.whl (322 kB)
+#13 14.16 Downloading requests-2.32.4-py3-none-any.whl (64 kB)
+#13 14.21 Downloading charset_normalizer-3.4.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (142 kB)
+#13 14.23 Downloading idna-3.10-py3-none-any.whl (70 kB)
+#13 14.26 Downloading rsa-4.9.1-py3-none-any.whl (34 kB)
+#13 14.28 Downloading urllib3-2.5.0-py3-none-any.whl (129 kB)
+#13 14.31 Downloading google_cloud_aiplatform-1.104.0-py2.py3-none-any.whl (7.9 MB)
+#13 14.51    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 7.9/7.9 MB 38.1 MB/s eta 0:00:00
+#13 14.54 Downloading google_cloud_storage-2.19.0-py2.py3-none-any.whl (131 kB)
+#13 14.56 Downloading docstring_parser-0.16-py3-none-any.whl (36 kB)
+#13 14.59 Downloading google_cloud_bigquery-3.35.0-py3-none-any.whl (256 kB)
+#13 14.62 Downloading google_cloud_resource_manager-1.14.2-py3-none-any.whl (394 kB)
+#13 14.69 Downloading google_genai-1.26.0-py3-none-any.whl (217 kB)
+#13 14.72 Downloading grpc_google_iam_v1-0.14.2-py3-none-any.whl (19 kB)
+#13 14.76 Downloading grpcio-1.73.1-cp311-cp311-manylinux_2_17_aarch64.whl (5.8 MB)
+#13 14.90    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 5.8/5.8 MB 43.9 MB/s eta 0:00:00
+#13 14.93 Downloading grpcio_status-1.73.1-py3-none-any.whl (14 kB)
+#13 14.96 Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+#13 15.00 Downloading shapely-2.1.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (3.0 MB)
+#13 15.07    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.0/3.0 MB 44.8 MB/s eta 0:00:00
+#13 15.09 Downloading tenacity-8.5.0-py3-none-any.whl (28 kB)
+#13 15.11 Downloading typing_extensions-4.14.1-py3-none-any.whl (43 kB)
+#13 15.13 Downloading google_cloud_firestore-2.21.0-py3-none-any.whl (368 kB)
+#13 15.17 Downloading google_cloud_secret_manager-2.24.0-py3-none-any.whl (218 kB)
+#13 15.32 Downloading google_api_python_client-2.176.0-py3-none-any.whl (13.7 MB)
+#13 15.55    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 13.7/13.7 MB 58.0 MB/s eta 0:00:00
+#13 15.58 Downloading google_auth_httplib2-0.2.0-py2.py3-none-any.whl (9.3 kB)
+#13 15.60 Downloading httplib2-0.22.0-py3-none-any.whl (96 kB)
+#13 15.62 Downloading pyparsing-3.2.3-py3-none-any.whl (111 kB)
+#13 15.65 Downloading uritemplate-4.2.0-py3-none-any.whl (11 kB)
+#13 15.68 Downloading google_auth_oauthlib-1.2.2-py3-none-any.whl (19 kB)
+#13 15.70 Downloading firebase_admin-6.9.0-py3-none-any.whl (139 kB)
+#13 15.72 Downloading h2-4.2.0-py3-none-any.whl (60 kB)
+#13 15.76 Downloading hpack-4.1.0-py3-none-any.whl (34 kB)
+#13 15.79 Downloading hyperframe-6.1.0-py3-none-any.whl (13 kB)
+#13 15.82 Downloading slowapi-0.1.9-py3-none-any.whl (14 kB)
+#13 15.84 Downloading nest_asyncio-1.6.0-py3-none-any.whl (5.2 kB)
+#13 15.86 Downloading python_jose-3.5.0-py2.py3-none-any.whl (34 kB)
+#13 15.88 Downloading gunicorn-23.0.0-py3-none-any.whl (85 kB)
+#13 15.91 Downloading jinja2-3.1.6-py3-none-any.whl (134 kB)
+#13 15.95 Downloading aenum-3.1.16-py3-none-any.whl (165 kB)
+#13 15.98 Downloading aiofiles-24.1.0-py3-none-any.whl (15 kB)
+#13 16.00 Downloading aiohttp-3.12.14-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (1.7 MB)
+#13 16.03    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.7/1.7 MB 98.2 MB/s eta 0:00:00
+#13 16.05 Downloading multidict-6.6.3-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl (247 kB)
+#13 16.08 Downloading yarl-1.20.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (347 kB)
+#13 16.13 Downloading aiohappyeyeballs-2.6.1-py3-none-any.whl (15 kB)
+#13 16.15 Downloading aiosignal-1.4.0-py3-none-any.whl (7.5 kB)
+#13 16.18 Downloading annotated_types-0.7.0-py3-none-any.whl (13 kB)
+#13 16.20 Downloading attrs-25.3.0-py3-none-any.whl (63 kB)
+#13 16.22 Downloading cachecontrol-0.14.3-py3-none-any.whl (21 kB)
+#13 16.25 Downloading msgpack-1.1.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (423 kB)
+#13 16.29 Downloading certifi-2025.7.14-py3-none-any.whl (162 kB)
+#13 16.33 Downloading cffi-1.17.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (469 kB)
+#13 16.36 Downloading click-8.2.1-py3-none-any.whl (102 kB)
+#13 16.38 Downloading cryptography-45.0.5-cp311-abi3-manylinux_2_34_aarch64.whl (4.2 MB)
+#13 16.46    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.2/4.2 MB 55.5 MB/s eta 0:00:00
+#13 16.48 Downloading cssselect2-0.8.0-py3-none-any.whl (15 kB)
+#13 16.50 Downloading dataclasses_json-0.6.7-py3-none-any.whl (28 kB)
+#13 16.53 Downloading marshmallow-3.26.1-py3-none-any.whl (50 kB)
+#13 16.56 Downloading typing_inspect-0.9.0-py3-none-any.whl (8.8 kB)
+#13 16.58 Downloading deprecation-2.1.0-py2.py3-none-any.whl (11 kB)
+#13 16.61 Downloading ecdsa-0.19.1-py2.py3-none-any.whl (150 kB)
+#13 16.65 Downloading fonttools-4.59.0-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl (5.0 MB)
+#13 16.71    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 5.0/5.0 MB 85.2 MB/s eta 0:00:00
+#13 16.74 Downloading Brotli-1.1.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (2.9 MB)
+#13 16.77    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.9/2.9 MB 113.6 MB/s eta 0:00:00
+#13 16.80 Downloading frozenlist-1.7.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (237 kB)
+#13 16.82 Downloading h11-0.16.0-py3-none-any.whl (37 kB)
+#13 16.84 Downloading html5lib-1.1-py2.py3-none-any.whl (112 kB)
+#13 16.88 Downloading httptools-0.6.4-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (462 kB)
+#13 16.91 Downloading limits-5.4.0-py3-none-any.whl (60 kB)
+#13 16.94 Downloading packaging-25.0-py3-none-any.whl (66 kB)
+#13 16.96 Downloading Deprecated-1.2.18-py2.py3-none-any.whl (10.0 kB)
+#13 16.98 Downloading wrapt-1.17.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (83 kB)
+#13 17.01 Downloading MarkupSafe-3.0.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (23 kB)
+#13 17.04 Downloading mypy_extensions-1.1.0-py3-none-any.whl (5.0 kB)
+#13 17.06 Downloading numpy-2.3.1-cp311-cp311-manylinux_2_28_aarch64.whl (14.6 MB)
+#13 17.28    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 14.6/14.6 MB 65.8 MB/s eta 0:00:00
+#13 17.30 Downloading propcache-0.3.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (217 kB)
+#13 17.33 Downloading pyasn1-0.6.1-py3-none-any.whl (83 kB)
+#13 17.35 Downloading pyasn1_modules-0.4.2-py3-none-any.whl (181 kB)
+#13 17.37 Downloading pydyf-0.11.0-py3-none-any.whl (8.1 kB)
+#13 17.40 Downloading PyJWT-2.10.1-py3-none-any.whl (22 kB)
+#13 17.42 Downloading pyphen-0.17.2-py3-none-any.whl (2.1 MB)
+#13 17.45    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.1/2.1 MB 70.5 MB/s eta 0:00:00
+#13 17.47 Downloading PyYAML-6.0.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (736 kB)
+#13 17.48    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 736.8/736.8 kB 98.8 MB/s eta 0:00:00
+#13 17.50 Downloading requests_oauthlib-2.0.0-py2.py3-none-any.whl (24 kB)
+#13 17.53 Downloading oauthlib-3.3.1-py3-none-any.whl (160 kB)
+#13 17.56 Downloading six-1.17.0-py2.py3-none-any.whl (11 kB)
+#13 17.60 Downloading sniffio-1.3.1-py3-none-any.whl (10 kB)
+#13 17.62 Downloading tinycss2-1.4.0-py3-none-any.whl (26 kB)
+#13 17.66 Downloading typing_inspection-0.4.1-py3-none-any.whl (14 kB)
+#13 17.68 Downloading uvloop-0.21.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (4.0 MB)
+#13 17.74    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.0/4.0 MB 73.7 MB/s eta 0:00:00
+#13 17.76 Downloading watchfiles-1.1.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (450 kB)
+#13 17.79 Downloading webencodings-0.5.1-py2.py3-none-any.whl (11 kB)
+#13 17.83 Downloading zopfli-0.2.3.post1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (826 kB)
+#13 17.85    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 826.2/826.2 kB 82.3 MB/s eta 0:00:00
+#13 17.88 Downloading pycparser-2.22-py3-none-any.whl (117 kB)
+#13 18.13 Installing collected packages: webencodings, brotli, aenum, zopfli, wrapt, websockets, uvloop, urllib3, uritemplate, typing-extensions, tinycss2, tenacity, sniffio, six, pyyaml, python-multipart, python-dotenv, Pyphen, pyparsing, pyjwt, pydyf, pycparser, pyasn1, protobuf, propcache, pillow, packaging, oauthlib, numpy, nest-asyncio, mypy-extensions, multidict, msgpack, MarkupSafe, idna, hyperframe, httptools, hpack, h11, grpcio, google-crc32c, frozenlist, fonttools, docstring_parser, click, charset_normalizer, certifi, cachetools, attrs, annotated-types, aiohappyeyeballs, aiofiles, yarl, uvicorn, typing-inspection, typing-inspect, shapely, rsa, requests, python-dateutil, pydantic-core, pyasn1-modules, proto-plus, marshmallow, jinja2, httplib2, httpcore, html5lib, h2, gunicorn, googleapis-common-protos, google-resumable-media, ecdsa, deprecation, deprecated, cssselect2, cffi, anyio, aiosignal, weasyprint, watchfiles, starlette, requests-oauthlib, python-jose, pydantic, limits, httpx, grpcio-status, google-auth, dataclasses-json, cryptography, cachecontrol, aiohttp, slowapi, grpc-google-iam-v1, google-genai, google-auth-oauthlib, google-auth-httplib2, google-api-core, fastapi, deepgram-sdk, google-cloud-core, google-api-python-client, google-cloud-storage, google-cloud-secret-manager, google-cloud-resource-manager, google-cloud-firestore, google-cloud-bigquery, google-cloud-aiplatform, firebase-admin
+#13 26.92 
+#13 26.93 Successfully installed MarkupSafe-3.0.2 Pyphen-0.17.2 aenum-3.1.16 aiofiles-24.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.12.14 aiosignal-1.4.0 annotated-types-0.7.0 anyio-4.9.0 attrs-25.3.0 brotli-1.1.0 cachecontrol-0.14.3 cachetools-5.5.2 certifi-2025.7.14 cffi-1.17.1 charset_normalizer-3.4.2 click-8.2.1 cryptography-45.0.5 cssselect2-0.8.0 dataclasses-json-0.6.7 deepgram-sdk-4.6.0 deprecated-1.2.18 deprecation-2.1.0 docstring_parser-0.16 ecdsa-0.19.1 fastapi-0.116.1 firebase-admin-6.9.0 fonttools-4.59.0 frozenlist-1.7.0 google-api-core-2.25.1 google-api-python-client-2.176.0 google-auth-2.40.3 google-auth-httplib2-0.2.0 google-auth-oauthlib-1.2.2 google-cloud-aiplatform-1.104.0 google-cloud-bigquery-3.35.0 google-cloud-core-2.4.3 google-cloud-firestore-2.21.0 google-cloud-resource-manager-1.14.2 google-cloud-secret-manager-2.24.0 google-cloud-storage-2.19.0 google-crc32c-1.7.1 google-genai-1.26.0 google-resumable-media-2.7.2 googleapis-common-protos-1.70.0 grpc-google-iam-v1-0.14.2 grpcio-1.73.1 grpcio-status-1.73.1 gunicorn-23.0.0 h11-0.16.0 h2-4.2.0 hpack-4.1.0 html5lib-1.1 httpcore-1.0.9 httplib2-0.22.0 httptools-0.6.4 httpx-0.28.1 hyperframe-6.1.0 idna-3.10 jinja2-3.1.6 limits-5.4.0 marshmallow-3.26.1 msgpack-1.1.1 multidict-6.6.3 mypy-extensions-1.1.0 nest-asyncio-1.6.0 numpy-2.3.1 oauthlib-3.3.1 packaging-25.0 pillow-10.4.0 propcache-0.3.2 proto-plus-1.26.1 protobuf-6.31.1 pyasn1-0.6.1 pyasn1-modules-0.4.2 pycparser-2.22 pydantic-2.11.7 pydantic-core-2.33.2 pydyf-0.11.0 pyjwt-2.10.1 pyparsing-3.2.3 python-dateutil-2.9.0.post0 python-dotenv-1.1.1 python-jose-3.5.0 python-multipart-0.0.18 pyyaml-6.0.2 requests-2.32.4 requests-oauthlib-2.0.0 rsa-4.9.1 shapely-2.1.1 six-1.17.0 slowapi-0.1.9 sniffio-1.3.1 starlette-0.47.1 tenacity-8.5.0 tinycss2-1.4.0 typing-extensions-4.14.1 typing-inspect-0.9.0 typing-inspection-0.4.1 uritemplate-4.2.0 urllib3-2.5.0 uvicorn-0.35.0 uvloop-0.21.0 watchfiles-1.1.0 weasyprint-62.1 webencodings-0.5.1 websockets-15.0.1 wrapt-1.17.2 yarl-1.20.1 zopfli-0.2.3.post1
+#13 26.93 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+#13 DONE 29.2s
+
+#14 [stage-1  5/19] COPY --from=builder /usr/lib/python3.11/site-packages /usr/lib/python3.11/site-packages
+#14 DONE 4.6s
+
+#15 [stage-1  6/19] COPY --chown=nonroot:nonroot main.py models.py core_models.py config.py ./
+#15 DONE 0.1s
+
+#16 [stage-1  7/19] COPY --chown=nonroot:nonroot firebase_auth_simple.py gcp_auth_middleware.py websocket_auth.py ./
+#16 DONE 0.0s
+
+#17 [stage-1  8/19] COPY --chown=nonroot:nonroot firestore_client.py firestore_endpoints.py firestore_models.py ./
+#17 DONE 0.0s
+
+#18 [stage-1  9/19] COPY --chown=nonroot:nonroot firestore_session_manager.py memory_session_manager.py ./
+#18 DONE 0.0s
+
+#19 [stage-1 10/19] COPY --chown=nonroot:nonroot gcp_utils.py gcs_utils.py secret_manager.py ./
+#19 DONE 0.0s
+
+#20 [stage-1 11/19] COPY --chown=nonroot:nonroot patient_endpoints.py extraction_prompts_simple.py ./
+#20 DONE 0.0s
+
+#21 [stage-1 12/19] COPY --chown=nonroot:nonroot image_handler.py deepgram_utils.py ./
+#21 DONE 0.0s
+
+#22 [stage-1 13/19] COPY --chown=nonroot:nonroot audit_logger.py rate_limiter.py account_lockout.py base_billing_rules.py ./
+#22 DONE 0.0s
+
+#23 [stage-1 14/19] COPY --chown=nonroot:nonroot routers/ ./routers/
+#23 DONE 0.0s
+
+#24 [stage-1 15/19] COPY --chown=nonroot:nonroot services/ ./services/
+#24 DONE 0.0s
+
+#25 [stage-1 16/19] COPY --chown=nonroot:nonroot middleware/ ./middleware/
+#25 DONE 0.0s
+
+#26 [stage-1 17/19] COPY --chown=nonroot:nonroot fonts/ ./fonts/
+#26 DONE 0.0s
+
+#27 [stage-1 18/19] RUN chmod -R 755 /app &&     find /app -type f -name "*.py" -exec chmod 644 {} ; &&     chmod -R 755 /app/fonts
+#27 DONE 0.2s
+
+#28 [stage-1 19/19] RUN mkdir -p /tmp/weasyprint_cache &&     chown -R nonroot:nonroot /tmp/weasyprint_cache
+#28 DONE 0.1s
+
+#29 exporting to image
+#29 exporting layers

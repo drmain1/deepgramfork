@@ -142,6 +142,9 @@ function RecordingView({
     };
   }, [disconnectWebSocket, cleanupAudio]);
 
+  // State for inactivity warning
+  const [inactivityWarning, setInactivityWarning] = useState(null);
+
   const handleWebSocketMessage = (message) => {
     if (message.type === WS_MESSAGE_TYPES.SESSION_INIT) {
       const backendSessionId = message.session_id;
@@ -152,6 +155,8 @@ function RecordingView({
       }
       setError('');
     } else if (message.type === WS_MESSAGE_TYPES.TRANSCRIPT) {
+      // Clear inactivity warning when receiving transcripts (indicates audio is flowing)
+      setInactivityWarning(null);
       if (message.is_final) {
         setFinalTranscript(prev => (prev ? prev + ' ' : '') + message.text);
         setCurrentInterimTranscript('');
@@ -166,6 +171,13 @@ function RecordingView({
       } else {
         setCurrentInterimTranscript(translationText);
       }
+    } else if (message.type === WS_MESSAGE_TYPES.INACTIVITY_WARNING) {
+      // Handle inactivity warning
+      setInactivityWarning({
+        message: message.message,
+        inactiveSeconds: message.inactive_seconds,
+        disconnectIn: message.disconnect_in
+      });
     } else if (message.type === WS_MESSAGE_TYPES.ERROR) {
       setError(`Streaming error: ${message.message}`);
     } else if (message.type === WS_MESSAGE_TYPES.STATUS) {
@@ -197,6 +209,7 @@ function RecordingView({
   const startRecordingProcess = async () => {
     console.log('[RecordingView] Starting recording process...');
     setError(null);
+    setInactivityWarning(null); // Clear any inactivity warning
     if (!hasStreamedOnce || !sessionId) {
       setFinalTranscript('');
       setCurrentInterimTranscript('');
@@ -586,6 +599,20 @@ function RecordingView({
                   <Box className="mt-4 p-3 bg-red-50 border border-red-200 rounded">
                     <Typography color="error" variant="body2">
                       {error}
+                    </Typography>
+                  </Box>
+                )}
+                
+                {inactivityWarning && (
+                  <Box className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded">
+                    <Typography color="warning" variant="body2" fontWeight="bold">
+                      Audio Inactivity Warning
+                    </Typography>
+                    <Typography variant="body2" className="mt-1">
+                      {inactivityWarning.message}
+                    </Typography>
+                    <Typography variant="caption" className="mt-2 block text-gray-600">
+                      Please speak or the connection will close automatically.
                     </Typography>
                   </Box>
                 )}

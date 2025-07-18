@@ -1,0 +1,126 @@
+# Multi-stage build using Chainguard Wolfi base images
+# Stage 1: Builder
+FROM cgr.dev/chainguard/wolfi-base:latest as builder
+
+# Install build dependencies
+RUN apk update && apk add \
+    python3 \
+    python-3.11-dev \
+    py3.11-pip \
+    gcc \
+    glibc-dev \
+    libffi-dev \
+    # WeasyPrint build dependencies
+    cairo-dev \
+    pango-dev \
+    gdk-pixbuf-dev \
+    libxml2-dev \
+    libxslt-dev \
+    libjpeg-turbo-dev \
+    zlib-dev \
+    # Additional build tools
+    build-base \
+    git
+
+# Set Python as default (use python3.11 specifically)
+RUN ln -sf /usr/bin/python3.11 /usr/bin/python && \
+    ln -sf /usr/bin/python3.11 /usr/bin/python3
+
+# Set work directory
+WORKDIR /app
+
+# Copy requirements
+COPY requirements.txt .
+
+# Upgrade pip and install Python dependencies
+RUN python3.11 -m pip install --upgrade pip setuptools wheel && \
+    python3.11 -m pip install --no-cache-dir -r requirements.txt
+
+# Stage 2: Runtime
+FROM cgr.dev/chainguard/wolfi-base:latest
+
+# Install runtime dependencies only
+RUN apk update && apk add \
+    python3 \
+    python-3.11 \
+    # WeasyPrint runtime dependencies
+    cairo \
+    pango \
+    gdk-pixbuf \
+    libxml2 \
+    libxslt \
+    libjpeg-turbo \
+    zlib \
+    # Font packages for PDF generation
+    font-liberation \
+    fontconfig \
+    # FFmpeg for audio processing
+    ffmpeg \
+    # Additional runtime libraries
+    libffi \
+    glib \
+    harfbuzz \
+    freetype \
+    # CA certificates for HTTPS
+    ca-certificates-bundle
+
+# Set Python as default (use python3.11 specifically)
+RUN ln -sf /usr/bin/python3.11 /usr/bin/python && \
+    ln -sf /usr/bin/python3.11 /usr/bin/python3
+
+# Use existing non-root user (Wolfi/Chainguard best practice)
+# nonroot user already exists in the base image
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PORT=8080 \
+    # Ensure proper font configuration for WeasyPrint
+    FONTCONFIG_PATH=/etc/fonts
+
+# Set work directory
+WORKDIR /app
+
+# Copy Python packages from builder
+COPY --from=builder /usr/lib/python3.11/site-packages /usr/lib/python3.11/site-packages
+
+# Copy application files
+COPY --chown=nonroot:nonroot main.py models.py core_models.py config.py ./
+COPY --chown=nonroot:nonroot firebase_auth_simple.py gcp_auth_middleware.py websocket_auth.py websocket_security.py ./
+COPY --chown=nonroot:nonroot firestore_client.py firestore_endpoints.py firestore_models.py ./
+COPY --chown=nonroot:nonroot firestore_session_manager.py memory_session_manager.py ./
+COPY --chown=nonroot:nonroot gcp_utils.py gcs_utils.py secret_manager.py ./
+COPY --chown=nonroot:nonroot patient_endpoints.py extraction_prompts_simple.py ./
+COPY --chown=nonroot:nonroot image_handler.py deepgram_utils.py ./
+COPY --chown=nonroot:nonroot audit_logger.py rate_limiter.py account_lockout.py base_billing_rules.py ./
+COPY --chown=nonroot:nonroot routers/ ./routers/
+COPY --chown=nonroot:nonroot services/ ./services/
+COPY --chown=nonroot:nonroot middleware/ ./middleware/
+COPY --chown=nonroot:nonroot fonts/ ./fonts/
+
+# Set proper permissions (read-only for most files)
+RUN chmod -R 755 /app && \
+    find /app -type f -name "*.py" -exec chmod 644 {} \; && \
+    # Ensure fonts directory is readable
+    chmod -R 755 /app/fonts
+
+# Create necessary directories for WeasyPrint with write permissions
+RUN mkdir -p /tmp/weasyprint_cache && \
+    chown -R nonroot:nonroot /tmp/weasyprint_cache
+
+# Switch to non-root user
+USER nonroot
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health').read()" || exit 1
+
+# Expose port
+EXPOSE 8080
+
+# Signal handling
+STOPSIGNAL SIGTERM
+
+# Run the application
+ENTRYPOINT ["python", "-m", "uvicorn"]
+CMD ["main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1", "--access-log", "--log-level", "info"]

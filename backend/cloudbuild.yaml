@@ -1,0 +1,7 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-f', 'Dockerfile.chainguard', '-t', 'gcr.io/$PROJECT_ID/backend-app-chainguard:latest', '.']
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/backend-app-chainguard:latest']
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args: ['run', 'deploy', 'medlegaldoc-backend', '--image', 'gcr.io/$PROJECT_ID/backend-app-chainguard:latest', '--region', 'us-central1', '--platform', 'managed', '--allow-unauthenticated']

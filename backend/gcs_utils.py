@@ -14,7 +14,8 @@ class GCSClient:
     
     def __init__(self):
         """Initialize GCS client with proper credentials."""
-        self.bucket_name = os.getenv('GCS_BUCKET_NAME', 'medical-transcription-hipaa-prod')
+        from config import config
+        self.bucket_name = config.gcs_bucket_name
         self.storage_client = None
         self._initialize_client()
     

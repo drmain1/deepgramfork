@@ -14,7 +14,8 @@ export const WS_MESSAGE_TYPES = {
   ERROR: 'error',
   STATUS: 'status',
   INITIAL_METADATA: 'initial_metadata',
-  EOS: 'eos'
+  EOS: 'eos',
+  INACTIVITY_WARNING: 'inactivity_warning'
 };
 
 // WebSocket States
