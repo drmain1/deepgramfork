@@ -326,7 +326,7 @@
     {% endif %}
 
     <!-- Cranial Nerve Examination -->
-    {% if data.cranial_nerve_examination %}
+    {% if data.cranial_nerve_examination and not data.cranial_nerve_examination_all_not_tested %}
     <h4>Cranial Nerve Examination</h4>
     <table>
         <thead>

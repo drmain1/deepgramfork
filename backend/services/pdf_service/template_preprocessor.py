@@ -617,6 +617,15 @@ def prepare_initial_exam_data_for_template(data: Dict[str, Any]) -> Dict[str, An
         if valid_cns:
             data["cranial_nerve_examination"] = valid_cns
             logger.info(f"Using {len(valid_cns)} valid cranial nerve entries")
+            
+            # Check if all cranial nerve entries are "Not tested"
+            all_not_tested = all(
+                cn["finding"].lower() in ["not tested", "not documented", "not performed"]
+                for cn in valid_cns
+            )
+            data["cranial_nerve_examination_all_not_tested"] = all_not_tested
+            logger.info(f"All cranial nerves not tested: {all_not_tested}")
+            
             return data
     
     # Only if we have NO cranial nerve data at all, create the default structure
@@ -629,6 +638,8 @@ def prepare_initial_exam_data_for_template(data: Dict[str, Any]) -> Dict[str, An
         })
     
     data["cranial_nerve_examination"] = complete_cns
+    # When we create default structure, all are "Not tested"
+    data["cranial_nerve_examination_all_not_tested"] = True
     logger.info(f"Created default cranial nerve structure with all 12 nerves as 'Not tested'")
     
     return data
