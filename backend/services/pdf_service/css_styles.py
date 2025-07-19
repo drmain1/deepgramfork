@@ -365,50 +365,34 @@ h3 {
 
 .status-improved { 
     color: #28a745;
-    background-color: #d4edda;
-    border: 1pt solid #28a745;
 }
 
 .status-worsened { 
     color: #dc3545;
-    background-color: #f8d7da;
-    border: 1pt solid #dc3545;
 }
 
 .status-unchanged { 
     color: #6c757d;
-    background-color: #e2e3e5;
-    border: 1pt solid #6c757d;
 }
 
 .status-new { 
     color: #17a2b8;
-    background-color: #d1ecf1;
-    border: 1pt solid #17a2b8;
 }
 
 .status-resolved { 
     color: #007bff;
-    background-color: #cce5ff;
-    border: 1pt solid #007bff;
 }
 
 .status-changed { 
     color: #856404;
-    background-color: #fff3cd;
-    border: 1pt solid #ffc107;
 }
 
 .status-not-performed { 
     color: #6c757d;
-    background-color: #f8f9fa;
-    border: 1pt solid #dee2e6;
 }
 
 .status-unknown { 
     color: #6c757d;
-    background-color: #f8f9fa;
-    border: 1pt solid #dee2e6;
 }
 
 /* Re-evaluation specific styles */
