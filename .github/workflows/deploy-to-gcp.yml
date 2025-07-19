@@ -230,7 +230,7 @@ jobs:
           --set-env-vars "ENVIRONMENT=${{ github.event.inputs.environment || 'production' }}" \
           --set-env-vars "BUILD_SHA=${{ github.sha }}" \
           --set-env-vars "BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
-          --service-account medlegaldoc-backend@${{ env.PROJECT_ID }}.iam.gserviceaccount.com \
+          --service-account backend-service@${{ env.PROJECT_ID }}.iam.gserviceaccount.com \
           --no-allow-unauthenticated \
           --update-labels "managed-by=github-actions,environment=${{ github.event.inputs.environment || 'production' }},build-sha=${{ github.sha }}"
 
