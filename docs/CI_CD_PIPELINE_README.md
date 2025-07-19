@@ -131,10 +131,19 @@ GOOGLE_APPLICATION_CREDENTIALS=""
 #### `GCP_SA_KEY`
 Service account JSON key with permissions:
 - `roles/run.admin` - Deploy Cloud Run services
-- `roles/iam.serviceAccountUser` - Act as service account
+- `roles/iam.serviceAccountUser` - Act as service account (must be granted on backend-service SA)
 - `roles/storage.admin` - Push to Container Registry
 - `roles/containerregistry.ServiceAgent` - Container Registry access
+- `roles/artifactregistry.writer` - Push images to Artifact Registry (required for gcr.io)
 - `roles/cloudbuild.builds.editor` - Cloud Build (if used)
+
+**Important**: The service account must also have permission to act as the `backend-service` account:
+```bash
+gcloud iam service-accounts add-iam-policy-binding \
+    backend-service@medlegaldoc-b31df.iam.gserviceaccount.com \
+    --member="serviceAccount:github-actions-cicd@medlegaldoc-b31df.iam.gserviceaccount.com" \
+    --role="roles/iam.serviceAccountUser"
+```
 
 **To create:**
 ```bash
@@ -170,14 +179,18 @@ gcloud iam service-accounts keys create github-actions-key.json \
 - **Min Instances**: 1
 - **Concurrency**: 80
 - **Port**: 8080
+- **Service Account**: `backend-service@medlegaldoc-b31df.iam.gserviceaccount.com`
+- **Authentication**: `--allow-unauthenticated` (Public access with Firebase auth)
 
 ## Security & HIPAA Compliance
 
 ### Container Security
 - **Base Images**: Chainguard Wolfi (minimal, secure, regularly updated)
 - **Non-root User**: All containers run as `nonroot` user
+- **Build Process**: Uses root for package installation, runtime uses nonroot
 - **Vulnerability Scanning**: Trivy scans for CRITICAL/HIGH CVEs
 - **Image Signing**: OCI labels with build metadata
+- **No pip warnings**: Proper user configuration prevents root pip warnings
 
 ### Access Controls
 - **Service Account**: Minimal required permissions
@@ -217,16 +230,81 @@ Error: google-github-actions/auth failed
 ```
 **Solutions**:
 - Verify `GCP_SA_KEY` secret exists and is valid JSON
+- Check JSON formatting (no line breaks in string values)
 - Check service account has required permissions
 - Ensure project ID matches in workflow and service account
 
-#### 4. Image Build Failures
+#### 4. GCP Service Initialization Errors
+```
+Error: Failed to initialize GCS client: File was not found.
+```
+**Solutions**:
+- Ensure test mode environment variables are set before imports
+- Check that GCP services handle `TESTING=true` and `DISABLE_GCP=true`
+- Verify conditional initialization in:
+  - `gcs_utils.py`
+  - `firestore_client.py`
+  - `firestore_session_manager.py`
+
+#### 5. Artifact Registry Permission Errors
+```
+ERROR: denied: Permission "artifactregistry.repositories.uploadArtifacts" denied
+```
+**Solution**: Grant `roles/artifactregistry.writer` permission:
+```bash
+gcloud projects add-iam-policy-binding medlegaldoc-b31df \
+    --member="serviceAccount:github-actions-cicd@medlegaldoc-b31df.iam.gserviceaccount.com" \
+    --role="roles/artifactregistry.writer"
+```
+
+#### 6. Service Account ActAs Permission Errors
+```
+ERROR: Permission 'iam.serviceaccounts.actAs' denied on service account
+```
+**Solution**: Ensure the correct service account name (`backend-service`, not `medlegaldoc-backend`)
+
+#### 7. Image Build Failures
 ```
 ERROR: Dockerfile.chainguard must use Chainguard base image
 ```
-**Solution**: Ensure Dockerfile uses `FROM cgr.dev/chainguard/wolfi-base:latest`
+**Solution**: Ensure Dockerfile uses `FROM cgr.dev/chainguard/wolfi-base:latest AS builder`
 
-#### 5. Deployment Failures
+#### 8. Dockerfile Build Errors
+```
+WARNING: Running pip as the 'root' user can result in broken permissions
+ERROR: UndefinedVar: Usage of undefined variable '$PYTHONPATH'
+```
+**Solutions**:
+- Run pip as root in builder stage (acceptable since runtime uses nonroot)
+- Define PYTHONPATH without referencing undefined variables
+- Ensure proper COPY paths between build stages
+
+#### 9. Post-deployment Health Check Failures
+```
+curl: (22) The requested URL returned error: 403
+```
+**Solution**: This is expected behavior when `--no-allow-unauthenticated` is set. Update health checks to expect 403:
+```bash
+HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$SERVICE_URL/health")
+if [ "$HTTP_STATUS" == "403" ]; then
+  echo "✅ Service is running with authentication enabled"
+fi
+```
+
+#### 10. Frontend-Backend Communication Issues (CORS Errors)
+```
+Access to fetch at 'https://scribe.medlegaldoc.com/api/v1/...' from origin 'http://localhost:5173' 
+has been blocked by CORS policy: Response to preflight request doesn't pass access control check: 
+No 'Access-Control-Allow-Origin' header is present on the requested resource.
+```
+**Root Cause**: When Cloud Run is configured with `--no-allow-unauthenticated`, it returns 403 before 
+reaching the FastAPI application, preventing CORS headers from being sent.
+
+**Solution**: Change to `--allow-unauthenticated` in the deployment configuration. This allows Cloud Run 
+to accept public HTTP requests while maintaining security through Firebase authentication at the 
+application layer. The backend validates Firebase tokens on all protected endpoints.
+
+#### 11. Deployment Failures
 ```
 Cloud Run deployment failed
 ```
@@ -235,6 +313,7 @@ Cloud Run deployment failed
 - Verify container image was pushed successfully
 - Review Cloud Run logs for application startup errors
 - Confirm environment variables are set correctly
+- Verify service account name matches existing SA
 
 ### Debug Commands
 
@@ -313,6 +392,23 @@ gcloud projects get-iam-policy medlegaldoc-b31df \
 - Security scan results
 - Container startup times
 - Health check response times
+
+## Successful Deployment
+
+When deployment succeeds, you'll see:
+1. ✅ All security scans pass
+2. ✅ Docker image builds and passes tests
+3. ✅ Image pushes to Container Registry
+4. ✅ Cloud Run deployment completes
+5. ✅ Health checks return 200 (service accessible)
+6. ✅ Deployment record created
+
+The deployed service URL format:
+```
+https://medlegaldoc-backend-[hash]-uc.a.run.app
+```
+
+**Note**: The service accepts public HTTP requests and validates Firebase authentication tokens at the application layer.
 
 ## Support
 
