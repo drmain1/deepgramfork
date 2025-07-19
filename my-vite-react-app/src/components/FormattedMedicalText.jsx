@@ -72,12 +72,13 @@ const FormattedMedicalText = ({ content, sx = {}, ...props }) => {
 
         <Divider sx={{ my: 2 }} />
 
-        {/* Render sections (excluding assessment, plan, treatment_performed_today, and diagnostic_imaging_review - they'll be rendered in specific order) */}
+        {/* Render sections (excluding assessment, plan, treatment_performed_today, home_care, and diagnostic_imaging_review - they'll be rendered in specific order) */}
         {Object.entries(structuredData.sections).map(([key, value]) => {
           if (!value || value === 'null' || 
               key === 'assessment' || 
               key === 'plan' || 
               key === 'treatment_performed_today' ||
+              key === 'home_care' ||
               key === 'diagnostic_imaging_review' ||
               key === 'assessment_diagnosis' ||
               key === 'cervical_rom' ||
