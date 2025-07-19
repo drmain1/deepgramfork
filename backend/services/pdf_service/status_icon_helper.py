@@ -27,13 +27,13 @@ def get_status_icon_text(status: str) -> str:
     Returns text representation of status for better compatibility.
     """
     text_map = {
-        "improved": "++",
-        "resolved": "OK",
-        "worsened": "--",
-        "unchanged": "==",
-        "new": "**",
-        "changed": "~~",
-        "not_performed": "NA",
+        "improved": "[+]",
+        "resolved": "[OK]",
+        "worsened": "[-]",
+        "unchanged": "[=]",
+        "new": "[*]",
+        "changed": "[~]",
+        "not_performed": "[NA]",
     }
     
-    return text_map.get(status, "??")
+    return text_map.get(status, "[?]")
