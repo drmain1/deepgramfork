@@ -1,6 +1,6 @@
 # Multi-stage build using Chainguard Wolfi base images
 # Stage 1: Builder
-FROM cgr.dev/chainguard/wolfi-base:latest as builder
+FROM cgr.dev/chainguard/wolfi-base:latest AS builder
 
 # Install build dependencies
 RUN apk update && apk add \
