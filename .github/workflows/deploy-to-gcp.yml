@@ -231,7 +231,7 @@ jobs:
           --set-env-vars "BUILD_SHA=${{ github.sha }}" \
           --set-env-vars "BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
           --service-account backend-service@${{ env.PROJECT_ID }}.iam.gserviceaccount.com \
-          --no-allow-unauthenticated \
+          --allow-unauthenticated \
           --update-labels "managed-by=github-actions,environment=${{ github.event.inputs.environment || 'production' }},build-sha=${{ github.sha }}"
 
     - name: Get Service URL
@@ -246,10 +246,10 @@ jobs:
       run: |
         echo "Running post-deployment health checks..."
         
-        # Test that service is responding (expecting 403 due to authentication)
+        # Test that service is responding (expecting 200 for public health endpoint)
         HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ env.SERVICE_URL }}/health")
-        if [ "$HTTP_STATUS" == "403" ]; then
-          echo "✅ Health endpoint returned 403 (authentication required) - service is running correctly"
+        if [ "$HTTP_STATUS" == "200" ]; then
+          echo "✅ Health endpoint returned 200 - service is running correctly"
         else
           echo "❌ Unexpected status code: $HTTP_STATUS"
           exit 1
@@ -257,14 +257,14 @@ jobs:
         
         # Test PDF service endpoint
         HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ env.SERVICE_URL }}/api/pdf-service-health")
-        if [ "$HTTP_STATUS" == "403" ]; then
-          echo "✅ PDF service endpoint returned 403 (authentication required) - service is running correctly"
+        if [ "$HTTP_STATUS" == "200" ]; then
+          echo "✅ PDF service endpoint returned 200 - service is running correctly"
         else
           echo "❌ Unexpected status code: $HTTP_STATUS"
           exit 1
         fi
         
-        echo "✅ All post-deployment tests passed! Service is running with authentication enabled."
+        echo "✅ All post-deployment tests passed! Service is publicly accessible with Firebase auth."
 
     - name: Create deployment record
       if: success()
