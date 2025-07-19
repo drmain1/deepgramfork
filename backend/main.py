@@ -182,9 +182,10 @@ async def health_check():
 
 # Import and configure middleware
 from middleware import create_security_middleware_stack, configure_cors
+from config import config
 
-# Configure CORS
-configure_cors(app)
+# Configure CORS with origins from config
+configure_cors(app, origins=config.allowed_origins)
 
 # Apply security middleware stack
 create_security_middleware_stack(app)
