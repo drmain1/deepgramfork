@@ -1,0 +1,102 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches:
+      - develop
+      - 'feature/*'
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+
+env:
+  PROJECT_ID: medlegaldoc-b31df
+  REGION: us-central1
+  SERVICE_NAME: medlegaldoc-backend-staging
+  IMAGE_NAME: medlegaldoc-backend
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging Environment
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Configure Docker for GCP
+      run: |
+        gcloud auth configure-docker gcr.io
+
+    - name: Build and push staging image
+      working-directory: ./backend
+      run: |
+        # Build with staging tag
+        docker buildx build \
+          --platform linux/amd64 \
+          -f Dockerfile.chainguard \
+          -t gcr.io/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:staging-${{ github.sha }} \
+          -t gcr.io/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:staging-latest \
+          --push \
+          .
+
+    - name: Deploy to Cloud Run Staging
+      run: |
+        gcloud run deploy ${{ env.SERVICE_NAME }} \
+          --image gcr.io/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:staging-${{ github.sha }} \
+          --region ${{ env.REGION }} \
+          --platform managed \
+          --memory 2Gi \
+          --cpu 2 \
+          --timeout 300 \
+          --max-instances 5 \
+          --min-instances 0 \
+          --port 8080 \
+          --set-env-vars "ENVIRONMENT=staging" \
+          --set-env-vars "TESTING=false" \
+          --set-env-vars "BUILD_SHA=${{ github.sha }}" \
+          --service-account backend-service@${{ env.PROJECT_ID }}.iam.gserviceaccount.com \
+          --no-allow-unauthenticated
+
+    - name: Run smoke tests
+      run: |
+        STAGING_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+          --region ${{ env.REGION }} \
+          --format 'value(status.url)')
+        
+        echo "Staging URL: $STAGING_URL"
+        
+        # Add your smoke tests here
+        HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$STAGING_URL/health")
+        if [ "$HTTP_STATUS" == "403" ]; then
+          echo "✅ Staging deployment successful - service requires authentication"
+        else
+          echo "❌ Unexpected status: $HTTP_STATUS"
+          exit 1
+        fi
+
+    - name: Comment on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const stagingUrl = '${{ env.STAGING_URL }}';
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: `🚀 Deployed to staging environment!\n\nCommit: \`${{ github.sha }}\`\n\n⚠️ Note: Staging requires authentication to access.`
+          })

@@ -539,7 +539,7 @@ class WeasyPrintMedicalPDFGenerator:
                 "cervico_thoracic", "lumbopelvic", "extremity", "sensory_examination",
                 "assessment_diagnosis", "plan", "treatment_performed_today",
                 "history_of_present_illness", "diagnostic_imaging_review", "physical_examination",
-                "duties_under_duress", "vitals"
+                "duties_under_duress", "vitals", "home_care"
             ]
             
             for field in fields_to_move:

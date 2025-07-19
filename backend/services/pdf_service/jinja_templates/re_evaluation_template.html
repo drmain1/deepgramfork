@@ -494,5 +494,11 @@
     <p>{{ data.sections.treatment_performed_today.replace('\n', '<br>') | safe }}</p>
     {% endif %}
 
+    <!-- Home Care Instructions -->
+    {% if data.sections.home_care %}
+    <h4>Home Care Instructions</h4>
+    <p>{{ data.sections.home_care.replace('\n', '<br>') | safe }}</p>
+    {% endif %}
+
 </body>
 </html>

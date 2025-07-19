@@ -404,6 +404,11 @@
     <p>{{ data.sections.treatment_performed_today }}</p>
     {% endif %}
 
+    {% if data.sections.home_care %}
+    <h4>Home Care Instructions</h4>
+    <p>{{ data.sections.home_care }}</p>
+    {% endif %}
+
     <!-- Signature Section -->
     {% if data.provider_info %}
     <div class="signature-section">

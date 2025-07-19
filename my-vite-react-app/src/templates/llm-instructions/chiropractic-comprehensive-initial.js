@@ -44,7 +44,8 @@ Target JSON Schema:
     "assessment_diagnosis": "string | null",
     "plan": "string | null",
     "treatment_performed_today": "string | null",
-    "diagnostic_imaging_review": "string | null"
+    "diagnostic_imaging_review": "string | null",
+    "home_care": "string | null"
   },
   "postural_and_gait_analysis": {
     "posture_general": "string | null",
@@ -162,6 +163,8 @@ C. Section-Specific Instructions ("sections" object):
 - plan: Transcribe the provider's recommendations for future treatment and follow-up in paragraph form.
 
 - treatment_performed_today: Transcribe any treatments or procedures performed during the current visit, such as spinal manipulations, therapies, or injections.
+
+- home_care: Document any home care instructions, exercises, stretches, or self-care recommendations provided to the patient. Include specific instructions for ice/heat application, frequency of exercises, activity modifications, ergonomic recommendations, or any other home-based treatments. Format as a paragraph with clear instructions (e.g., "Apply ice to the lower back for 15-20 minutes every 2-3 hours for the first 48 hours. Perform the prescribed lumbar extension exercises 3 times daily. Avoid prolonged sitting and use lumbar support when driving.").
 
 - postural_and_gait_analysis: This section must be an object with two keys: \`posture_general\` and \`gait_analysis\`.
   - If the entire postural and gait analysis was not performed, the \`postural_and_gait_analysis\` object should be \`null\`.

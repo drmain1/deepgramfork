@@ -62,7 +62,8 @@ CRITICAL DIRECTIVES:
     ] | null,
     "extremity": [ // Array of objects for Orthopedic Tests
       { "test_name": "string", "previous_result": "string", "current_result": "string" }
-    ] | null
+    ] | null,
+    "home_care": "string | null"
   },
   "motor_exam": {
     "upper_extremity": [
@@ -151,7 +152,8 @@ FOR EACH finding mentioned in the CURRENT re-evaluation dictation:
 4.  **assessment_diagnosis, outcome_assessments, cervical_rom, lumbar_rom, cervico_thoracic, lumbopelvic, extremity, cranial_nerve_examination:** For these fields, populate their respective structured arrays as defined in the schema, strictly following the **Core Comparison Algorithm** and **Expansion Rules**.
     *   **IMPORTANT for ROM:** If cervical_rom or lumbar_rom is not mentioned in the current evaluation AT ALL, set the entire section to \`null\`. Do NOT populate it with previous findings. Only include ROM data if it was explicitly tested in the current evaluation.
 5.  **motor_exam & reflexes:** For each muscle/reflex, provide the comparison as a single string within the "right" and "left" keys (e.g., \`"right": "Previously 4/5 | currently 5/5"\`). If unchanged and normal (e.g. 5/5 motor, 2+ reflex), state only the current grade (e.g., \`"right": "5/5"\`). Use the **Reference Lists** below for mapping and grading scales.
-6.  **postural_and_gait_analysis:** This MUST be an object. Document current findings only. Do not use a comparison format. If normal, use "Unremarkable". If not performed, the entire object should be \`null\`.
+6.  **home_care:** Document any home care instructions, exercises, stretches, or self-care recommendations provided to the patient during the current visit. Format as a paragraph with clear instructions. This field uses direct transcription without comparison format.
+7.  **postural_and_gait_analysis:** This MUST be an object. Document current findings only. Do not use a comparison format. If normal, use "Unremarkable". If not performed, the entire object should be \`null\`.
     *   \`posture_general\`: Static postural findings (e.g., "Forward head carriage").
     *   \`gait_analysis\`: Dynamic gait findings (e.g., "Antalgic gait").
 

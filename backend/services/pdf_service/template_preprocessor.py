@@ -81,7 +81,7 @@ def prepare_re_evaluation_data_for_template(ai_json_output):
         "cervico_thoracic", "lumbopelvic", "extremity", "sensory_examination",
         "assessment_diagnosis", "plan", "treatment_performed_today",
         "history_of_present_illness", "diagnostic_imaging_review", "physical_examination",
-        "duties_under_duress", "vitals"
+        "duties_under_duress", "vitals", "home_care"
     ]
     
     moved_fields = []
