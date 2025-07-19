@@ -617,6 +617,18 @@ const FormattedMedicalText = ({ content, sx = {}, ...props }) => {
           </Box>
         )}
 
+        {/* Home Care Instructions - after treatment */}
+        {structuredData.sections?.home_care && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+              HOME CARE INSTRUCTIONS:
+            </Typography>
+            <Typography sx={{ whiteSpace: 'pre-wrap', pl: 2 }}>
+              {structuredData.sections.home_care}
+            </Typography>
+          </Box>
+        )}
+
         {/* Provider signature if available */}
         {structuredData.patient_info.provider && (
           <Box sx={{ mt: 4 }}>

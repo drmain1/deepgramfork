@@ -1,6 +1,6 @@
 # PDF Template Field Dependencies Guide
 
-This document maps out the complete dependency chain for adding, modifying, or removing fields in the PDF generation system. There are 6 key files that must be updated in sync when making changes to PDF fields.
+This document maps out the complete dependency chain for adding, modifying, or removing fields in the PDF generation system. There are 7 key files that must be updated in sync when making changes to PDF fields.
 
 ## Overview of the PDF Generation Flow
 
@@ -8,7 +8,7 @@ This document maps out the complete dependency chain for adding, modifying, or r
 1. LLM Instructions (JS) → 2. Backend Processing (Python) → 3. PDF Templates (HTML)
 ```
 
-## The 6 Critical Files
+## The 7 Critical Files
 
 ### 1. LLM Instructions - Initial Exam
 **File:** `/my-vite-react-app/src/templates/llm-instructions/chiropractic-comprehensive-initial.js`
@@ -39,6 +39,11 @@ This document maps out the complete dependency chain for adding, modifying, or r
 **File:** `/backend/services/pdf_service/jinja_templates/re_evaluation_template.html`
 - **Purpose:** HTML template for re-evaluation PDFs
 - **Key Section:** The main body content where sections are rendered
+
+### 7. React Polished Note Display
+**File:** `/my-vite-react-app/src/components/FormattedMedicalText.jsx`
+- **Purpose:** React component that displays the formatted polished note in the UI
+- **Key Section:** The sections rendering logic (around line 76) and specific sections after line 600
 
 ## How to Add a New Field
 
@@ -105,6 +110,23 @@ fields_to_move = [
 <h4>Home Care Instructions</h4>
 <p>{{ data.sections.home_care.replace('\n', '<br>') | safe }}</p>
 {% endif %}
+```
+
+#### Step 7: Update React Component
+```jsx
+// File: FormattedMedicalText.jsx
+// After the treatment_performed_today section (around line 618):
+{/* Home Care Instructions - after treatment */}
+{structuredData.sections?.home_care && (
+  <Box sx={{ mb: 3 }}>
+    <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+      HOME CARE INSTRUCTIONS:
+    </Typography>
+    <Typography sx={{ whiteSpace: 'pre-wrap', pl: 2 }}>
+      {structuredData.sections.home_care}
+    </Typography>
+  </Box>
+)}
 ```
 
 ## Common Field Types and Their Requirements
@@ -174,9 +196,10 @@ When adding a new field:
 - [ ] Add to weasyprint_generator.py fields_to_move
 - [ ] Add rendering block to initial_exam_template.html
 - [ ] Add rendering block to re_evaluation_template.html
+- [ ] Add rendering block to FormattedMedicalText.jsx
 
 When removing a field:
-- [ ] Remove from all 6 files listed above
+- [ ] Remove from all 7 files listed above
 - [ ] Check for any special processing logic in template_preprocessor.py
 - [ ] Verify no CSS styles specifically target the field
 
