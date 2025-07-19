@@ -26,27 +26,24 @@ RUN apk update && apk add \
 RUN ln -sf /usr/bin/python3.11 /usr/bin/python && \
     ln -sf /usr/bin/python3.11 /usr/bin/python3
 
-# Create non-root user for building (Wolfi already has 'nonroot' user)
-USER nonroot
-
 # Set work directory
 WORKDIR /app
 
-# Copy requirements with correct ownership
-COPY --chown=nonroot:nonroot requirements.txt .
+# Copy requirements
+COPY requirements.txt .
 
-# Upgrade pip and install Python dependencies as non-root user
-# Using --user flag to install in user directory
-RUN python3.11 -m pip install --user --upgrade pip setuptools wheel && \
-    python3.11 -m pip install --user --no-cache-dir -r requirements.txt
+# Upgrade pip and install Python dependencies
+# Note: We run as root in builder stage but final container runs as nonroot
+RUN python3.11 -m pip install --upgrade pip setuptools wheel && \
+    python3.11 -m pip install --no-cache-dir -r requirements.txt
 
 # Stage 2: Runtime
 FROM cgr.dev/chainguard/wolfi-base:latest
 
 # Install runtime dependencies only
-RUN apk update && apk add \
-    python3 \
+RUN apk update && apk add --no-cache \
     python-3.11 \
+    py3.11-pip \
     # WeasyPrint runtime dependencies
     cairo \
     pango \
@@ -86,12 +83,7 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # Copy Python packages from builder
-# When using pip --user, packages are installed in ~/.local
-COPY --from=builder /home/nonroot/.local /home/nonroot/.local
-
-# Add user's pip install directory to PATH
-ENV PATH="/home/nonroot/.local/bin:${PATH}"
-ENV PYTHONPATH="/home/nonroot/.local/lib/python3.11/site-packages:${PYTHONPATH}"
+COPY --from=builder /usr/lib/python3.11/site-packages /usr/lib/python3.11/site-packages
 
 # Copy application files
 COPY --chown=nonroot:nonroot main.py models.py core_models.py config.py ./
