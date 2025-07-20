@@ -83,6 +83,16 @@ function EvaluationTypeSelector({
               Re-evaluation
             </button>
             
+            {/* Cancel Re-evaluation button */}
+            <button
+              type="button"
+              onClick={() => handleTypeChange('follow_up')}
+              className="px-4 py-2 text-sm rounded-lg border border-gray-400 bg-white text-gray-600 hover:bg-gray-50 hover:border-gray-500 transition-all duration-150 flex items-center gap-1"
+            >
+              <span className="material-icons text-base">close</span>
+              Switch to Follow-up
+            </button>
+            
             {/* Load Previous Findings button - shows immediately after switching */}
             {onLoadFindings && !previousFindings && (
               <button
