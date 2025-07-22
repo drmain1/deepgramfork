@@ -44,7 +44,7 @@ OUTPUT FORMAT:
   "range_of_motion": [
     {
       "body_part": "string | e.g., Cervical Flexion",
-      "status": "string | e.g., Full, Restricted, Limited to 40 degrees",
+      "status": "string | e.g., normal, Restricted, Limited to 40 degrees",
       "pain_on_motion": "boolean"
     }
   ] | null,

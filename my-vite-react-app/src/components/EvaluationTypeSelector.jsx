@@ -66,9 +66,6 @@ function EvaluationTypeSelector({
           >
             <span className="material-icons text-base">swap_horiz</span>
             Switch to Re-evaluation
-            {recommendedEvalType === 're_evaluation' && (
-              <span className="ml-1 text-xs">(Recommended)</span>
-            )}
           </button>
         )}
 
